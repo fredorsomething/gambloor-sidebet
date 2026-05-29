@@ -1,7 +1,9 @@
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 import { Feed } from "@/components/Feed";
 import { Button } from "@/components/ui/button";
+import { TokenIcon } from "@/components/ui/TokenIcon";
 
 export default function HomePage() {
   return (
@@ -35,19 +37,36 @@ export default function HomePage() {
         </div>
       </section>
 
-      <div className="flex justify-center">
-        <p className="inline-flex flex-wrap items-center justify-center gap-x-1 rounded-full border border-border bg-muted/40 px-4 py-1.5 text-center text-xs text-muted-foreground">
-          Need POL, pUSD, USDC or USDC.e? Get it from our trusted partner,{" "}
-          <a
-            href="https://bigswappa.fun/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-primary underline-offset-2 hover:underline"
-          >
-            BigSwappa
-          </a>
-        </p>
-      </div>
+      <Link
+        href="/swap"
+        className="group relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-border bg-gradient-to-r from-[hsl(222_47%_13%)] via-card to-[hsl(222_47%_13%)] p-5 transition-all hover:border-primary/50 hover:shadow-lg sm:flex-row sm:justify-between md:p-6"
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/10 blur-3xl"
+        />
+        <div className="flex items-center gap-4">
+          <div className="flex -space-x-2.5">
+            <TokenBadge symbol="POL" />
+            <TokenBadge symbol="USDC" />
+            <TokenBadge symbol="USDC.e" />
+            <TokenBadge symbol="pUSD" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold tracking-tight md:text-xl">
+              Need tokens to bet?
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Swap POL, USDC, USDC.e &amp; pUSD instantly — right here on
+              Polygon.
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform group-hover:translate-x-0.5">
+          Swap now
+          <ArrowRight className="h-4 w-4" />
+        </span>
+      </Link>
 
       <section id="markets" className="space-y-4">
         <div className="flex items-end justify-between">
@@ -61,5 +80,13 @@ export default function HomePage() {
         <Feed />
       </section>
     </div>
+  );
+}
+
+function TokenBadge({ symbol }: { symbol: string }) {
+  return (
+    <span className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-card bg-muted ring-1 ring-border">
+      <TokenIcon symbol={symbol} size={26} />
+    </span>
   );
 }

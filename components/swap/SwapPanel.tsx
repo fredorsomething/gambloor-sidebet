@@ -154,13 +154,18 @@ export function SwapPanel() {
     if (!address) return;
     const allowance = await readAllowance(token, spender, address);
     if (allowance >= needed) return;
-    await approveTx.writeContractAsync({
+    const hash = await approveTx.writeContractAsync({
       chainId: polygon.id,
       address: token,
       abi: ERC20_ABI,
       functionName: "approve",
       args: [spender, maxUint256],
     });
+    // Embedded (managed) wallets auto-sign without a prompt, so the approval and
+    // the swap fire back-to-back. We must wait for the approval to be mined —
+    // otherwise the swap's gas estimation runs against a 0 allowance, reverts,
+    // and the whole thing fails silently. Block until the new allowance lands.
+    await waitForApproval(token, spender, address, needed, hash);
   }
 
   async function executeWrap() {
@@ -222,6 +227,9 @@ export function SwapPanel() {
       to: quote.transaction.to as Address,
       data: quote.transaction.data as Hex,
       value: BigInt(quote.transaction.value || "0"),
+      // Use 0x's gas estimate so we don't rely on the embedded wallet's own
+      // eth_estimateGas, which can be flaky and stall the auto-signed tx.
+      gas: quote.transaction.gas ? BigInt(quote.transaction.gas) : undefined,
     });
     setTxHash(hash);
     push({ title: "Swap submitted", description: "Waiting for confirmation…" });
@@ -469,21 +477,56 @@ function useTokenBalance(
   return (erc20.data as bigint | undefined) ?? 0n;
 }
 
-async function readAllowance(
-  token: Address,
-  spender: Address,
-  owner: Address,
-): Promise<bigint> {
+async function getPublicClient() {
   const { createPublicClient, http } = await import("viem");
   const { polygon } = await import("wagmi/chains");
   const rpc =
     process.env.NEXT_PUBLIC_POLYGON_RPC ||
     "https://polygon-bor-rpc.publicnode.com";
-  const client = createPublicClient({ chain: polygon, transport: http(rpc) });
+  return createPublicClient({ chain: polygon, transport: http(rpc) });
+}
+
+async function readAllowance(
+  token: Address,
+  spender: Address,
+  owner: Address,
+): Promise<bigint> {
+  const client = await getPublicClient();
   return client.readContract({
     address: token,
     abi: ERC20_ABI,
     functionName: "allowance",
     args: [owner, spender],
   });
+}
+
+/**
+ * Wait until an ERC-20 approval is effective: confirm the receipt, then poll the
+ * allowance until it covers `needed`. Embedded wallets sign instantly, so this
+ * guards the follow-up swap from racing an unmined approval.
+ */
+async function waitForApproval(
+  token: Address,
+  spender: Address,
+  owner: Address,
+  needed: bigint,
+  hash: Hex,
+): Promise<void> {
+  const client = await getPublicClient();
+  try {
+    await client.waitForTransactionReceipt({ hash, timeout: 60_000 });
+  } catch {
+    /* fall through to allowance polling */
+  }
+  for (let i = 0; i < 30; i++) {
+    const allowance = await client.readContract({
+      address: token,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [owner, spender],
+    });
+    if (allowance >= needed) return;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error("Approval did not confirm in time. Please try again.");
 }
