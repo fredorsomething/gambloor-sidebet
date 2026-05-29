@@ -51,6 +51,73 @@
   html,
   body {
     height: 100%;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  html::-webkit-scrollbar-track,
+  body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  html::-webkit-scrollbar-thumb,
+  body::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 999px;
+  }
+
+  html::-webkit-scrollbar-thumb:hover,
+  body::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.55);
+  }
+
+  /* Tailwind overflow utilities — same subtle thumb on inner scroll regions. */
+  :where(
+    .overflow-y-auto,
+    .overflow-auto,
+    .overflow-x-auto,
+    .overflow-y-scroll,
+    .overflow-scroll
+  ) {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+
+  :where(
+    .overflow-y-auto,
+    .overflow-auto,
+    .overflow-x-auto,
+    .overflow-y-scroll,
+    .overflow-scroll
+  )::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  :where(
+    .overflow-y-auto,
+    .overflow-auto,
+    .overflow-x-auto,
+    .overflow-y-scroll,
+    .overflow-scroll
+  )::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :where(
+    .overflow-y-auto,
+    .overflow-auto,
+    .overflow-x-auto,
+    .overflow-y-scroll,
+    .overflow-scroll
+  )::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 999px;
   }
 
   body {
