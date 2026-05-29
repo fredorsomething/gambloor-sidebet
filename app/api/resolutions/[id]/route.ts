@@ -6,6 +6,8 @@ import { isAdminAddress } from "@/lib/admin";
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
+import { readBetV2 } from "@/lib/onchain";
+import { reconcileSettledBetProposals } from "@/lib/resolutionReconcile";
 import { loadSubject, type SubjectType } from "@/lib/resolutionSubject";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
@@ -47,6 +49,45 @@ export async function POST(
   if (!proposal) return jsonErr("not found", 404);
   if (proposal.status !== "Pending") {
     return jsonErr("already reviewed", 409);
+  }
+
+  // For sidebets, settlement is on-chain and may have already happened. If so,
+  // the chain is the source of truth: reconcile this proposal to the settled
+  // outcome rather than leaving the admin to "verify" a bet that's already
+  // resolved (which previously stranded the proposal — the limbo bug).
+  if (proposal.subjectType === "bet") {
+    const bet = await prisma.bet.findUnique({
+      where: { id: proposal.subjectId },
+      select: { chainId: true, escrowAddress: true, onchainId: true },
+    });
+    if (bet) {
+      const onchain = await readBetV2(
+        bet.chainId,
+        getAddress(bet.escrowAddress) as `0x${string}`,
+        BigInt(bet.onchainId),
+      ).catch(() => null);
+      if (onchain?.status === "Settled") {
+        await prisma.bet
+          .update({
+            where: { id: proposal.subjectId },
+            data: { status: "Settled", winningOutcome: onchain.winningOutcome },
+          })
+          .catch(() => {});
+        await reconcileSettledBetProposals(
+          proposal.subjectId,
+          onchain.winningOutcome,
+        );
+        const refreshed = await prisma.resolutionProposal.findUnique({
+          where: { id },
+        });
+        return jsonOk({
+          proposal: refreshed,
+          settled: true,
+          message:
+            "This bet was already settled on-chain; the proposal was reconciled to the final outcome.",
+        });
+      }
+    }
   }
 
   const approved = parsed.data.action === "approve";

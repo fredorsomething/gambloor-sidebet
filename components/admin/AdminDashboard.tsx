@@ -27,11 +27,36 @@ import { cn, shortAddr } from "@/lib/utils";
 type Tab =
   | "overview"
   | "markets"
+  | "bets"
   | "users"
   | "settlers"
   | "chat"
   | "resolutions"
   | "resolvers";
+
+type AdminBetProposal = {
+  id: number;
+  status: "Pending" | "Approved" | "Rejected";
+  proposedBy: string;
+  proposedOutcome: number;
+  proposedLabel: string;
+  note: string | null;
+};
+
+type AdminBetRow = {
+  id: number;
+  title: string;
+  description: string;
+  status: string;
+  proposer: string;
+  acceptor: string | null;
+  settler: string;
+  outcomes: string[];
+  winningOutcome: number | null;
+  winner: string | null;
+  winningLabel: string | null;
+  proposal: AdminBetProposal | null;
+};
 
 type ResolutionItem = {
   id: number;
@@ -71,6 +96,7 @@ type ChatMuteRow = {
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "markets", label: "Markets" },
+  { id: "bets", label: "Sidebets" },
   { id: "users", label: "Users" },
   { id: "settlers", label: "Settlers" },
   { id: "chat", label: "Chat" },
@@ -109,6 +135,12 @@ export function AdminDashboard({ address }: { address: string }) {
     queryFn: () => adminFetch<{ markets: MarketRow[] }>("/api/admin/markets"),
   });
 
+  const betsQ = useQuery<{ bets: AdminBetRow[] }>({
+    queryKey: ["admin", "bets", address],
+    enabled: tab === "bets",
+    queryFn: () => adminFetch<{ bets: AdminBetRow[] }>("/api/admin/bets"),
+  });
+
   const resolutionsQ = useQuery<{ proposals: ResolutionItem[] }>({
     queryKey: ["admin", "pendingResolutions"],
     refetchInterval: 20_000,
@@ -139,7 +171,7 @@ export function AdminDashboard({ address }: { address: string }) {
 
   const settlersQ = useQuery<{ settlers: SettlerRow[] }>({
     queryKey: ["admin", "settlers", address],
-    enabled: tab === "settlers" || tab === "overview",
+    enabled: tab === "settlers" || tab === "overview" || tab === "users",
     queryFn: () => adminFetch<{ settlers: SettlerRow[] }>("/api/admin/settlers"),
   });
 
@@ -198,10 +230,18 @@ export function AdminDashboard({ address }: { address: string }) {
 
   const reviewResolution = useMutation({
     mutationFn: (v: { id: number; action: "approve" | "reject" }) =>
-      adminPost(`/api/resolutions/${v.id}`, { address, action: v.action }),
-    onSuccess: () => {
-      push({ title: "Resolution updated", variant: "success" });
+      adminPost<{ settled?: boolean; message?: string }>(
+        `/api/resolutions/${v.id}`,
+        { address, action: v.action },
+      ),
+    onSuccess: (d) => {
+      push({
+        title: d?.settled ? "Already settled on-chain" : "Resolution updated",
+        description: d?.message,
+        variant: d?.settled ? "default" : "success",
+      });
       void qc.invalidateQueries({ queryKey: ["admin", "pendingResolutions"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "bets", address] });
     },
     onError: (e) =>
       push({ title: (e as Error).message, variant: "danger" }),
@@ -294,9 +334,38 @@ export function AdminDashboard({ address }: { address: string }) {
         />
       )}
 
+      {tab === "bets" && (
+        <BetsPanel
+          bets={betsQ.data?.bets ?? []}
+          loading={betsQ.isLoading}
+          onReview={(id, action) => reviewResolution.mutate({ id, action })}
+          reviewing={reviewResolution.isPending}
+          onSave={async (id, data) => {
+            await adminPatch(`/api/admin/bets/${id}`, data);
+            push({ title: "Sidebet saved", variant: "success" });
+            void qc.invalidateQueries({ queryKey: ["admin", "bets", address] });
+          }}
+        />
+      )}
+
       {tab === "users" && (
         <UsersPanel
           address={address}
+          settlers={settlers}
+          onToggleSettler={async (addr, makeSettler, feeBps) => {
+            if (makeSettler) {
+              await adminPost("/api/admin/settlers", {
+                address: addr,
+                feeBps,
+                approved: true,
+              });
+              push({ title: "User whitelisted as settler", variant: "success" });
+            } else {
+              await adminDelete("/api/admin/settlers", { address: addr });
+              push({ title: "Settler access revoked", variant: "success" });
+            }
+            void qc.invalidateQueries({ queryKey: ["admin", "settlers", address] });
+          }}
           onSearch={async (q) => {
             const token = await getAccessToken();
             if (!token) return [];
@@ -508,20 +577,228 @@ function MarketSummary({ m }: { m: MarketRow }) {
   );
 }
 
-function UsersPanel({
-  address: _admin,
-  onSearch,
+const BET_STATUS_STYLE: Record<string, string> = {
+  Open: "bg-muted text-muted-foreground",
+  Matched: "bg-primary/15 text-primary",
+  Settled: "bg-success/15 text-success",
+  Cancelled: "bg-muted text-muted-foreground",
+  Refunded: "bg-warning/15 text-warning",
+};
+
+function BetsPanel({
+  bets,
+  loading,
+  onReview,
+  reviewing,
   onSave,
 }: {
+  bets: AdminBetRow[];
+  loading: boolean;
+  onReview: (proposalId: number, action: "approve" | "reject") => void;
+  reviewing: boolean;
+  onSave: (id: number, data: Record<string, unknown>) => Promise<void>;
+}) {
+  const [editId, setEditId] = useState<number | null>(null);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  const pendingCount = bets.filter(
+    (b) => b.proposal?.status === "Pending",
+  ).length;
+
+  if (loading) {
+    return <div className="card h-24 animate-pulse bg-muted/40" />;
+  }
+  if (bets.length === 0) {
+    return <p className="card p-6 text-sm text-muted-foreground">No sidebets.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        {bets.length} sidebet{bets.length === 1 ? "" : "s"}
+        {pendingCount > 0 && (
+          <>
+            {" · "}
+            <span className="font-semibold text-warning">
+              {pendingCount} awaiting verification
+            </span>
+          </>
+        )}
+        . Settlement is on-chain by each bet&apos;s settler; verifying a proposal
+        here reviews the proposed outcome (and reconciles bets already settled).
+      </p>
+
+      {bets.map((b) => (
+        <div key={b.id} className="card space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase",
+                BET_STATUS_STYLE[b.status] ?? "bg-muted text-muted-foreground",
+              )}
+            >
+              {b.status}
+            </span>
+            <Link
+              href={`/bets/${b.id}`}
+              className="min-w-0 flex-1 truncate font-medium hover:text-primary"
+            >
+              {b.title}
+            </Link>
+          </div>
+
+          <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+            <p>Settler: <span className="font-mono">{shortAddr(b.settler)}</span></p>
+            <p>Proposer: <span className="font-mono">{shortAddr(b.proposer)}</span></p>
+            {b.acceptor && (
+              <p>Acceptor: <span className="font-mono">{shortAddr(b.acceptor)}</span></p>
+            )}
+            <p>Outcomes: <span className="text-foreground">{b.outcomes.join(" / ")}</span></p>
+          </div>
+
+          {b.status === "Settled" && (
+            <p className="rounded-lg bg-success/10 p-2 text-sm">
+              Settled on-chain ·{" "}
+              <span className="font-semibold text-success">
+                {b.winningLabel ?? "stakes refunded"}
+              </span>
+              {b.winner && (
+                <span className="text-muted-foreground">
+                  {" "}— winner {shortAddr(b.winner)}
+                </span>
+              )}
+            </p>
+          )}
+
+          {b.proposal && (
+            <div
+              className={cn(
+                "rounded-lg border p-3 text-sm",
+                b.proposal.status === "Pending"
+                  ? "border-warning/40 bg-warning/10"
+                  : b.proposal.status === "Approved"
+                    ? "border-success/40 bg-success/10"
+                    : "border-border bg-muted/30",
+              )}
+            >
+              <p className="flex flex-wrap items-center gap-x-2">
+                <span className="font-medium">
+                  Proposed outcome: {b.proposal.proposedLabel}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  ({b.proposal.status}) by {shortAddr(b.proposal.proposedBy)}
+                </span>
+              </p>
+              {b.proposal.note && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {b.proposal.note}
+                </p>
+              )}
+              {b.proposal.status === "Pending" && (
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={reviewing}
+                    className="gap-1"
+                    onClick={() => onReview(b.proposal!.id, "approve")}
+                  >
+                    <Gavel className="h-4 w-4" /> Verify
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={reviewing}
+                    className="gap-1"
+                    onClick={() => onReview(b.proposal!.id, "reject")}
+                  >
+                    <X className="h-4 w-4" /> Reject
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {editId === b.id ? (
+            <div className="space-y-2">
+              <input
+                className="input w-full text-sm"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <textarea
+                className="input w-full text-sm"
+                rows={2}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    void onSave(b.id, { title, description }).then(() =>
+                      setEditId(null),
+                    )
+                  }
+                >
+                  Save
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setEditId(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditId(b.id);
+                setTitle(b.title);
+                setDescription(b.description);
+              }}
+            >
+              Edit details
+            </Button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UsersPanel({
+  address: _admin,
+  settlers,
+  onSearch,
+  onSave,
+  onToggleSettler,
+}: {
   address: string;
+  settlers: SettlerRow[];
   onSearch: (q: string) => Promise<AdminUser[]>;
   onSave: (target: string, patch: { verified?: boolean; badges?: string[] }) => Promise<void>;
+  onToggleSettler: (
+    target: string,
+    makeSettler: boolean,
+    feeBps: number,
+  ) => Promise<void>;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<AdminUser[]>([]);
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [verified, setVerified] = useState(false);
   const [badges, setBadges] = useState<Set<string>>(new Set(["User"]));
+  const [settlerFee, setSettlerFee] = useState("200");
+  const [settlerBusy, setSettlerBusy] = useState(false);
+
+  const activeSettler = selected
+    ? settlers.find(
+        (s) =>
+          s.approved &&
+          s.address.toLowerCase() === selected.address.toLowerCase(),
+      )
+    : undefined;
 
   async function search() {
     const users = await onSearch(q.trim());
@@ -629,6 +906,70 @@ function UsersPanel({
           >
             Save user
           </Button>
+
+          <div className="space-y-2 border-t border-border pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Scale className="h-4 w-4 text-primary" /> Settler whitelist
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {activeSettler
+                    ? `Selectable as a settler by other users · ${activeSettler.feeBps} bps`
+                    : "Not currently selectable as a settler."}
+                </p>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 text-xs font-semibold",
+                  activeSettler ? "text-success" : "text-muted-foreground",
+                )}
+              >
+                {activeSettler ? "Whitelisted" : "Not a settler"}
+              </span>
+            </div>
+            {activeSettler ? (
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={settlerBusy}
+                onClick={() => {
+                  setSettlerBusy(true);
+                  void onToggleSettler(selected.address, false, 0).finally(() =>
+                    setSettlerBusy(false),
+                  );
+                }}
+              >
+                Revoke settler access
+              </Button>
+            ) : (
+              <div className="flex items-end gap-2">
+                <div className="w-28 space-y-1">
+                  <label className="label">Fee (bps)</label>
+                  <input
+                    className="input w-full"
+                    value={settlerFee}
+                    onChange={(e) => setSettlerFee(e.target.value)}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  disabled={settlerBusy}
+                  className="gap-1"
+                  onClick={() => {
+                    setSettlerBusy(true);
+                    void onToggleSettler(
+                      selected.address,
+                      true,
+                      Number(settlerFee) || 200,
+                    ).finally(() => setSettlerBusy(false));
+                  }}
+                >
+                  <Scale className="h-4 w-4" /> Whitelist as settler
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

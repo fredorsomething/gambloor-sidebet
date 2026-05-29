@@ -158,6 +158,7 @@ export default async function BetDetailPage({
           participants={[bet.proposer, bet.acceptor, bet.settler].filter(
             (a): a is string => !!a,
           )}
+          settled={bet.status === "Settled"}
         />
       )}
 

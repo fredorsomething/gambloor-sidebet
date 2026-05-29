@@ -3,6 +3,7 @@ import { getAddress } from "viem";
 
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
+import { reconcileSettledBetProposals } from "@/lib/resolutionReconcile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { readBetV2 } from "@/lib/onchain";
 
@@ -97,6 +98,14 @@ export async function GET(
           });
         }
       }
+    }
+
+    // The bet is settled on-chain (now or earlier): make sure no resolution
+    // proposal is left dangling in the admin review queue (the limbo bug).
+    if (onchain.status === "Settled") {
+      await reconcileSettledBetProposals(id, onchain.winningOutcome).catch(
+        (err) => console.warn("resolution reconcile failed", err),
+      );
     }
   }
 

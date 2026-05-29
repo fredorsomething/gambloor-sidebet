@@ -24,12 +24,15 @@ export function ProposeResolutionButton({
   subjectId,
   outcomes,
   participants,
+  settled = false,
 }: {
   subjectType: "bet" | "market";
   subjectId: number;
   outcomes: string[];
   /** Addresses allowed to propose (proposer/acceptor/settler or creator/settler). */
   participants: string[];
+  /** When the subject is already settled/resolved, hide the proposal flow. */
+  settled?: boolean;
 }) {
   const { address } = useAccount();
   const eligible =
@@ -43,10 +46,15 @@ export function ProposeResolutionButton({
         `/api/resolutions?subjectType=${subjectType}&subjectId=${subjectId}`,
       ),
     refetchInterval: 20_000,
+    enabled: !settled,
   });
 
   const proposal = data?.proposal ?? null;
   const [open, setOpen] = useState(false);
+
+  // Once settled, the outcome is final on-chain — the resolution-proposal flow
+  // is moot and would only show a stale "under review" banner.
+  if (settled) return null;
 
   // Nothing to show to non-participants unless a proposal exists.
   if (!eligible && !proposal) return null;
