@@ -20,11 +20,11 @@ export function LoadingScreen({ fullscreen = false, className }: Props) {
     >
       <ThemedLogo
         className={cn(
-          "max-w-[200px]",
-          fullscreen ? "h-16 sm:h-20" : "h-12 sm:h-14",
+          "w-auto max-w-[min(90vw,520px)]",
+          fullscreen ? "h-24 sm:h-32 md:h-40" : "h-20 sm:h-24",
         )}
-        width={240}
-        height={60}
+        width={640}
+        height={160}
         priority
       />
       <div

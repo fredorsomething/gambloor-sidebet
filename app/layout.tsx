@@ -42,7 +42,7 @@ export default function RootLayout({
         <Providers>
           <div className="flex min-h-screen flex-col">
             <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
-              <div className="container flex items-center gap-3 py-3">
+              <div className="container flex items-center gap-3 py-4 md:py-5">
                 <ThemeToggle />
                 <BrandLogo />
 
