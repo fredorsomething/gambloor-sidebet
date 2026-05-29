@@ -59,15 +59,17 @@ function TipModal({
   const { switchChain } = useSwitchChain();
   const { push } = useToast();
 
-  // Selectable assets: stablecoins (ERC-20) + native POL.
+  // All platform stables (including USDC.e) + native POL for gas tips.
   const options = useMemo(() => {
-    const stables = getTokens()
-      .filter((t) => t.symbol !== "USDC.e")
-      .map((t) => ({ symbol: t.symbol, decimals: t.decimals, address: t.address as Address }));
+    const stables = getTokens().map((t) => ({
+      symbol: t.symbol,
+      decimals: t.decimals,
+      address: t.address as Address,
+    }));
     return [...stables, { symbol: "POL", decimals: POL_DECIMALS, address: undefined }];
   }, []);
 
-  const [symbol, setSymbol] = useState(options[0]?.symbol ?? "USDC");
+  const [symbol, setSymbol] = useState("USDC.e");
   const asset = options.find((o) => o.symbol === symbol) ?? options[0];
   const isPol = symbol === "POL";
   const [amount, setAmount] = useState("");
@@ -133,11 +135,13 @@ function TipModal({
     try {
       if (isPol) {
         await sendPol.sendTransactionAsync({
+          chainId: polygon.id,
           to: to as Address,
           value: amountWei,
         });
       } else {
         await tip.writeContractAsync({
+          chainId: polygon.id,
           address: asset.address as Address,
           abi: ERC20_ABI,
           functionName: "transfer",

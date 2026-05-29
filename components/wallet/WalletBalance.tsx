@@ -3,6 +3,7 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowDownUp,
   ArrowUpRight,
   Check,
   Copy,
@@ -236,9 +237,17 @@ export function WalletBalance() {
               Top up gas (POL)
             </button>
             <Link
+              href="/swap"
+              onClick={() => setMenuOpen(false)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              <ArrowDownUp className="h-4 w-4" />
+              Swap
+            </Link>
+            <Link
               href="/portfolio"
               onClick={() => setMenuOpen(false)}
-              className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
             >
               <PieChart className="h-4 w-4" />
               Portfolio
