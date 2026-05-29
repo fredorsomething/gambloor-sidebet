@@ -1,5 +1,4 @@
-import Image from "next/image";
-
+import { ThemedLogo } from "@/components/ThemedLogo";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -19,12 +18,13 @@ export function LoadingScreen({ fullscreen = false, className }: Props) {
         className,
       )}
     >
-      <Image
-        src="/logo.svg"
-        alt="Sidebet"
-        width={fullscreen ? 80 : 56}
-        height={fullscreen ? 80 : 56}
-        className="h-14 w-14 object-contain sm:h-20 sm:w-20"
+      <ThemedLogo
+        className={cn(
+          "max-w-[200px]",
+          fullscreen ? "h-16 sm:h-20" : "h-12 sm:h-14",
+        )}
+        width={240}
+        height={60}
         priority
       />
       <div

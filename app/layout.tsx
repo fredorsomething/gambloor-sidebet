@@ -23,8 +23,8 @@ export const metadata: Metadata = {
   description:
     "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon. Funds escrowed on-chain, resolved by a trusted settler.",
   icons: {
-    icon: "/logo.svg",
-    apple: "/logo.svg",
+    icon: "/sidebet_white.png",
+    apple: "/sidebet_white.png",
   },
 };
 
