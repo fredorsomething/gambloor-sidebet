@@ -41,8 +41,8 @@ export default function RootLayout({
       <body className="font-sans">
         <Providers>
           <div className="flex min-h-screen flex-col">
-            <header className="sticky top-0 z-30 overflow-visible border-b border-border bg-card/95 backdrop-blur">
-              <div className="container flex items-center gap-2 overflow-visible py-5 sm:gap-3 sm:py-6 md:py-7">
+            <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
+              <div className="container flex items-center gap-3 py-3.5 sm:py-4">
                 <ThemeToggle />
                 <BrandLogo />
 

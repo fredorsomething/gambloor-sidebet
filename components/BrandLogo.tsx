@@ -4,29 +4,28 @@ import { ThemedLogo } from "@/components/ThemedLogo";
 import { cn } from "@/lib/utils";
 
 type Props = {
+  /** Wrap in a link to home (navbar). */
   linked?: boolean;
   className?: string;
 };
 
-/** Navbar logo — scaled up because source PNGs are square with padded wordmark. */
 export function BrandLogo({ linked = true, className }: Props) {
   const inner = (
-    <span
+    <ThemedLogo
       className={cn(
-        "inline-flex shrink-0 items-center overflow-visible",
+        "h-11 max-w-[220px] sm:h-14 sm:max-w-[300px]",
         className,
       )}
-    >
-      <span className="origin-left scale-[4] sm:scale-[5] md:scale-[6] lg:scale-[7]">
-        <ThemedLogo className="h-12 w-12 sm:h-14 sm:w-14" priority />
-      </span>
-    </span>
+      width={300}
+      height={56}
+      priority
+    />
   );
 
-  if (!linked) return inner;
+  if (!linked) return <span className="inline-flex shrink-0">{inner}</span>;
 
   return (
-    <Link href="/" className="inline-flex shrink-0 items-center overflow-visible pr-2 sm:pr-4">
+    <Link href="/" className="inline-flex shrink-0 items-center">
       {inner}
     </Link>
   );
