@@ -1,10 +1,10 @@
 "use client";
 
-import { ShieldCheck, Star, Scale, User as UserIcon } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Star, Scale, User as UserIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type BadgeKind = "User" | "Staff" | "Trusted" | "Resolver";
+export type BadgeKind = "User" | "Admin" | "Staff" | "Trusted" | "Resolver";
 
 const BADGE_META: Record<
   BadgeKind,
@@ -14,6 +14,11 @@ const BADGE_META: Record<
     label: "User",
     icon: UserIcon,
     className: "border-border bg-muted/40 text-muted-foreground",
+  },
+  Admin: {
+    label: "Admin",
+    icon: ShieldAlert,
+    className: "border-danger/50 bg-danger/15 text-danger",
   },
   Staff: {
     label: "Staff",

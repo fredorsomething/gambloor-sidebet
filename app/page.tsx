@@ -29,7 +29,7 @@ export default function HomePage() {
               variant="outline"
               className="border-white/40 bg-transparent text-white hover:bg-white/10"
             >
-              <Link href="/markets">Browse markets</Link>
+              <Link href="#markets">Browse markets</Link>
             </Button>
           </div>
         </div>
@@ -37,7 +37,7 @@ export default function HomePage() {
 
       <div className="flex justify-center">
         <p className="inline-flex flex-wrap items-center justify-center gap-x-1 rounded-full border border-border bg-muted/40 px-4 py-1.5 text-center text-xs text-muted-foreground">
-          Need POL, pUSD, USDC or USDC.e? Get it from our trusted partner, {" "}
+          Need POL, pUSD, USDC or USDC.e? Get it from our trusted partner,{" "}
           <a
             href="https://bigswappa.fun/"
             target="_blank"
@@ -49,12 +49,12 @@ export default function HomePage() {
         </p>
       </div>
 
-      <section id="open" className="space-y-4">
+      <section id="markets" className="space-y-4">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Open now</h2>
+            <h2 className="text-xl font-semibold">Markets</h2>
             <p className="text-sm text-muted-foreground">
-              Live CLOB markets and 1v1 sidebets across Polygon.
+              Sidebets and prediction markets — open, live, and settled.
             </p>
           </div>
         </div>

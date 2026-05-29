@@ -14,6 +14,13 @@ export function validateBio(bio: string): string | null {
   return null;
 }
 
+export function validateSocial(value: string, label: string): string | null {
+  const t = value.trim();
+  if (!t) return null;
+  if (t.length > 100) return `${label} must be 100 characters or fewer.`;
+  return null;
+}
+
 /** Allowed image URLs from Vercel Blob (avatars, market covers). */
 export function isAllowedImageUrl(url: string): boolean {
   if (!/^https?:\/\//.test(url)) return false;

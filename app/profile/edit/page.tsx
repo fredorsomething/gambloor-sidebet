@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { jsonFetch } from "@/lib/fetcher";
 import type { PublicProfile } from "@/lib/hooks/useProfile";
-import { validateBio, validateUsername } from "@/lib/profile";
+import { validateBio, validateSocial, validateUsername } from "@/lib/profile";
 import { cn } from "@/lib/utils";
 
 type ProfilePayload = {
@@ -51,6 +51,8 @@ function EditProfileForm() {
 
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
+  const [twitter, setTwitter] = useState("");
+  const [discord, setDiscord] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
@@ -62,6 +64,8 @@ function EditProfileForm() {
     if (!initial || hydrated) return;
     setUsername(initial.username ?? "");
     setBio(initial.bio ?? "");
+    setTwitter(initial.twitter ?? "");
+    setDiscord(initial.discord ?? "");
     setHydrated(true);
   }, [initial, hydrated]);
 
@@ -95,18 +99,30 @@ function EditProfileForm() {
     const b = bio.trim();
     const initU = (initial.username ?? "").trim();
     const initB = (initial.bio ?? "").trim();
+    const initTw = (initial.twitter ?? "").trim();
+    const initDc = (initial.discord ?? "").trim();
     return (
       u !== initU ||
       b !== initB ||
+      twitter.trim() !== initTw ||
+      discord.trim() !== initDc ||
       avatarFile !== null ||
       (removeAvatar && !!initial.avatarUrl)
     );
-  }, [initial, username, bio, avatarFile, removeAvatar]);
+  }, [initial, username, bio, twitter, discord, avatarFile, removeAvatar]);
 
   const usernameError = validateUsername(username);
   const bioError = validateBio(bio);
+  const twitterError = validateSocial(twitter, "X");
+  const discordError = validateSocial(discord, "Discord");
   const canSave =
-    dirty && !usernameError && !bioError && !saving && !!address;
+    dirty &&
+    !usernameError &&
+    !bioError &&
+    !twitterError &&
+    !discordError &&
+    !saving &&
+    !!address;
 
   useEffect(() => {
     if (!dirty) return;
@@ -162,6 +178,8 @@ function EditProfileForm() {
           username: username.trim() || null,
           avatarUrl,
           bio: bio.trim() || null,
+          twitter: twitter.trim() || null,
+          discord: discord.trim() || null,
         }),
       });
 
@@ -282,6 +300,60 @@ function EditProfileForm() {
               </span>
               <span className="text-muted-foreground">{bio.length}/280</span>
             </div>
+          </div>
+
+          <div>
+            <label className="label" htmlFor="twitter">
+              X (Twitter)
+            </label>
+            <input
+              id="twitter"
+              className={cn(
+                "input mt-1.5",
+                twitterError && "border-danger focus:ring-danger/40",
+              )}
+              value={twitter}
+              onChange={(e) => setTwitter(e.target.value)}
+              placeholder="@username or https://x.com/username"
+              maxLength={100}
+              autoComplete="off"
+              disabled={saving}
+            />
+            <p
+              className={cn(
+                "mt-1.5 text-xs",
+                twitterError ? "text-danger" : "text-muted-foreground",
+              )}
+            >
+              {twitterError ?? "Optional — shown on your public profile."}
+            </p>
+          </div>
+
+          <div>
+            <label className="label" htmlFor="discord">
+              Discord
+            </label>
+            <input
+              id="discord"
+              className={cn(
+                "input mt-1.5",
+                discordError && "border-danger focus:ring-danger/40",
+              )}
+              value={discord}
+              onChange={(e) => setDiscord(e.target.value)}
+              placeholder="username or https://discord.gg/invite"
+              maxLength={100}
+              autoComplete="off"
+              disabled={saving}
+            />
+            <p
+              className={cn(
+                "mt-1.5 text-xs",
+                discordError ? "text-danger" : "text-muted-foreground",
+              )}
+            >
+              {discordError ?? "Optional — shown with the Discord logo on your profile."}
+            </p>
           </div>
         </section>
 

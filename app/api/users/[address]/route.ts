@@ -72,6 +72,8 @@ export async function GET(
       username: user?.username ?? null,
       avatarUrl: user?.avatarUrl ?? null,
       bio: user?.bio ?? null,
+      twitter: user?.twitter ?? null,
+      discord: user?.discord ?? null,
       joinedAt: user?.createdAt ?? null,
     },
     stats,
@@ -94,6 +96,8 @@ const PutSchema = z.object({
     .nullable()
     .optional(),
   bio: z.string().max(280).nullable().optional(),
+  twitter: z.string().max(100).nullable().optional(),
+  discord: z.string().max(100).nullable().optional(),
 });
 
 export async function PUT(
@@ -136,6 +140,8 @@ export async function PUT(
       username: d.username ?? null,
       avatarUrl: d.avatarUrl ?? null,
       bio: d.bio ?? null,
+      twitter: d.twitter ?? null,
+      discord: d.discord ?? null,
     },
     create: {
       address,
@@ -144,6 +150,8 @@ export async function PUT(
       username: d.username ?? null,
       avatarUrl: d.avatarUrl ?? null,
       bio: d.bio ?? null,
+      twitter: d.twitter ?? null,
+      discord: d.discord ?? null,
     },
   });
 
@@ -152,5 +160,7 @@ export async function PUT(
     username: user.username,
     avatarUrl: user.avatarUrl,
     bio: user.bio,
+    twitter: user.twitter,
+    discord: user.discord,
   });
 }

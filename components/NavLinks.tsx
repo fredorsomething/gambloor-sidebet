@@ -8,8 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
-  { href: "/", label: "Sidebets" },
-  { href: "/markets", label: "Markets" },
+  { href: "/", label: "Markets" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/users", label: "Directory" },
 ];

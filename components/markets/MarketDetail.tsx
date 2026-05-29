@@ -539,21 +539,7 @@ export function MarketDetail({ id }: { id: number }) {
     <div className="space-y-6">
       {/* Header */}
       <div className="card p-6 space-y-3">
-        <div className="flex items-center gap-2">
-          <TypeTag kind="market" />
-          <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-              resolved
-                ? "bg-muted text-muted-foreground"
-                : "bg-success/15 text-success"
-            }`}
-          >
-            {resolved ? "Resolved" : "Trading"}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            market #{market.id}
-          </span>
-        </div>
+        <TypeTag kind="market" />
         <div className="flex flex-col gap-4 sm:flex-row">
           <CoverEditor
             marketId={market.id}

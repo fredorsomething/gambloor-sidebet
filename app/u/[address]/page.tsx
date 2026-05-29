@@ -11,12 +11,14 @@ import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
 import { ProfileComments } from "@/components/profile/ProfileComments";
+import { ProfileSocialLinks } from "@/components/profile/ProfileSocialLinks";
 import { RepWidget } from "@/components/profile/RepWidget";
 import { TipButton } from "@/components/profile/TipButton";
 import { UserBadges } from "@/components/profile/UserBadges";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { jsonFetch } from "@/lib/fetcher";
+import { isAdminUser } from "@/lib/admin";
 import { cn, formatToken, shortAddr } from "@/lib/utils";
 import type { UserStats } from "@/lib/stats";
 import type { BetStatusName } from "@/lib/abi";
@@ -51,6 +53,8 @@ type ProfileResponse = {
     username: string | null;
     avatarUrl: string | null;
     bio: string | null;
+    twitter: string | null;
+    discord: string | null;
     joinedAt: string | null;
   };
   stats: UserStats;
@@ -105,6 +109,7 @@ export default function ProfilePage() {
   }
 
   const isMe = eq(connected, address);
+  const isAdmin = isAdminUser({ address, username: data?.user.username });
   const stats = data?.stats;
 
   const won =
@@ -148,6 +153,11 @@ export default function ProfilePage() {
                   {data.user.bio}
                 </p>
               )}
+              <ProfileSocialLinks
+                twitter={data?.user.twitter}
+                discord={data?.user.discord}
+                className="mt-2"
+              />
               {joinedLabel(data?.user.joinedAt) && (
                 <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <CalendarDays className="h-3.5 w-3.5" />
@@ -157,12 +167,12 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Badges (default: User) */}
-          <UserBadges badges={["User"]} />
+          {/* Badges */}
+          <UserBadges badges={isAdmin ? ["Admin"] : ["User"]} />
 
           {/* Reputation + actions */}
           <div className="flex flex-col items-center gap-3 lg:items-end">
-            <RepWidget target={address} />
+            {!isAdmin && <RepWidget target={address} />}
             <div className="flex gap-2">
               {isMe ? (
                 <Button variant="outline" asChild>
@@ -176,55 +186,61 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Stat tiles */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile
-          label="Realized PnL"
-          value={stats ? usd(stats.pnl) : "—"}
-          tone={stats ? (stats.pnl >= 0 ? "pos" : "neg") : "neutral"}
-        />
-        <StatTile
-          label="Record"
-          value={stats ? `${stats.wins}W · ${stats.losses}L` : "—"}
-        />
-        <StatTile
-          label="Win rate"
-          value={stats ? `${(stats.winRate * 100).toFixed(0)}%` : "—"}
-        />
-        <StatTile
-          label="Volume"
-          value={
-            stats
-              ? `$${stats.volume.toLocaleString(undefined, {
-                  maximumFractionDigits: 0,
-                })}`
-              : "—"
-          }
-        />
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-[1fr_280px]">
-        <div className="space-y-6">
-          <BetColumn title="Bets won" bets={won} address={address} positive />
-          <BetColumn title="Bets lost" bets={lost} address={address} />
+      {/* Stat tiles — hidden for admin */}
+      {!isAdmin && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatTile
+            label="Realized PnL"
+            value={stats ? usd(stats.pnl) : "—"}
+            tone={stats ? (stats.pnl >= 0 ? "pos" : "neg") : "neutral"}
+          />
+          <StatTile
+            label="Record"
+            value={stats ? `${stats.wins}W · ${stats.losses}L` : "—"}
+          />
+          <StatTile
+            label="Win rate"
+            value={stats ? `${(stats.winRate * 100).toFixed(0)}%` : "—"}
+          />
+          <StatTile
+            label="Volume"
+            value={
+              stats
+                ? `$${stats.volume.toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  })}`
+                : "—"
+            }
+          />
         </div>
+      )}
 
-        <aside className="space-y-3">
-          <ProfileComments target={address} />
-          <section className="card p-5">
-            <h3 className="mb-2 text-sm font-semibold">Wallet balance</h3>
-            <ProfileBalances address={address} />
-          </section>
-          {stats && (
-            <section className="card p-5 text-sm">
-              <h3 className="mb-2 text-sm font-semibold">Activity</h3>
-              <Row label="Open offers" value={stats.open} />
-              <Row label="Awaiting settle" value={stats.matched} />
-              <Row label="Settled" value={stats.settled} />
-              <Row label="Pushes" value={stats.pushes} />
+      <div className={cn("grid gap-6", !isAdmin && "md:grid-cols-[1fr_280px]")}>
+        {!isAdmin && (
+          <div className="space-y-6">
+            <BetColumn title="Bets won" bets={won} address={address} positive />
+            <BetColumn title="Bets lost" bets={lost} address={address} />
+          </div>
+        )}
+
+        {!isAdmin && (
+          <aside className="space-y-3">
+            <ProfileComments target={address} />
+            <section className="card p-5">
+              <h3 className="mb-2 text-sm font-semibold">Wallet balance</h3>
+              <ProfileBalances address={address} />
             </section>
-          )}
-        </aside>
+            {stats && (
+              <section className="card p-5 text-sm">
+                <h3 className="mb-2 text-sm font-semibold">Activity</h3>
+                <Row label="Open offers" value={stats.open} />
+                <Row label="Awaiting settle" value={stats.matched} />
+                <Row label="Settled" value={stats.settled} />
+                <Row label="Pushes" value={stats.pushes} />
+              </section>
+            )}
+          </aside>
+        )}
       </div>
 
       {/* Everything this user created */}

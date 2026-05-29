@@ -18,7 +18,14 @@ export async function GET(req: NextRequest) {
 
   const users = await prisma.user.findMany({
     where: { address: { in: checksummed } },
-    select: { address: true, username: true, avatarUrl: true, bio: true },
+    select: {
+      address: true,
+      username: true,
+      avatarUrl: true,
+      bio: true,
+      twitter: true,
+      discord: true,
+    },
   });
 
   const out: Record<string, unknown> = {};

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { jsonFetch } from "@/lib/fetcher";
+import { formatSettlerLabel } from "@/lib/admin";
 import { shortAddr } from "@/lib/utils";
 import type { ApprovedSettlerInfo } from "@/lib/settlers";
 
@@ -88,7 +89,7 @@ export function SettlerSelect({ value, onChange, excludeAddress }: Props) {
           >
             <span className="min-w-0">
               <span className="block truncate font-medium">
-                {s.username ? `@${s.username}` : "Settler"}
+                {formatSettlerLabel(s.address, s.username)}
               </span>
               <span className="block font-mono text-xs text-muted-foreground">
                 {shortAddr(s.address)} · fee {(s.feeBps / 100).toFixed(2)}%

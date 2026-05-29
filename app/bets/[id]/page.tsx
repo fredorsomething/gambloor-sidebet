@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { BetDetailLive } from "@/components/BetDetailLive";
 import { Comments } from "@/components/Comments";
+import { Identity } from "@/components/profile/Identity";
 import { StatusBadge } from "@/components/ui/badge";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
@@ -234,6 +235,50 @@ export default async function BetDetailPage({
           </section>
         </aside>
       </div>
+
+      {(bet.status === "Matched" || bet.acceptor) && (
+        <section className="card p-6">
+          <h2 className="mb-4 text-sm font-semibold">The bet</h2>
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+            <div className="flex flex-1 flex-col items-center gap-2 text-center sm:items-start sm:text-left">
+              <span className="label">Proposer</span>
+              <Identity address={bet.proposer} size={28} weight="semibold" />
+              {outcomes[bet.proposerOutcome] && (
+                <span className="text-xs text-muted-foreground">
+                  backs {outcomes[bet.proposerOutcome]}
+                </span>
+              )}
+            </div>
+            <div className="shrink-0 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              vs
+            </div>
+            {bet.acceptor && (
+              <div className="flex flex-1 flex-col items-center gap-2 text-center sm:items-end sm:text-right">
+                <span className="label">Acceptor</span>
+                <Identity address={bet.acceptor} size={28} weight="semibold" />
+                {outcomes[bet.acceptorOutcome] && (
+                  <span className="text-xs text-muted-foreground">
+                    backs {outcomes[bet.acceptorOutcome]}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          {endDateSecs > 0 && (
+            <div className="mt-5 border-t border-border pt-4 text-center text-sm">
+              <span className="text-muted-foreground">
+                {bet.status === "Matched" ? "Time until settlement" : "Estimated end"}
+              </span>
+              <div className="mt-1 text-lg font-semibold">
+                {fromNowUnix(endDateSecs)}
+              </div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                {formatTimestamp(endDateSecs)}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

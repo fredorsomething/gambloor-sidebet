@@ -24,14 +24,6 @@ function usd(n: number) {
   })}`;
 }
 
-const MEDALS = ["🥇", "🥈", "🥉"];
-const PODIUM_STYLE = [
-  "border-gold/60 bg-gold/10 ring-gold/30",
-  "border-silver/60 bg-silver/10 ring-silver/30",
-  "border-bronze/60 bg-bronze/10 ring-bronze/30",
-];
-const PODIUM_ORDER = [1, 0, 2]; // visual: silver, gold, bronze
-
 export default function LeaderboardPage() {
   const { data, isLoading } = useQuery<LeaderboardResponse>({
     queryKey: ["leaderboard"],
@@ -40,8 +32,6 @@ export default function LeaderboardPage() {
   });
 
   const items = data?.items ?? [];
-  const podium = items.slice(0, 3);
-  const rest = items.slice(3);
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -62,50 +52,7 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {podium.length > 0 && (
-        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-3">
-          {PODIUM_ORDER.map((idx) => {
-            const e = podium[idx];
-            if (!e) return <div key={idx} className="hidden sm:block" />;
-            const tall = idx === 0;
-            return (
-              <Link
-                key={e.address}
-                href={`/u/${e.address}`}
-                className={cn(
-                  "card flex flex-col items-center p-6 text-center ring-1 transition-transform hover:-translate-y-1",
-                  PODIUM_STYLE[idx],
-                  tall && "sm:pb-10 sm:pt-8",
-                )}
-              >
-                <div className="text-4xl">{MEDALS[idx]}</div>
-                <Avatar
-                  address={e.address}
-                  url={e.avatarUrl}
-                  size={tall ? 72 : 56}
-                  className="mt-3 ring-2 ring-card"
-                />
-                <div className="mt-3 truncate font-semibold">
-                  {e.username || shortAddr(e.address)}
-                </div>
-                <div
-                  className={cn(
-                    "mt-1 text-lg font-bold",
-                    e.pnl >= 0 ? "text-success" : "text-danger",
-                  )}
-                >
-                  {usd(e.pnl)}
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {e.wins}W · {e.losses}L · {(e.winRate * 100).toFixed(0)}%
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      {rest.length > 0 && (
+      {items.length > 0 && (
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -125,7 +72,7 @@ export default function LeaderboardPage() {
               </tr>
             </thead>
             <tbody>
-              {rest.map((e) => (
+              {items.map((e) => (
                 <tr
                   key={e.address}
                   className="border-b border-border/60 last:border-0 hover:bg-muted/40"
@@ -140,7 +87,7 @@ export default function LeaderboardPage() {
                     >
                       <Avatar address={e.address} url={e.avatarUrl} size={28} />
                       <span className="truncate font-medium">
-                        {e.username || shortAddr(e.address)}
+                        {e.username ? `@${e.username}` : shortAddr(e.address)}
                       </span>
                     </Link>
                   </td>

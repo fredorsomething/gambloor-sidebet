@@ -71,10 +71,9 @@ export function getExchangeAddress(_chainId?: number): Address | undefined {
   return EXCHANGE_ADDRESS;
 }
 
-/** Your wallet as default settler on the create-bet form (optional). */
-export const DEFAULT_SETTLER = process.env.NEXT_PUBLIC_DEFAULT_SETTLER?.trim() as
-  | Address
-  | undefined;
+/** Platform default settler (@admin) on the create-bet form. */
+export const DEFAULT_SETTLER = (process.env.NEXT_PUBLIC_DEFAULT_SETTLER?.trim() ||
+  "0x445525f628D4840e2F14148f2547e6F270Caa3eb") as Address;
 
 export function getTokens(_chainId?: number) {
   return TOKENS[polygon.id];

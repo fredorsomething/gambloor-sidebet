@@ -9,6 +9,8 @@ export type PublicProfile = {
   username: string | null;
   avatarUrl: string | null;
   bio: string | null;
+  twitter: string | null;
+  discord: string | null;
 };
 
 export type ResolveResponse = Record<string, PublicProfile>;

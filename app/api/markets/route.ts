@@ -144,12 +144,15 @@ export async function POST(req: NextRequest) {
 
 const ListQuerySchema = z.object({
   chainId: z.coerce.number().int().positive().optional(),
-  status: z.enum(["Open", "Resolved"]).optional(),
+  /** Single status or comma-separated list, e.g. `Open,Resolved`. */
+  status: z.string().optional(),
   who: z.string().optional(),
   role: z.enum(["creator", "settler", "any"]).optional(),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
+
+const VALID_STATUSES = ["Open", "Resolved"] as const;
 
 export async function GET(req: NextRequest) {
   const params = Object.fromEntries(req.nextUrl.searchParams.entries());
@@ -161,7 +164,20 @@ export async function GET(req: NextRequest) {
 
   const where: Record<string, unknown> = {};
   if (q.chainId) where.chainId = q.chainId;
-  if (q.status) where.status = q.status;
+  if (q.status) {
+    const statuses = q.status
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const invalid = statuses.filter(
+      (s) => !VALID_STATUSES.includes(s as (typeof VALID_STATUSES)[number]),
+    );
+    if (invalid.length) {
+      return jsonErr(`invalid status: ${invalid.join(", ")}`);
+    }
+    where.status =
+      statuses.length === 1 ? statuses[0] : { in: statuses };
+  }
   if (q.who && isAddress(q.who)) {
     const addr = getAddress(q.who);
     const role = q.role ?? "any";

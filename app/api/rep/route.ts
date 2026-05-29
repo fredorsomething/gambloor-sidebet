@@ -3,6 +3,7 @@ import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
+import { isAdminAddress } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { getRepSummary } from "@/lib/rep";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -47,6 +48,10 @@ export async function POST(req: NextRequest) {
 
   if (voter.toLowerCase() === target.toLowerCase()) {
     return jsonErr("you can't vote on yourself", 400);
+  }
+
+  if (isAdminAddress(target)) {
+    return jsonErr("you can't rep the admin account", 400);
   }
 
   const auth = await verifyWalletAuth({ req, address: voter });

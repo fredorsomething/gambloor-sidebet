@@ -68,8 +68,19 @@ export function MarketCard({ market }: { market: MarketRow }) {
           )}
         </div>
 
-        {/* Trade buttons */}
-        {binary ? (
+        {/* Trade buttons or resolved outcome */}
+        {resolved ? (
+          <div className="mt-4 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm">
+            <span className="text-xs font-medium uppercase tracking-wide text-success">
+              Resolved
+            </span>
+            <div className="mt-0.5 font-semibold">
+              {market.winningOutcome != null
+                ? outcomes[market.winningOutcome]?.label ?? "—"
+                : "—"}
+            </div>
+          </div>
+        ) : binary ? (
           <div className="pointer-events-auto mt-4 grid grid-cols-2 gap-2">
             <OutcomeButton
               href={`${href}?o=0&side=BUY`}
