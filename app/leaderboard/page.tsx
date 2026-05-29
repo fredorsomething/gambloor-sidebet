@@ -15,7 +15,33 @@ type Entry = UserStats & {
   username: string | null;
   avatarUrl: string | null;
   verified: boolean;
+  rep: number;
 };
+
+function rankStyles(rank: number): {
+  cell: string;
+  row: string;
+} {
+  if (rank === 1) {
+    return {
+      cell: "font-bold text-amber-400",
+      row: "bg-amber-500/[0.07]",
+    };
+  }
+  if (rank === 2) {
+    return {
+      cell: "font-bold text-slate-300",
+      row: "bg-slate-400/[0.06]",
+    };
+  }
+  if (rank === 3) {
+    return {
+      cell: "font-bold text-amber-800",
+      row: "bg-amber-950/[0.12]",
+    };
+  }
+  return { cell: "text-muted-foreground", row: "" };
+}
 
 type LeaderboardResponse = { items: Entry[] };
 
@@ -63,7 +89,7 @@ export default function LeaderboardPage() {
                 <th className="px-4 py-3 font-medium">Bettor</th>
                 <th className="px-4 py-3 text-right font-medium">PnL</th>
                 <th className="hidden px-4 py-3 text-right font-medium sm:table-cell">
-                  W / L
+                  Rep
                 </th>
                 <th className="hidden px-4 py-3 text-right font-medium sm:table-cell">
                   Win %
@@ -74,12 +100,17 @@ export default function LeaderboardPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((e) => (
+              {items.map((e) => {
+                const { cell: rankCell, row: rankRow } = rankStyles(e.rank);
+                return (
                 <tr
                   key={e.address}
-                  className="border-b border-border/60 last:border-0 hover:bg-muted/40"
+                  className={cn(
+                    "border-b border-border/60 last:border-0 hover:bg-muted/40",
+                    rankRow,
+                  )}
                 >
-                  <td className="px-4 py-3 font-mono text-muted-foreground">
+                  <td className={cn("px-4 py-3 font-mono tabular-nums", rankCell)}>
                     {e.rank}
                   </td>
                   <td className="px-4 py-3">
@@ -107,8 +138,8 @@ export default function LeaderboardPage() {
                   >
                     {usd(e.pnl)}
                   </td>
-                  <td className="hidden px-4 py-3 text-right text-muted-foreground sm:table-cell">
-                    {e.wins} / {e.losses}
+                  <td className="hidden px-4 py-3 text-right font-semibold tabular-nums sm:table-cell">
+                    {e.rep}
                   </td>
                   <td className="hidden px-4 py-3 text-right text-muted-foreground sm:table-cell">
                     {(e.winRate * 100).toFixed(0)}%
@@ -117,7 +148,8 @@ export default function LeaderboardPage() {
                     ${e.volume.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>

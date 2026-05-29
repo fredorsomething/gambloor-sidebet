@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { jsonFetch } from "@/lib/fetcher";
-import { shortAddr } from "@/lib/utils";
+import { cn, shortAddr } from "@/lib/utils";
 
 type DirectoryUser = {
   address: string;
@@ -16,7 +16,16 @@ type DirectoryUser = {
   bio: string | null;
   joinedAt: string;
   verified: boolean;
+  rep: number;
+  pnl: number;
 };
+
+function usd(n: number) {
+  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
+  return `${sign}$${Math.abs(n).toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 function groupKey(u: DirectoryUser): string {
   const first = (u.username ?? "")[0]?.toUpperCase() ?? "";
@@ -67,7 +76,7 @@ export default function UsersDirectoryPage() {
       <div>
         <h1 className="text-2xl font-bold">Directory</h1>
         <p className="text-sm text-muted-foreground">
-          Everyone on Sidebet, A to Z.
+          Active users on sidebet, A to Z.
         </p>
       </div>
 
@@ -130,6 +139,25 @@ export default function UsersDirectoryPage() {
                           {shortAddr(u.address)}
                         </div>
                       )}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums">
+                        <span className="text-muted-foreground">
+                          Rep{" "}
+                          <span className="font-semibold text-foreground">
+                            {u.rep}
+                          </span>
+                        </span>
+                        <span className="text-muted-foreground">
+                          PnL{" "}
+                          <span
+                            className={cn(
+                              "font-semibold",
+                              u.pnl >= 0 ? "text-success" : "text-danger",
+                            )}
+                          >
+                            {usd(u.pnl)}
+                          </span>
+                        </span>
+                      </div>
                     </div>
                   </Link>
                 ))}

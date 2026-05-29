@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAddress } from "viem";
 
 import { prisma } from "@/lib/db";
+import { getRepScores } from "@/lib/rep";
 import { jsonOk } from "@/lib/serialize";
 import { computeLeaderboard, type StatBet } from "@/lib/stats";
 
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
       })
     : [];
   const profileMap = new Map(users.map((u) => [u.address.toLowerCase(), u]));
+  const repScores = await getRepScores(checksummed);
 
   const ranked = entries.map((e, i) => ({
     rank: i + 1,
@@ -45,6 +47,7 @@ export async function GET(req: NextRequest) {
     username: profileMap.get(e.address.toLowerCase())?.username ?? null,
     avatarUrl: profileMap.get(e.address.toLowerCase())?.avatarUrl ?? null,
     verified: profileMap.get(e.address.toLowerCase())?.verified ?? false,
+    rep: repScores.get(e.address.toLowerCase()) ?? 0,
   }));
 
   return jsonOk({ items: ranked });

@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 
 import { collectDirectoryUsers } from "@/lib/directory";
+import { prisma } from "@/lib/db";
+import { getRepScores } from "@/lib/rep";
 import { jsonOk } from "@/lib/serialize";
+import { computeUserStats, type StatBet } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +17,31 @@ export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim().toLowerCase();
 
   let users = await collectDirectoryUsers();
+
+  const [bets, repScores] = await Promise.all([
+    prisma.bet.findMany({
+      select: {
+        proposer: true,
+        acceptor: true,
+        amount: true,
+        decimals: true,
+        feeBps: true,
+        status: true,
+        winner: true,
+      },
+    }),
+    getRepScores(users.map((u) => u.address)),
+  ]);
+  const statBets = bets as StatBet[];
+
+  users = users.map((u) => {
+    const stats = computeUserStats(statBets, u.address);
+    return {
+      ...u,
+      rep: repScores.get(u.address.toLowerCase()) ?? 0,
+      pnl: stats.pnl,
+    };
+  });
 
   if (q) {
     users = users.filter(
