@@ -10,16 +10,12 @@ import {
   isDmBlocked,
   usersWhoBlocked,
 } from "@/lib/dmBlocks";
+import { createDirectMessage, dmPairKey } from "@/lib/directMessages";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { shortAddr } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
-
-/** Deterministic conversation key independent of message direction. */
-function pairKey(a: string, b: string): string {
-  return [a.toLowerCase(), b.toLowerCase()].sort().join("|");
-}
 
 type PublicProfile = {
   username: string | null;
@@ -77,18 +73,18 @@ export async function GET(req: NextRequest) {
     blockedByUser(me),
     usersWhoBlocked(me),
   ]);
-  const isHidden = (addr: string) =>
-    iBlocked.has(addr) || blockedMe.has(addr);
+  // Users who blocked you cannot be opened; users you blocked stay visible.
+  const theyBlockedMe = (addr: string) => blockedMe.has(addr);
 
   // ---- Single thread ----
   if (withParam) {
     if (!isAddress(withParam)) return jsonErr("bad counterparty", 400);
     const other = getAddress(withParam).toLowerCase();
-    if (isHidden(other)) {
+    if (theyBlockedMe(other)) {
       return jsonErr("You cannot view this conversation", 403);
     }
 
-    const pair = pairKey(me, other);
+    const pair = dmPairKey(me, other);
     const rows = await prisma.directMessage.findMany({
       where: { pair },
       orderBy: { createdAt: "asc" },
@@ -101,9 +97,7 @@ export async function GET(req: NextRequest) {
     });
 
     const profiles = await profileMap([other, me]);
-    const blocked = await prisma.dmBlock.findUnique({
-      where: { blocker_blocked: { blocker: me, blocked: other } },
-    });
+    const blockedByMe = iBlocked.has(other);
 
     return jsonOk({
       counterparty: {
@@ -112,7 +106,7 @@ export async function GET(req: NextRequest) {
         avatarUrl: profiles[other]?.avatarUrl ?? null,
         verified: profiles[other]?.verified ?? false,
       },
-      blocked: !!blocked,
+      blockedByMe,
       messages: rows.map((m) => ({
         id: m.id,
         body: m.body,
@@ -145,7 +139,7 @@ export async function GET(req: NextRequest) {
   >();
   for (const m of recent) {
     const other = m.sender === me ? m.recipient : m.sender;
-    if (isHidden(other)) continue;
+    if (theyBlockedMe(other)) continue;
 
     const existing = byPair.get(m.pair);
     const isUnread = m.recipient === me && m.readAt == null;
@@ -173,6 +167,7 @@ export async function GET(req: NextRequest) {
       username: profiles[c.address]?.username ?? null,
       avatarUrl: profiles[c.address]?.avatarUrl ?? null,
       verified: profiles[c.address]?.verified ?? false,
+      blockedByMe: iBlocked.has(c.address),
       lastBody: c.lastBody,
       lastAt: c.lastAt.toISOString(),
       fromMe: c.fromMe,
@@ -218,15 +213,13 @@ export async function POST(req: NextRequest) {
   if (!text && !gif) return jsonErr("message cannot be empty", 400);
   if (gif && !isAllowedGifUrl(gif)) return jsonErr("invalid gif url", 400);
 
-  const msg = await prisma.directMessage.create({
-    data: {
-      pair: pairKey(sender, recipient),
-      sender,
-      recipient,
-      body: text,
-      gifUrl: gif,
-    },
+  const msg = await createDirectMessage({
+    sender,
+    recipient,
+    body: text,
+    gifUrl: gif,
   });
+  if (!msg) return jsonErr("You cannot message this user", 403);
 
   const profiles = await profileMap([sender]);
   const senderName = profiles[sender]?.username ?? shortAddr(sender);

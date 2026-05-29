@@ -22,6 +22,7 @@ type Conversation = {
   username: string | null;
   avatarUrl: string | null;
   verified: boolean;
+  blockedByMe: boolean;
   lastBody: string;
   lastAt: string;
   fromMe: boolean;
@@ -92,7 +93,7 @@ function MessagesInner() {
       avatarUrl: string | null;
       verified: boolean;
     };
-    blocked: boolean;
+    blockedByMe: boolean;
     messages: ThreadMsg[];
   }>({
     queryKey: ["dm-thread", me, selected],
@@ -131,11 +132,29 @@ function MessagesInner() {
       }),
     onSuccess: () => {
       push({ title: "User blocked", variant: "success" });
-      router.replace("/messages");
       qc.invalidateQueries({ queryKey: ["dm-convos", me] });
+      qc.invalidateQueries({ queryKey: ["dm-thread", me, selected] });
     },
     onError: (err) =>
       push({ title: (err as Error)?.message || "Block failed", variant: "danger" }),
+  });
+
+  const unblockUser = useMutation({
+    mutationFn: async () =>
+      authedFetch(`/api/messages/block`, {
+        method: "DELETE",
+        body: JSON.stringify({ blocker: address, blocked: selected }),
+      }),
+    onSuccess: () => {
+      push({ title: "User unblocked", variant: "success" });
+      qc.invalidateQueries({ queryKey: ["dm-convos", me] });
+      qc.invalidateQueries({ queryKey: ["dm-thread", me, selected] });
+    },
+    onError: (err) =>
+      push({
+        title: (err as Error)?.message || "Unblock failed",
+        variant: "danger",
+      }),
   });
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -160,6 +179,7 @@ function MessagesInner() {
 
   const conversations = convosQ.data?.conversations ?? [];
   const counterparty = threadQ.data?.counterparty;
+  const blockedByMe = threadQ.data?.blockedByMe ?? false;
   const cpLabel = counterparty?.username
     ? `@${counterparty.username}`
     : shortAddr(selected ?? "");
@@ -206,15 +226,22 @@ function MessagesInner() {
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
-                    <UserNameWithBadge
-                      verified={c.verified}
-                      name={
-                        c.username
-                          ? `@${c.username}`
-                          : shortAddr(c.address)
-                      }
-                      className="truncate text-sm font-medium"
-                    />
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <UserNameWithBadge
+                        verified={c.verified}
+                        name={
+                          c.username
+                            ? `@${c.username}`
+                            : shortAddr(c.address)
+                        }
+                        className="truncate text-sm font-medium"
+                      />
+                      {c.blockedByMe && (
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          Blocked
+                        </span>
+                      )}
+                    </span>
                     <span className="shrink-0 text-[10px] text-muted-foreground">
                       {timeLabel(c.lastAt)}
                     </span>
@@ -274,11 +301,15 @@ function MessagesInner() {
                   variant="outline"
                   size="sm"
                   className="shrink-0 text-xs"
-                  disabled={blockUser.isPending || threadQ.data?.blocked}
+                  disabled={blockUser.isPending || unblockUser.isPending}
                   onClick={() => {
+                    if (blockedByMe) {
+                      unblockUser.mutate();
+                      return;
+                    }
                     if (
                       window.confirm(
-                        `Block ${cpLabel}? You won't be able to message each other.`,
+                        `Block ${cpLabel}? You won't be able to message each other until you unblock.`,
                       )
                     ) {
                       blockUser.mutate();
@@ -286,9 +317,15 @@ function MessagesInner() {
                   }}
                 >
                   <Ban className="mr-1 h-3.5 w-3.5" />
-                  {threadQ.data?.blocked ? "Blocked" : "Block"}
+                  {blockedByMe ? "Unblock" : "Block"}
                 </Button>
               </div>
+
+              {blockedByMe && (
+                <div className="border-b border-border bg-muted/40 px-4 py-2 text-center text-xs text-muted-foreground">
+                  You blocked this user. Unblock to send messages again.
+                </div>
+              )}
 
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
                 {(threadQ.data?.messages ?? []).map((m) => (
@@ -371,36 +408,42 @@ function MessagesInner() {
                 </div>
               )}
 
-              <div className="flex items-end gap-2 border-t border-border p-3">
-                <button
-                  type="button"
-                  onClick={() => setGifOpen(true)}
-                  className="shrink-0 rounded-lg border border-border p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label="Attach GIF"
-                >
-                  <ImageIcon className="h-4 w-4" />
-                </button>
-                <textarea
-                  className="input min-h-[42px] max-h-32 flex-1 resize-none"
-                  rows={1}
-                  placeholder="Type a message…"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      submit();
-                    }
-                  }}
-                />
-                <Button
-                  onClick={submit}
-                  disabled={(!draft.trim() && !gifUrl) || send.isPending}
-                  className="shrink-0"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
+              {blockedByMe ? (
+                <div className="border-t border-border p-4 text-center text-sm text-muted-foreground">
+                  Messaging is disabled while this user is blocked.
+                </div>
+              ) : (
+                <div className="flex items-end gap-2 border-t border-border p-3">
+                  <button
+                    type="button"
+                    onClick={() => setGifOpen(true)}
+                    className="shrink-0 rounded-lg border border-border p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    aria-label="Attach GIF"
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                  </button>
+                  <textarea
+                    className="input min-h-[42px] max-h-32 flex-1 resize-none"
+                    rows={1}
+                    placeholder="Type a message…"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        submit();
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={submit}
+                    disabled={(!draft.trim() && !gifUrl) || send.isPending}
+                    className="shrink-0"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </section>

@@ -3,9 +3,11 @@ import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
+import { createDirectMessage } from "@/lib/directMessages";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { formatToken, shortAddr } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -116,12 +118,39 @@ export async function POST(
     },
   });
 
+  const sym = bet.tokenSymbol || "tokens";
+  const proposerAmt = formatToken(BigInt(d.proposerStake), bet.decimals);
+  const acceptorAmt = formatToken(BigInt(d.acceptorStake), bet.decimals);
+  const fromLc = from.toLowerCase();
+
+  const negotiator = await prisma.user.findFirst({
+    where: { address: { equals: from, mode: "insensitive" } },
+    select: { username: true },
+  });
+  const negotiatorLabel = negotiator?.username
+    ? `@${negotiator.username}`
+    : shortAddr(from);
+
+  let dmBody = `Counter-offer on "${bet.title}"\n\n`;
+  dmBody += `Your stake (proposer): ${proposerAmt} ${sym}\n`;
+  dmBody += `Their stake (acceptor): ${acceptorAmt} ${sym}\n`;
+  if (d.terms?.trim()) dmBody += `\nRevised terms:\n${d.terms.trim()}\n`;
+  if (d.message?.trim()) dmBody += `\nNote: ${d.message.trim()}\n`;
+  dmBody += `\nReview the offer: /bets/${id}\n`;
+  dmBody += `Reply here to discuss or send a revised counter-offer.`;
+
+  const dm = await createDirectMessage({
+    sender: fromLc,
+    recipient: bet.proposer,
+    body: dmBody,
+  });
+
   await notify({
     recipient: bet.proposer,
     type: "status",
-    title: "New counter-offer",
-    body: `Someone proposed revised terms on "${bet.title}".`,
-    link: `/bets/${id}`,
+    title: `Counter-offer from ${negotiatorLabel}`,
+    body: `New terms on "${bet.title}" — open Messages to discuss.`,
+    link: dm ? `/messages?with=${fromLc}` : `/bets/${id}`,
   });
 
   return jsonOk({ negotiation }, { status: 201 });

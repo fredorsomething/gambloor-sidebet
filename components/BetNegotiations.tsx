@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
 import { Handshake } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { formatUnits } from "viem";
@@ -179,7 +180,7 @@ export function BetNegotiations({ bet }: { bet: BetRow }) {
   if (negotiations.length === 0 && !showSendBox) return null;
 
   return (
-    <section className="card p-5 space-y-4">
+    <section id="negotiations" className="card p-5 space-y-4">
       <div className="flex items-center gap-2">
         <Handshake className="h-4 w-4 text-[hsl(var(--primary))]" />
         <h3 className="text-sm font-semibold">
@@ -347,6 +348,15 @@ function NegotiationCard({
       )}
       {n.message && (
         <p className="text-sm text-muted-foreground">“{n.message}”</p>
+      )}
+
+      {isProposer && (
+        <Link
+          href={`/messages?with=${n.fromAddress}`}
+          className="inline-block text-xs font-medium text-primary hover:underline"
+        >
+          Open DM thread →
+        </Link>
       )}
 
       {/* Actions */}
