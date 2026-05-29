@@ -9,7 +9,7 @@ import { notify } from "@/lib/notifications";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { getPublicClient, readCondition } from "@/lib/onchain";
-import { CONDITIONAL_TOKENS_ABI } from "@/lib/abi";
+import { CONDITIONAL_TOKENS_ABI, EXCHANGE_ABI } from "@/lib/abi";
 
 export const dynamic = "force-dynamic";
 
@@ -114,10 +114,69 @@ export async function GET(
     data: { status: "Expired" },
   });
 
-  const orders = await prisma.order.findMany({
+  let orders = await prisma.order.findMany({
     where: { marketId: id, status: "Open" },
     orderBy: { createdAt: "asc" },
   });
+
+  // Reconcile each resting order against the exchange's on-chain `filled` /
+  // `cancelled` maps. The chain is the source of truth; the client posts fills
+  // after its tx, but that POST can be missed (closed tab, error). Reading the
+  // contract here guarantees the book decrements and closes orders correctly.
+  {
+    const client = getPublicClient(market.chainId);
+    if (client && orders.length > 0) {
+      const exchange = getAddress(market.exchangeAddress) as Address;
+      const updates: Promise<unknown>[] = [];
+      const reconciled = await Promise.all(
+        orders.map(async (o) => {
+          try {
+            const [chainFilled, cancelled] = await Promise.all([
+              client.readContract({
+                address: exchange,
+                abi: EXCHANGE_ABI,
+                functionName: "filled",
+                args: [o.hash as `0x${string}`],
+              }) as Promise<bigint>,
+              client.readContract({
+                address: exchange,
+                abi: EXCHANGE_ABI,
+                functionName: "cancelled",
+                args: [o.hash as `0x${string}`],
+              }) as Promise<boolean>,
+            ]);
+            // On-chain `filled` is taker-denominated, same units we store.
+            const filled =
+              chainFilled > BigInt(o.filled) ? chainFilled : BigInt(o.filled);
+            const fullyFilled = filled >= BigInt(o.takerAmount);
+            const nextStatus = cancelled
+              ? "Cancelled"
+              : fullyFilled
+                ? "Filled"
+                : "Open";
+            if (
+              nextStatus !== "Open" ||
+              filled.toString() !== o.filled
+            ) {
+              updates.push(
+                prisma.order.update({
+                  where: { hash: o.hash },
+                  data: { filled: filled.toString(), status: nextStatus },
+                }),
+              );
+            }
+            return { ...o, filled: filled.toString(), status: nextStatus };
+          } catch {
+            return o;
+          }
+        }),
+      );
+      if (updates.length > 0) {
+        await Promise.allSettled(updates);
+      }
+      orders = reconciled.filter((o) => o.status === "Open") as typeof orders;
+    }
+  }
 
   const orderBook: Record<number, { buys: unknown[]; sells: unknown[] }> = {};
   for (const o of market.outcomes) {
