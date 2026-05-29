@@ -1,6 +1,6 @@
 "use client";
 
-import { useFundWallet as usePrivyFundWallet } from "@privy-io/react-auth";
+import { useFundWallet as usePrivyFundWallet, usePrivy } from "@privy-io/react-auth";
 import { ArrowUpRight, Check, Copy, CreditCard, Fuel, X } from "lucide-react";
 import {
   createContext,
@@ -25,6 +25,7 @@ import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI } from "@/lib/abi";
 import { explorerTx, getTokens } from "@/lib/chains";
+import { logWalletNotification } from "@/lib/hooks/useNotifications";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { cn, formatToken, shortAddr } from "@/lib/utils";
 
@@ -113,6 +114,7 @@ export function FundWalletProvider({ children }: { children: React.ReactNode }) 
 function FundWalletModal({ onClose }: { onClose: () => void }) {
   const { address } = useAccount();
   const { push } = useToast();
+  const { getAccessToken } = usePrivy();
   const { fundWallet: privyFundWallet } = usePrivyFundWallet();
   const { data: balance } = useBalance({
     address,
@@ -137,6 +139,14 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
         address,
         options: { chain: polygon, asset, amount },
       });
+      const label = asset === "USDC" ? "USDC" : "POL";
+      void logWalletNotification(
+        getAccessToken,
+        address,
+        "deposit",
+        "Deposit started",
+        `You started a ${label} deposit via Privy. Funds may take a few minutes to arrive.`,
+      );
       push({
         title: "Funding started",
         description: "Complete checkout in the Privy window. Funds may take a few minutes to arrive.",
@@ -261,6 +271,7 @@ const WITHDRAW_ASSETS = () => {
 function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const { address: from } = useAccount();
   const { push } = useToast();
+  const { getAccessToken } = usePrivy();
   const options = useMemo(() => WITHDRAW_ASSETS(), []);
 
   const [symbol, setSymbol] = useState(options[0]?.symbol ?? "USDC");
@@ -313,6 +324,15 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
         description: `Sent ${amount} ${symbol}`,
         variant: "success",
       });
+      if (from) {
+        void logWalletNotification(
+          getAccessToken,
+          from,
+          "withdrawal",
+          "Withdrawal sent",
+          `You withdrew ${amount} ${symbol}.`,
+        );
+      }
       onClose();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

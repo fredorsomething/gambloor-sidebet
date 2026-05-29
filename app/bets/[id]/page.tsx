@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { BetDetailLive } from "@/components/BetDetailLive";
 import { Comments } from "@/components/Comments";
+import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
 import { Identity } from "@/components/profile/Identity";
 import { StatusBadge } from "@/components/ui/badge";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
@@ -140,6 +141,17 @@ export default async function BetDetailPage({
 
       {/* Primary action up top so taking the bet is obvious without scrolling. */}
       <BetDetailLive id={bet.id} initial={data} />
+
+      {bet.status !== "Cancelled" && bet.status !== "Refunded" && (
+        <ProposeResolutionButton
+          subjectType="bet"
+          subjectId={bet.id}
+          outcomes={outcomes}
+          participants={[bet.proposer, bet.acceptor, bet.settler].filter(
+            (a): a is string => !!a,
+          )}
+        />
+      )}
 
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
         <div className="space-y-6">

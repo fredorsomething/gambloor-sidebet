@@ -7,6 +7,7 @@ import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { polygon } from "wagmi/chains";
 
 import { Avatar } from "@/components/profile/Identity";
+import { isAdminAddress } from "@/lib/admin";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { shortAddr } from "@/lib/utils";
 
@@ -100,6 +101,15 @@ export function ConnectButton() {
             >
               Edit profile
             </Link>
+            {isAdminAddress(address) && (
+              <Link
+                href="/admin"
+                onClick={() => setMenuOpen(false)}
+                className="block rounded-lg px-3 py-2 font-medium text-danger hover:bg-danger/10"
+              >
+                Admin dashboard
+              </Link>
+            )}
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(address);

@@ -283,8 +283,8 @@ export function CreateMarketForm() {
         });
         setStep("done");
         push({
-          title: "Market live",
-          description: "Anyone can now trade shares.",
+          title: "Market submitted",
+          description: "An admin will review it before it goes live.",
           variant: "success",
         });
         router.push(`/markets/${indexed.id}`);

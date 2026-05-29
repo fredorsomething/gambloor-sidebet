@@ -5,7 +5,9 @@ import { z } from "zod";
 import { verifyWalletAuth } from "@/lib/auth";
 import { listProfileComments } from "@/lib/comments";
 import { prisma } from "@/lib/db";
+import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { shortAddr } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +58,17 @@ export async function POST(
       body: parsed.data.body,
     },
   });
+
+  // Notify the profile owner (unless commenting on their own wall).
+  if (target.toLowerCase() !== author.toLowerCase()) {
+    await notify({
+      recipient: target.toLowerCase(),
+      type: "comment",
+      title: "New comment on your profile",
+      body: `${shortAddr(author)}: ${parsed.data.body.slice(0, 100)}`,
+      link: `/u/${target}`,
+    });
+  }
 
   const comments = await listProfileComments(target);
   return jsonOk({ comments });

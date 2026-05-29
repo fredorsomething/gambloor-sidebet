@@ -78,6 +78,42 @@ model ThreadComment {
   @@index([author])
 }
 
+// In-app notifications. One row per (recipient, event). `recipient` is the
+// lowercase wallet address the notification is for. Created server-side when
+// something relevant happens (comment, resolution, settlement, deposit, etc).
+model Notification {
+  id        Int      @id @default(autoincrement())
+  recipient String   // lowercase address
+  type      String   // comment | reply | resolution_proposed | resolution_verified | resolution_rejected | market_approved | market_rejected | bet_settled | market_resolved | deposit | withdrawal | status
+  title     String
+  body      String?
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([recipient, read])
+  @@index([recipient, createdAt])
+}
+
+// A user-submitted proposed resolution for a sidebet or market, sent to an
+// admin/verifier for review before the outcome is finalized on-chain.
+model ResolutionProposal {
+  id              Int      @id @default(autoincrement())
+  subjectType     String   // "bet" | "market"
+  subjectId       Int
+  proposedBy      String   // lowercase address
+  proposedOutcome Int      // winning outcome index the proposer claims
+  note            String?
+  status          String   @default("Pending") // Pending | Approved | Rejected
+  reviewedBy      String?  // lowercase admin address
+  reviewNote      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([subjectType, subjectId])
+}
+
 // Approved settlers: only these addresses can be chosen to resolve a Sidebet or
 // Market. Each sets their own fee (basis points). Seeded with the default wallet.
 model ApprovedSettler {
@@ -175,8 +211,8 @@ model Market {
   termsHash        String
   nonce            String
 
-  // Lifecycle
-  status           String   @default("Open") // Open | Resolved
+  // Lifecycle. New markets start "Pending" until an admin approves them.
+  status           String   @default("Open") // Pending | Open | Resolved | Rejected
   winningOutcome   Int?
   estimatedEndDate DateTime?
 

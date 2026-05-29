@@ -119,7 +119,8 @@ export async function POST(req: NextRequest) {
         termsHash: d.termsHash.toLowerCase(),
         nonce: d.nonce,
 
-        status: "Open",
+        // New markets are held for admin approval before they go live.
+        status: "Pending",
         estimatedEndDate: d.estimatedEndDate
           ? new Date(d.estimatedEndDate * 1000)
           : null,
@@ -152,7 +153,7 @@ const ListQuerySchema = z.object({
   skip: z.coerce.number().int().min(0).default(0),
 });
 
-const VALID_STATUSES = ["Open", "Resolved"] as const;
+const VALID_STATUSES = ["Pending", "Open", "Resolved", "Rejected"] as const;
 
 export async function GET(req: NextRequest) {
   const params = Object.fromEntries(req.nextUrl.searchParams.entries());

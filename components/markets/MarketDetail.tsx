@@ -21,6 +21,7 @@ import { polygon } from "wagmi/chains";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Comments } from "@/components/Comments";
+import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
@@ -561,6 +562,17 @@ export function MarketDetail({ id }: { id: number }) {
             <p className="mt-1 text-muted-foreground">{market.description}</p>
           </div>
         </div>
+        {market.status === "Pending" && (
+          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            <b>Awaiting admin approval.</b> This market isn&apos;t shown in the
+            public feed until a verifier approves it.
+          </div>
+        )}
+        {market.status === "Rejected" && (
+          <div className="rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+            This market was not approved by the admin.
+          </div>
+        )}
         {resolved && market.winningOutcome != null && (
           <div className="rounded-md bg-success/10 p-3 text-sm text-success">
             Winning outcome:{" "}
@@ -594,6 +606,15 @@ export function MarketDetail({ id }: { id: number }) {
           />
 
           <RulesPanel terms={market.terms} description={market.description} />
+
+          {market.status === "Open" && (
+            <ProposeResolutionButton
+              subjectType="market"
+              subjectId={market.id}
+              outcomes={market.outcomes.map((o) => o.label)}
+              participants={[market.creator, market.settler]}
+            />
+          )}
 
           <Comments basePath={`/api/markets/${market.id}/comments`} />
         </div>

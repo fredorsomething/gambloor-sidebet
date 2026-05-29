@@ -4,8 +4,11 @@ import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { notifyMany } from "@/lib/notifications";
+import { loadSubject } from "@/lib/resolutionSubject";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { listThreadComments, type SubjectType } from "@/lib/threadComments";
+import { shortAddr } from "@/lib/utils";
 
 const PostSchema = z.object({
   author: z.string().refine(isAddress, "bad author"),
@@ -77,6 +80,25 @@ export async function handlePostComment(
       author: author.toLowerCase(),
       body: parsed.data.body,
     },
+  });
+
+  // Notify the other participants and anyone who has commented in this thread.
+  const subject = await loadSubject(subjectType, id);
+  const priorAuthors = await prisma.threadComment.findMany({
+    where: { subjectType, subjectId: id },
+    select: { author: true },
+    distinct: ["author"],
+  });
+  const recipients = [
+    ...(subject?.participants ?? []),
+    ...priorAuthors.map((c) => c.author),
+  ].filter((a) => a.toLowerCase() !== author.toLowerCase());
+
+  await notifyMany(recipients, {
+    type: "comment",
+    title: subject ? `New comment on ${subject.title}` : "New comment",
+    body: `${shortAddr(author)}: ${parsed.data.body.slice(0, 100)}`,
+    link: subject?.link ?? null,
   });
 
   const comments = await listThreadComments(subjectType, id);

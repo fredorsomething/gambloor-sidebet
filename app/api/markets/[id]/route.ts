@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { notify } from "@/lib/notifications";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { getPublicClient, readCondition } from "@/lib/onchain";
@@ -83,8 +84,19 @@ export async function GET(
         where: { id },
         data: { status: "Resolved", winningOutcome: cond.winningOutcome },
       });
+      const winLabel =
+        market.outcomes.find((o) => o.index === cond.winningOutcome)?.label ??
+        `Outcome ${cond.winningOutcome}`;
       market.status = "Resolved";
       market.winningOutcome = cond.winningOutcome;
+      // Notify the market creator that it resolved.
+      await notify({
+        recipient: market.creator,
+        type: "market_resolved",
+        title: "Your market resolved",
+        body: `"${market.title}" resolved to ${winLabel}.`,
+        link: `/markets/${market.id}`,
+      });
     } catch (err) {
       console.warn("market sync failed", err);
     }

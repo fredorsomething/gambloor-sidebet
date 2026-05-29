@@ -4,6 +4,7 @@ import { Providers } from "./providers";
 import { BrandLogo } from "@/components/BrandLogo";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { WalletBalance } from "@/components/wallet/WalletBalance";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { SearchBar } from "@/components/SearchBar";
 import { NavLinks } from "@/components/NavLinks";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -53,6 +54,7 @@ export default function RootLayout({
                 <NavLinks />
                 <WalletBalance />
                 <ConnectButton />
+                <NotificationBell />
               </div>
             </header>
 
