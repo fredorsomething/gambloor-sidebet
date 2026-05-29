@@ -73,42 +73,52 @@ export default function RootLayout({
 
             <main className="container flex-1 py-6 sm:py-8">{children}</main>
 
-            <footer className="border-t border-border py-6 text-xs text-muted-foreground">
-              <div className="container flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  Sidebet wallets are non-custodial. All sidebets sit in on-chain escrow until
-                  the settler resolves the market. Never bet with funds you can't afford to lose. By using sidebet, you agree to our <a href="/terms" className="underline hover:text-foreground">Terms of Service</a> and <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>.
-                </div>
-                <div className="flex items-center gap-4">
-                  <span>Join our Discord community!</span>
-                  <a
-                    href="https://discord.gg/Z9TZWXQtqm"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Join the Sidebet Discord"
-                    title="Join our Discord"
-                    className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
-                  >
-                    <svg
-                      viewBox="0 0 127.14 96.36"
-                      className="h-6 w-6"
-                      fill="currentColor"
-                      aria-hidden="true"
+            <footer className="border-t border-border py-3 text-[11px] leading-snug text-muted-foreground">
+              <div className="container flex items-center justify-between gap-4">
+                <div className="min-w-0 space-y-0.5">
+                  <p>
+                    Non-custodial wallets · Sidebets in on-chain escrow · Bet
+                    responsibly ·{" "}
+                    <a
+                      href="/terms"
+                      className="underline hover:text-foreground"
                     >
-                      <path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z" />
-                    </svg>
-                  </a>
+                      Terms
+                    </a>
+                    {" · "}
+                    <a
+                      href="/privacy"
+                      className="underline hover:text-foreground"
+                    >
+                      Privacy
+                    </a>
+                  </p>
+                  <p className="text-muted-foreground/65">
+                    Box, LLC · Omonoias Ave 13, Limassol 3052, Cyprus ·{" "}
+                    <a
+                      href="mailto:support@sidebet.lol"
+                      className="underline hover:text-foreground"
+                    >
+                      support@sidebet.lol
+                    </a>
+                  </p>
                 </div>
-              </div>
-              <div className="container mt-4 text-[11px] leading-relaxed text-muted-foreground/70">
-                Sidebet is a brand name of Box, LLC, having its registered
-                address at Omonoias Avenue 13, Limassol 3052, Cyprus. For any
-                inquiries, contact us at{" "}
                 <a
-                  href="mailto:support@sidebet.lol"
-                  className="underline hover:text-foreground"
+                  href="https://discord.gg/Z9TZWXQtqm"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Join the Sidebet Discord"
+                  title="Discord"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
                 >
-                  support@sidebet.lol
+                  <svg
+                    viewBox="0 0 127.14 96.36"
+                    className="h-4 w-4"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z" />
+                  </svg>
                 </a>
               </div>
             </footer>
