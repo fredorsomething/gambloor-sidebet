@@ -9,7 +9,7 @@ collateral (USDC or pUSD) into an on-chain escrow, and a trusted third-party
 - **Chain**: Polygon mainnet (137) and Polygon Amoy testnet (80002)
 - **Collateral**: USDC, pUSD (Polymarket USD), USDC.e, or any ERC-20
 - **Settlement**: a per-bet `settler` address declares the winner (or a push)
-- **Off-chain**: title / description / terms in Prisma + SQLite, committed
+- **Off-chain**: title / description / terms in Prisma + Postgres (Neon), committed
   on-chain as a `keccak256` `termsHash` so the displayed terms can be proven
   against what the proposer signed up for.
 - **Profiles**: wallet-based identity with editable username / avatar / bio,
@@ -76,10 +76,13 @@ npm run db:push
 
 ### 4. Deploy the contract
 
+Fund the deployer wallet with **POL** (Polygon’s native token — not MATIC) for
+gas on Amoy or mainnet.
+
 ```bash
 npm run hh:compile
 
-# Testnet
+# Testnet (Amoy)
 npm run hh:deploy:amoy
 
 # Mainnet (when ready)
@@ -164,20 +167,25 @@ All three are 6 decimals.
 | `npm run hh:deploy:amoy` | Deploy escrow to Polygon Amoy |
 | `npm run hh:deploy:polygon` | Deploy escrow to Polygon mainnet |
 
+## Database (Neon Postgres)
+
+Prisma uses **PostgreSQL** (Neon). Set two env vars:
+
+| Variable | Use |
+|----------|-----|
+| `DATABASE_URL` | Pooled connection string (app + Vercel runtime) |
+| `DATABASE_URL_UNPOOLED` | Direct connection (`prisma db push`, migrations) |
+
+```bash
+npm run db:push   # sync schema to Neon
+```
+
+On **Vercel**, add the same two vars (plus `DATABASE_URL_UNPOOLED` if you run migrations in CI).
+
 ## Deploying to Vercel
 
-**SQLite does not work in production on Vercel** (the filesystem is ephemeral). Use a hosted Postgres database (Neon is free and easy).
-
-1. Create a project at [neon.tech](https://neon.tech) and copy the **pooled** connection string.
-2. In `prisma/schema.prisma`, change the datasource to:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-3. Locally: set `DATABASE_URL` to the Neon URL and run `npm run db:push`.
-4. On Vercel: add the same `DATABASE_URL` and all `NEXT_PUBLIC_*` vars from `.env.example`.
-5. Build command: `npm run build` (default). Install command: `npm install` (default).
+1. Import the GitHub repo on Vercel.
+2. Set `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, and all `NEXT_PUBLIC_*` vars from `.env.example`.
+3. Build: `npm run build` (default).
 
 Contract deploy keys (`DEPLOYER_PRIVATE_KEY`) must **never** be added to Vercel — deploy the escrow from your machine only.
