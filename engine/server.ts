@@ -12,7 +12,9 @@ import { createRedis } from "./redisStore";
 import { MIN_PRICE, MAX_PRICE, type OrderType, type Side } from "../lib/exchange/units";
 
 const SECRET = process.env.ENGINE_RPC_SECRET || "";
-const PORT = Number(process.env.ENGINE_PORT || 8090);
+// Render (and most PaaS) inject the port to bind via PORT and scan only that
+// port. Prefer it; fall back to ENGINE_PORT for local dev.
+const PORT = Number(process.env.PORT || process.env.ENGINE_PORT || 8090);
 
 type RpcHandler = (params: any) => Promise<unknown>;
 

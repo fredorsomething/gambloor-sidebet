@@ -48,7 +48,11 @@ const RPC = process.env.NEXT_PUBLIC_POLYGON_RPC || "https://polygon-bor-rpc.publ
 const TREASURY_KEY = process.env.TREASURY_PRIVATE_KEY?.trim();
 const TREASURY_ADDRESS = process.env.NEXT_PUBLIC_TREASURY_ADDRESS?.trim();
 const AUTO_LIMIT = BigInt(process.env.WITHDRAWAL_AUTO_LIMIT || "0");
-const MAX_BLOCK_RANGE = 2000n;
+// Some public RPCs (e.g. publicnode) heavily restrict eth_getLogs; allow tuning
+// the per-request block range and initial lookback via env. A dedicated RPC
+// (Alchemy/Infura) is strongly recommended in production.
+const MAX_BLOCK_RANGE = BigInt(process.env.BRIDGE_BLOCK_RANGE || "500");
+const DEPOSIT_LOOKBACK = BigInt(process.env.BRIDGE_LOOKBACK_BLOCKS || "2000");
 const POLL_MS = 15_000;
 
 export class Bridge {
@@ -56,6 +60,7 @@ export class Bridge {
   private publicClient = createPublicClient({ chain: polygon, transport: http(RPC) });
   private lastBlock = 0n;
   private running = false;
+  private depositErrorCount = 0;
 
   constructor(private prisma: PrismaClient) {
     this.ledger = new Ledger(prisma);
@@ -93,18 +98,34 @@ export class Bridge {
     const latest = await this.publicClient.getBlockNumber();
     if (this.lastBlock === 0n) {
       // Start a little behind the tip on first run.
-      this.lastBlock = latest > 5000n ? latest - 5000n : 0n;
+      this.lastBlock = latest > DEPOSIT_LOOKBACK ? latest - DEPOSIT_LOOKBACK : 0n;
     }
     let from = this.lastBlock + 1n;
     while (from <= latest) {
       const to = from + MAX_BLOCK_RANGE - 1n > latest ? latest : from + MAX_BLOCK_RANGE - 1n;
-      const logs = await this.publicClient.getLogs({
-        address: USDCE_ADDRESS,
-        event: TRANSFER_EVENT,
-        args: { to: treasury },
-        fromBlock: from,
-        toBlock: to,
-      });
+      let logs;
+      try {
+        logs = await this.publicClient.getLogs({
+          address: USDCE_ADDRESS,
+          event: TRANSFER_EVENT,
+          args: { to: treasury },
+          fromBlock: from,
+          toBlock: to,
+        });
+      } catch (err) {
+        // Public RPCs often reject getLogs. Don't advance (so we retry the
+        // range next cycle) and throttle the noise to roughly once a minute.
+        this.depositErrorCount++;
+        if (this.depositErrorCount === 1 || this.depositErrorCount % 4 === 0) {
+          const msg = err instanceof Error ? err.message.split("\n")[0] : "getLogs failed";
+          console.warn(
+            `[bridge] deposit scan failed (blocks ${from}-${to}): ${msg}. ` +
+              `Set NEXT_PUBLIC_POLYGON_RPC to a provider that supports eth_getLogs (Alchemy/Infura).`,
+          );
+        }
+        return;
+      }
+      this.depositErrorCount = 0;
       for (const log of logs) {
         const sender = log.args.from as Address | undefined;
         const value = log.args.value as bigint | undefined;

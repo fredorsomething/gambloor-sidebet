@@ -17,18 +17,26 @@ async function main() {
   const store = new RedisStore(redis);
   const engine = new ExchangeEngine(prisma, store);
 
-  // Rehydrate books for markets that have live orders in Redis.
-  const ids = await store.knownMarkets();
-  for (const id of ids) {
-    try {
-      await engine.ensureMarket(id);
-    } catch (err) {
-      console.warn(`[engine] failed to rehydrate market ${id}`, err);
-    }
-  }
-  console.log(`[engine] rehydrated ${ids.length} market book(s)`);
-
+  // Open the HTTP/WS server FIRST so the platform health check / port scan
+  // succeeds immediately. Rehydration + bridge run in the background; a slow or
+  // unavailable Redis must not block the service from coming up.
   startServer(engine);
+
+  void (async () => {
+    try {
+      const ids = await store.knownMarkets();
+      for (const id of ids) {
+        try {
+          await engine.ensureMarket(id);
+        } catch (err) {
+          console.warn(`[engine] failed to rehydrate market ${id}`, err);
+        }
+      }
+      console.log(`[engine] rehydrated ${ids.length} market book(s)`);
+    } catch (err) {
+      console.error("[engine] rehydration skipped (Redis unavailable?)", err);
+    }
+  })();
 
   const bridge = new Bridge(prisma);
   bridge.start();
