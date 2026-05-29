@@ -1,28 +1,25 @@
 /**
  * Server-side viem client for syncing on-chain state into Prisma.
- * The contract is the source of truth for status/winner/acceptor; the DB
- * cache is opportunistically refreshed whenever we read or list bets.
+ * Polygon mainnet only (chain id 137).
  */
 import { createPublicClient, http, type Address, type PublicClient } from "viem";
-import { polygon, polygonAmoy } from "viem/chains";
+import { polygon } from "viem/chains";
 
+import { POLYGON_CHAIN_ID } from "@/lib/chains";
 import { SIDEBET_ESCROW_ABI, BET_STATUS, type BetStatusName } from "@/lib/abi";
 
 const polygonRpc =
-  process.env.NEXT_PUBLIC_POLYGON_RPC || "https://polygon-rpc.com";
-const amoyRpc =
-  process.env.NEXT_PUBLIC_AMOY_RPC || "https://rpc-amoy.polygon.technology";
+  process.env.NEXT_PUBLIC_POLYGON_RPC ||
+  "https://polygon-bor-rpc.publicnode.com";
 
-const clients: Record<number, PublicClient> = {
-  [polygon.id]: createPublicClient({ chain: polygon, transport: http(polygonRpc) }),
-  [polygonAmoy.id]: createPublicClient({
-    chain: polygonAmoy,
-    transport: http(amoyRpc),
-  }),
-};
+const client: PublicClient = createPublicClient({
+  chain: polygon,
+  transport: http(polygonRpc),
+});
 
 export function getPublicClient(chainId: number): PublicClient | null {
-  return clients[chainId] ?? null;
+  if (chainId !== POLYGON_CHAIN_ID) return null;
+  return client;
 }
 
 export type OnchainBet = {
@@ -46,10 +43,10 @@ export async function readBet(
   escrow: Address,
   id: bigint,
 ): Promise<OnchainBet | null> {
-  const client = getPublicClient(chainId);
-  if (!client) return null;
+  const publicClient = getPublicClient(chainId);
+  if (!publicClient) return null;
   try {
-    const raw = (await client.readContract({
+    const raw = (await publicClient.readContract({
       address: escrow,
       abi: SIDEBET_ESCROW_ABI,
       functionName: "getBet",

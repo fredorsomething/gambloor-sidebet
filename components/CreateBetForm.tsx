@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_ABI } from "@/lib/abi";
+import { DEFAULT_SETTLER } from "@/lib/chains";
 import { useEscrow } from "@/lib/hooks/useEscrow";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { jsonFetch } from "@/lib/fetcher";
@@ -54,7 +55,7 @@ export function CreateBetForm() {
   const [description, setDescription] = useState("");
   const [terms, setTerms] = useState("");
   const [amountStr, setAmountStr] = useState("");
-  const [settler, setSettler] = useState("");
+  const [settler, setSettler] = useState(DEFAULT_SETTLER ?? "");
   const [acceptHours, setAcceptHours] = useState("72");
   const [settleHours, setSettleHours] = useState("168");
   const [feeBpsStr, setFeeBpsStr] = useState("0");

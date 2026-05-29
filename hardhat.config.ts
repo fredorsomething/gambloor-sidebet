@@ -4,9 +4,8 @@ import type { HardhatUserConfig } from "hardhat/config";
 
 const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY?.trim();
 const POLYGON_RPC_URL =
-  process.env.POLYGON_RPC_URL?.trim() || "https://polygon-rpc.com";
-const AMOY_RPC_URL =
-  process.env.AMOY_RPC_URL?.trim() || "https://rpc-amoy.polygon.technology";
+  process.env.POLYGON_RPC_URL?.trim() ||
+  "https://polygon-bor-rpc.publicnode.com";
 const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY?.trim() || "";
 
 const accounts =
@@ -24,11 +23,6 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {},
-    amoy: {
-      url: AMOY_RPC_URL,
-      chainId: 80002,
-      accounts,
-    },
     polygon: {
       url: POLYGON_RPC_URL,
       chainId: 137,
@@ -38,18 +32,7 @@ const config: HardhatUserConfig = {
   etherscan: {
     apiKey: {
       polygon: POLYGONSCAN_API_KEY,
-      polygonAmoy: POLYGONSCAN_API_KEY,
     },
-    customChains: [
-      {
-        network: "polygonAmoy",
-        chainId: 80002,
-        urls: {
-          apiURL: "https://api-amoy.polygonscan.com/api",
-          browserURL: "https://amoy.polygonscan.com",
-        },
-      },
-    ],
   },
   paths: {
     sources: "./contracts",

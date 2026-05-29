@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 
-import { ChainGuard } from "@/components/ChainGuard";
+import { WalletGuard } from "@/components/WalletGuard";
 import { AvatarUploadZone } from "@/components/profile/AvatarUploadZone";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
@@ -23,9 +23,12 @@ type ProfilePayload = {
 
 export default function EditProfilePage() {
   return (
-    <ChainGuard>
+    <WalletGuard
+      title="Connect to edit your profile"
+      description="You'll sign a free message to save changes. No bet or escrow setup required."
+    >
       <EditProfileForm />
-    </ChainGuard>
+    </WalletGuard>
   );
 }
 

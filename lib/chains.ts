@@ -1,17 +1,17 @@
 import type { Address } from "viem";
-import { polygon, polygonAmoy } from "wagmi/chains";
+import { polygon } from "wagmi/chains";
 
-export const SUPPORTED_CHAINS = [polygon, polygonAmoy] as const;
-export type SupportedChainId = (typeof SUPPORTED_CHAINS)[number]["id"];
+/** Polygon mainnet only (chain id 137). */
+export const POLYGON_CHAIN_ID = polygon.id;
 
-export const DEFAULT_CHAIN_ID: SupportedChainId =
-  (Number(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID) as SupportedChainId) ||
-  polygonAmoy.id;
+export const SUPPORTED_CHAINS = [polygon] as const;
+export type SupportedChainId = typeof polygon.id;
+
+export const DEFAULT_CHAIN_ID: SupportedChainId = polygon.id;
 
 /**
- * Canonical token list per chain. All entries use 6 decimals (matches USDC/pUSD).
- * On Amoy testnet there is no official pUSD; we expose a mock-USDC slot that
- * deployers can fill in (or the user can paste a custom token address).
+ * Collateral on Polygon mainnet. Stakes use USDC or pUSD (ERC-20).
+ * Gas for transactions uses native POL.
  */
 export const TOKENS: Record<
   SupportedChainId,
@@ -37,52 +37,40 @@ export const TOKENS: Record<
       decimals: 6,
     },
   ],
-  [polygonAmoy.id]: [
-    // Circle's official USDC on Amoy testnet
-    {
-      symbol: "USDC",
-      name: "USD Coin (Amoy testnet)",
-      address: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
-      decimals: 6,
-    },
-  ],
 };
 
-export const ESCROW_ADDRESSES: Record<SupportedChainId, Address | undefined> = {
-  [polygon.id]: (process.env.NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON ||
-    undefined) as Address | undefined,
-  [polygonAmoy.id]: (process.env.NEXT_PUBLIC_ESCROW_ADDRESS_AMOY ||
-    undefined) as Address | undefined,
-};
+export const ESCROW_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON ||
+  process.env.NEXT_PUBLIC_ESCROW_ADDRESS ||
+  undefined) as Address | undefined;
 
-export function getEscrowAddress(chainId: number): Address | undefined {
-  return ESCROW_ADDRESSES[chainId as SupportedChainId];
+export function getEscrowAddress(_chainId?: number): Address | undefined {
+  return ESCROW_ADDRESS;
 }
 
-export function getTokens(chainId: number) {
-  return TOKENS[chainId as SupportedChainId] ?? [];
+/** Your wallet as default settler on the create-bet form (optional). */
+export const DEFAULT_SETTLER = process.env.NEXT_PUBLIC_DEFAULT_SETTLER?.trim() as
+  | Address
+  | undefined;
+
+export function getTokens(_chainId?: number) {
+  return TOKENS[polygon.id];
 }
 
-export function getTokenBySymbol(chainId: number, symbol: string) {
-  return getTokens(chainId).find(
+export function getTokenBySymbol(_chainId: number, symbol: string) {
+  return getTokens().find(
     (t) => t.symbol.toLowerCase() === symbol.toLowerCase(),
   );
 }
 
-export function getTokenByAddress(chainId: number, address: Address) {
+export function getTokenByAddress(_chainId: number, address: Address) {
   const a = address.toLowerCase();
-  return getTokens(chainId).find((t) => t.address.toLowerCase() === a);
+  return getTokens().find((t) => t.address.toLowerCase() === a);
 }
 
-export function explorerTx(chainId: number, hash: string) {
-  if (chainId === polygon.id) return `https://polygonscan.com/tx/${hash}`;
-  if (chainId === polygonAmoy.id) return `https://amoy.polygonscan.com/tx/${hash}`;
-  return "";
+export function explorerTx(_chainId: number, hash: string) {
+  return `https://polygonscan.com/tx/${hash}`;
 }
 
-export function explorerAddress(chainId: number, addr: string) {
-  if (chainId === polygon.id) return `https://polygonscan.com/address/${addr}`;
-  if (chainId === polygonAmoy.id)
-    return `https://amoy.polygonscan.com/address/${addr}`;
-  return "";
+export function explorerAddress(_chainId: number, addr: string) {
+  return `https://polygonscan.com/address/${addr}`;
 }

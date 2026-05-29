@@ -2,29 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import {
-  useAccount,
-  useChainId,
-  useDisconnect,
-  useSwitchChain,
-} from "wagmi";
-import { polygon, polygonAmoy } from "wagmi/chains";
+import { useAccount, useChainId, useDisconnect, useSwitchChain } from "wagmi";
+import { polygon } from "wagmi/chains";
 
 import { Avatar } from "@/components/profile/Identity";
 import { useWalletModal } from "@/components/wallet/WalletModal";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { cn, shortAddr } from "@/lib/utils";
 
-const CHAIN_LABEL: Record<number, string> = {
-  [polygon.id]: "Polygon",
-  [polygonAmoy.id]: "Amoy",
-};
-
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
+  const { switchChain, isPending } = useSwitchChain();
   const { open } = useWalletModal();
   const { data: profile } = useProfile(address);
 
@@ -52,17 +42,18 @@ export function ConnectButton() {
     );
   }
 
-  const wrongNetwork = chainId !== polygon.id && chainId !== polygonAmoy.id;
+  const onPolygon = chainId === polygon.id;
   const label = profile?.username || shortAddr(address);
 
   return (
     <div className="relative flex items-center gap-2" ref={ref}>
-      {wrongNetwork && (
+      {!onPolygon && (
         <button
-          onClick={() => switchChain({ chainId: polygonAmoy.id })}
+          onClick={() => switchChain({ chainId: polygon.id })}
+          disabled={isPending}
           className="rounded-full border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger"
         >
-          Wrong network
+          {isPending ? "Switching…" : "Switch to Polygon"}
         </button>
       )}
       <button
@@ -86,7 +77,7 @@ export function ConnectButton() {
               </div>
             </div>
             <div className="mt-2 text-[11px] text-muted-foreground">
-              {CHAIN_LABEL[chainId] ?? `Chain ${chainId}`}
+              {onPolygon ? "Polygon mainnet" : "Wrong network — switch to Polygon"}
             </div>
           </div>
           <nav className="p-1 text-sm">
@@ -113,28 +104,17 @@ export function ConnectButton() {
             >
               Copy address
             </button>
-            <div className="my-1 border-t border-border" />
-            <div className="px-3 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-              Network
-            </div>
-            <button
-              onClick={() => switchChain({ chainId: polygonAmoy.id })}
-              className={cn(
-                "block w-full rounded-lg px-3 py-2 text-left hover:bg-muted",
-                chainId === polygonAmoy.id && "text-primary",
-              )}
-            >
-              Polygon Amoy (testnet)
-            </button>
-            <button
-              onClick={() => switchChain({ chainId: polygon.id })}
-              className={cn(
-                "block w-full rounded-lg px-3 py-2 text-left hover:bg-muted",
-                chainId === polygon.id && "text-primary",
-              )}
-            >
-              Polygon mainnet
-            </button>
+            {!onPolygon && (
+              <>
+                <div className="my-1 border-t border-border" />
+                <button
+                  onClick={() => switchChain({ chainId: polygon.id })}
+                  className="block w-full rounded-lg px-3 py-2 text-left text-primary hover:bg-muted"
+                >
+                  Switch to Polygon
+                </button>
+              </>
+            )}
             <div className="my-1 border-t border-border" />
             <button
               onClick={() => {
@@ -148,7 +128,6 @@ export function ConnectButton() {
           </nav>
         </div>
       )}
-
     </div>
   );
 }

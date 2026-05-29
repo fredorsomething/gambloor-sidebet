@@ -2,19 +2,21 @@
 
 import { useMemo } from "react";
 import { useChainId } from "wagmi";
+import { polygon } from "wagmi/chains";
 
-import { getEscrowAddress, getTokens, type SupportedChainId } from "@/lib/chains";
+import { getEscrowAddress, getTokens, POLYGON_CHAIN_ID } from "@/lib/chains";
 
-/** Resolves the escrow address + token list for the currently connected chain. */
+/** Resolves escrow + tokens on Polygon mainnet. */
 export function useEscrow() {
   const chainId = useChainId();
-  const escrow = getEscrowAddress(chainId);
-  const tokens = useMemo(() => getTokens(chainId), [chainId]);
-  const isSupported = !!escrow;
+  const onPolygon = chainId === polygon.id;
+  const escrow = onPolygon ? getEscrowAddress() : undefined;
+  const tokens = useMemo(() => getTokens(), []);
   return {
-    chainId: chainId as SupportedChainId,
+    chainId: POLYGON_CHAIN_ID,
     escrow,
     tokens,
-    isSupported,
+    isSupported: onPolygon && !!escrow,
+    onPolygon,
   };
 }

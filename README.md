@@ -6,7 +6,7 @@ collateral (USDC or pUSD) into an on-chain escrow, and a trusted third-party
 
 - **Wallet connect** via Wagmi connectors (injected/MetaMask, Coinbase Wallet,
   and optional WalletConnect) with a custom in-app modal
-- **Chain**: Polygon mainnet (137) and Polygon Amoy testnet (80002)
+- **Chain**: Polygon mainnet only (chain id 137)
 - **Collateral**: USDC, pUSD (Polymarket USD), USDC.e, or any ERC-20
 - **Settlement**: a per-bet `settler` address declares the winner (or a push)
 - **Off-chain**: title / description / terms in Prisma + Postgres (Neon), committed
@@ -61,9 +61,9 @@ Key vars:
 
 | Var | Purpose |
 | --- | --- |
-| `NEXT_PUBLIC_DEFAULT_CHAIN_ID` | `80002` for Amoy testnet, `137` for mainnet |
-| `NEXT_PUBLIC_ESCROW_ADDRESS_AMOY` | Set after deploying to Amoy |
-| `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` | Set after deploying to mainnet |
+| `NEXT_PUBLIC_DEFAULT_CHAIN_ID` | `137` (Polygon mainnet) |
+| `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` | Deployed `SidebetEscrow` on Polygon |
+| `NEXT_PUBLIC_DEFAULT_SETTLER` | Your wallet address as default settler |
 | `NEXT_PUBLIC_WC_PROJECT_ID` | Optional WalletConnect project id. Injected + Coinbase work without it |
 | `DEPLOYER_PRIVATE_KEY` | Funded deployer key (server-only) |
 | `POLYGONSCAN_API_KEY` | Optional, enables auto-verification |
@@ -76,21 +76,14 @@ npm run db:push
 
 ### 4. Deploy the contract
 
-Fund the deployer wallet with **POL** (Polygon’s native token — not MATIC) for
-gas on Amoy or mainnet.
+Fund the deployer wallet with **POL** on Polygon mainnet for gas.
 
 ```bash
 npm run hh:compile
-
-# Testnet (Amoy)
-npm run hh:deploy:amoy
-
-# Mainnet (when ready)
-npm run hh:deploy:polygon
+npm run hh:deploy
 ```
 
-Copy the printed address into `NEXT_PUBLIC_ESCROW_ADDRESS_AMOY` /
-`NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` in `.env`.
+Copy the printed address into `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` in `.env` and Vercel.
 
 ### 5. Run the dev server
 
@@ -164,8 +157,7 @@ All three are 6 decimals.
 | `npm run db:studio` | Prisma Studio UI |
 | `npm run hh:compile` | Compile Solidity |
 | `npm run hh:test` | Run Hardhat tests |
-| `npm run hh:deploy:amoy` | Deploy escrow to Polygon Amoy |
-| `npm run hh:deploy:polygon` | Deploy escrow to Polygon mainnet |
+| `npm run hh:deploy` | Deploy escrow to Polygon mainnet |
 
 ## Database (Neon Postgres)
 
