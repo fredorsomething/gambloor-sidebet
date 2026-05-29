@@ -64,7 +64,7 @@ export function Identity({
         )}
       >
         <span className="truncate">{label}</span>
-        {data?.verified ? <VerifiedBadge size={size >= 28 ? 16 : 14} /> : null}
+        {data?.verified ? <VerifiedBadge size={size >= 28 ? 18 : 16} /> : null}
       </span>
     </span>
   );

@@ -16,7 +16,7 @@ import { useAccount } from "wagmi";
 
 import { GifPicker } from "@/components/GifPicker";
 import { Avatar } from "@/components/profile/Identity";
-import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
+import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
 
@@ -199,7 +199,7 @@ export function GlobalChat() {
     <>
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex",
+          "fixed inset-y-0 left-0 z-50 flex items-center",
           "max-md:inset-0",
         )}
         aria-label="Global chat"
@@ -347,10 +347,14 @@ function ChatRow({ m }: { m: ChatMessage }) {
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
           <Link
             href={profileHref}
-            className="inline-flex items-center gap-0.5 font-semibold text-foreground hover:text-primary"
+            className="min-w-0 font-semibold text-foreground hover:text-primary"
           >
-            <span className="max-w-[120px] truncate">{name}</span>
-            {m.authorVerified && <VerifiedBadge size={12} />}
+            <UserNameWithBadge
+              name={name}
+              verified={m.authorVerified}
+              badgeSize={16}
+              className="max-w-[160px]"
+            />
           </Link>
           <span
             className={cn(

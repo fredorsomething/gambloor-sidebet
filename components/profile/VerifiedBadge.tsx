@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /** Blue check shown after verified usernames (staff, trusted traders, etc.). */
 export function VerifiedBadge({
-  size = 14,
+  size = 16,
   className,
 }: {
   size?: number;
@@ -27,21 +27,23 @@ export function VerifiedBadge({
 export function UserNameWithBadge({
   name,
   verified,
+  badgeSize = 16,
   className,
 }: {
   name: ReactNode;
   verified?: boolean;
+  badgeSize?: number;
   className?: string;
 }) {
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-0.5",
+        "inline-flex max-w-full items-center gap-1",
         className,
       )}
     >
       <span className="truncate">{name}</span>
-      {verified ? <VerifiedBadge /> : null}
+      {verified ? <VerifiedBadge size={badgeSize} /> : null}
     </span>
   );
 }

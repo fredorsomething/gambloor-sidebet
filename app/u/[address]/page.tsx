@@ -182,6 +182,7 @@ export default function ProfilePage() {
               <h1 className="truncate text-2xl font-bold">
                 <UserNameWithBadge
                   verified={data?.user.verified}
+                  badgeSize={20}
                   name={
                     data?.user.username
                       ? `@${data.user.username}`
