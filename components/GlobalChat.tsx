@@ -35,6 +35,31 @@ type ChatMessage = {
 type ChatResponse = { messages: ChatMessage[]; online: number };
 
 const CHAT_WIDTH_PX = 320;
+const LAST_READ_KEY = "sb_chat_last_read_id";
+
+function readLastReadId(): number | null {
+  try {
+    const raw = localStorage.getItem(LAST_READ_KEY);
+    if (raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistLastReadId(id: number) {
+  try {
+    localStorage.setItem(LAST_READ_KEY, String(id));
+  } catch {
+    /* ignore */
+  }
+}
+
+function latestMessageId(messages: ChatMessage[]): number {
+  if (messages.length === 0) return 0;
+  return Math.max(...messages.map((m) => m.id));
+}
 
 function getClientId(): string {
   if (typeof window === "undefined") return "";
@@ -74,7 +99,8 @@ export function GlobalChat() {
   const { address } = useAccount();
   const qc = useQueryClient();
 
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [lastReadId, setLastReadId] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [gifUrl, setGifUrl] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
@@ -84,13 +110,14 @@ export function GlobalChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Restore minimized preference (default: expanded).
+  // Restore open preference (default: collapsed) and last-read cursor.
   useEffect(() => {
     try {
-      if (localStorage.getItem("sb_chat_open") === "0") setOpen(false);
+      if (localStorage.getItem("sb_chat_open") === "1") setOpen(true);
     } catch {
       /* ignore */
     }
+    setLastReadId(readLastReadId());
   }, []);
   useEffect(() => {
     try {
@@ -113,6 +140,35 @@ export function GlobalChat() {
 
   const messages = chatQ.data?.messages ?? [];
   const online = chatQ.data?.online ?? 0;
+
+  function markChatRead(msgs: ChatMessage[]) {
+    const maxId = latestMessageId(msgs);
+    if (maxId <= 0) return;
+    setLastReadId(maxId);
+    persistLastReadId(maxId);
+  }
+
+  function setChatOpen(next: boolean) {
+    if (!next) markChatRead(messages);
+    setOpen(next);
+  }
+
+  // First visit: treat current history as read so the badge only reflects new traffic.
+  useEffect(() => {
+    if (open || messages.length === 0 || lastReadId != null) return;
+    markChatRead(messages);
+  }, [open, messages, lastReadId]);
+
+  // While open, stay caught up on the live stream.
+  useEffect(() => {
+    if (!open || messages.length === 0) return;
+    markChatRead(messages);
+  }, [open, messages]);
+
+  const unreadCount =
+    !open && lastReadId != null
+      ? messages.filter((m) => m.id > lastReadId).length
+      : 0;
 
   // Auto-scroll to the newest message, but only if the user is already near the
   // bottom — so scrolling up to read history isn't interrupted by new messages.
@@ -163,18 +219,32 @@ export function GlobalChat() {
 
   /** Chevron tab on the right edge — expand when collapsed, collapse when open. */
   function CollapseTab({ expanded }: { expanded: boolean }) {
+    const unreadLabel =
+      unreadCount > 0
+        ? `, ${unreadCount} new message${unreadCount === 1 ? "" : "s"}`
+        : "";
     return (
       <button
         type="button"
-        onClick={() => setOpen(!expanded)}
+        onClick={() => setChatOpen(!expanded)}
         className={cn(
-          "flex shrink-0 flex-col items-center justify-center gap-1 border border-border bg-card text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground",
+          "relative flex shrink-0 flex-col items-center justify-center gap-1 border border-border bg-card text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground",
           expanded
             ? "h-20 w-7 rounded-r-xl border-l-0"
             : "fixed left-0 top-1/2 z-50 h-24 w-8 -translate-y-1/2 rounded-r-xl border-l-0",
         )}
-        aria-label={expanded ? "Minimize chat" : "Open global chat"}
+        aria-label={
+          expanded ? "Minimize chat" : `Open global chat${unreadLabel}`
+        }
       >
+        {!expanded && unreadCount > 0 && (
+          <span
+            className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold leading-none text-white shadow-sm"
+            aria-hidden
+          >
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
         {expanded ? (
           <ChevronLeft className="h-5 w-5" />
         ) : (
