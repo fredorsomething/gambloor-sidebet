@@ -447,21 +447,71 @@ export function MarketDetail({ id }: { id: number }) {
     return BigInt(positions[idx] ?? "0");
   }
 
-  /** Pre-flight so fills fail in-app with a clear message, not a raw revert. */
-  function assertCanFill(order: UnifiedOrder, sharesTake: bigint) {
+  async function readShareBalance(
+    positionId: string,
+    owner?: Address,
+  ): Promise<bigint> {
+    if (!publicClient || !owner) return 0n;
+    return publicClient.readContract({
+      address: ctf,
+      abi: CONDITIONAL_TOKENS_ABI,
+      functionName: "balanceOf",
+      args: [BigInt(positionId), owner],
+    });
+  }
+
+  /** Taker-side fill units for `fillOrder`, matching fillUnifiedShares. */
+  function takerFillFor(order: UnifiedOrder, sharesTake: bigint): bigint {
     const makerAmount = BigInt(order.makerAmount);
     const takerAmount = BigInt(order.takerAmount);
     const remainingTaker = takerAmount - BigInt(order.filled);
     const avail = sharesRemainingRaw(order);
     const whole = sharesTake >= avail;
-    const collateralBal = collateralLive.balance ?? 0n;
-    const fmt = (wei: bigint) => formatToken(wei, decimals);
 
     if (!order._complementary) {
       if (order.side === "SELL") {
-        const takerFill = whole
+        return whole
           ? remainingTaker
           : (takerAmount * sharesTake) / (makerAmount || 1n);
+      }
+      return whole ? remainingTaker : sharesTake;
+    }
+    if (order.side === "BUY") {
+      return whole ? remainingTaker : sharesTake;
+    }
+    return whole
+      ? remainingTaker
+      : (takerAmount * sharesTake) / (makerAmount || 1n);
+  }
+
+  function makerGivesFor(order: OrderRow, takerFill: bigint): bigint {
+    const makerAmount = BigInt(order.makerAmount);
+    const takerAmount = BigInt(order.takerAmount);
+    return (takerFill * makerAmount) / (takerAmount || 1n);
+  }
+
+  /** Pre-flight on-chain so fills fail in-app with a clear message, not a raw revert. */
+  async function assertCanFill(order: UnifiedOrder, sharesTake: bigint) {
+    const fmt = (wei: bigint) => formatToken(wei, decimals);
+    const takerFill = takerFillFor(order, sharesTake);
+    const makerGives = makerGivesFor(order, takerFill);
+    const collateralBal = await readCollateralBalance();
+
+    // Resting SELL (ask or complementary bid): maker must still hold outcome shares.
+    if (order.side === "SELL") {
+      const makerBal = await readShareBalance(
+        order.positionId,
+        order.maker as Address,
+      );
+      if (makerBal < makerGives) {
+        throw new Error(
+          "This order can't be filled — the maker no longer has enough outcome shares on-chain. Try another price level.",
+        );
+      }
+    }
+
+    if (!order._complementary) {
+      if (order.side === "SELL") {
         if (collateralBal < takerFill) {
           throw new Error(
             `Need ${fmt(takerFill)} ${sym} to buy — you have ${fmt(collateralBal)}`,
@@ -469,16 +519,17 @@ export function MarketDetail({ id }: { id: number }) {
         }
         return;
       }
-      const posIdx =
-        outcomes.find((o) => o.positionId === order.positionId)?.index ??
-        selected.index;
-      const need = whole ? avail : sharesTake;
-      const have = sharesForOutcome(posIdx);
+      if (!sharesApproved) {
+        throw new Error("Approve outcome shares for the exchange before selling");
+      }
+      const have = await readShareBalance(order.positionId, account as Address);
+      const need = sharesTake;
       if (have < need) {
         const label =
-          outcomes.find((o) => o.index === posIdx)?.label ?? "outcome";
+          outcomes.find((o) => o.positionId === order.positionId)?.label ??
+          "outcome";
         throw new Error(
-          `Need ${fmt(need)} ${label} shares to sell — you have ${fmt(have)}`,
+          `Need ${fmt(need)} ${label} shares to sell — you have ${fmt(have)}. Mint a set or buy shares first.`,
         );
       }
       return;
@@ -493,7 +544,20 @@ export function MarketDetail({ id }: { id: number }) {
       return;
     }
 
-    const haveSelected = sharesForOutcome(selected.index);
+    if (collateralBal < takerFill) {
+      throw new Error(
+        `Need ${fmt(takerFill)} ${sym} for this fill — you have ${fmt(collateralBal)}`,
+      );
+    }
+    if (!sharesApproved) {
+      throw new Error(
+        `Approve ${selected.label} shares for the exchange before filling this bid`,
+      );
+    }
+    const haveSelected = await readShareBalance(
+      selected.positionId,
+      account as Address,
+    );
     if (haveSelected < sharesTake) {
       throw new Error(
         `Need ${fmt(sharesTake)} ${selected.label} shares to complete this fill — you have ${fmt(haveSelected)}. Mint a set or buy shares first.`,
@@ -554,22 +618,14 @@ export function MarketDetail({ id }: { id: number }) {
    */
   async function fillUnifiedShares(order: UnifiedOrder, sharesTake: bigint) {
     if (sharesTake <= 0n) return;
-    assertCanFill(order, sharesTake);
+    await assertCanFill(order, sharesTake);
 
-    const makerAmount = BigInt(order.makerAmount);
-    const takerAmount = BigInt(order.takerAmount);
-    const remainingTaker = takerAmount - BigInt(order.filled);
-    const availShares = sharesRemainingRaw(order);
-    const whole = sharesTake >= availShares;
+    const takerFill = takerFillFor(order, sharesTake);
 
     if (!order._complementary) {
       if (order.side === "SELL") {
-        const takerFill = whole
-          ? remainingTaker
-          : (takerAmount * sharesTake) / (makerAmount || 1n);
         await fillOrderRaw(order, takerFill);
       } else {
-        const takerFill = whole ? remainingTaker : sharesTake;
         await fillOrderRaw(order, takerFill);
       }
       return;
@@ -586,14 +642,19 @@ export function MarketDetail({ id }: { id: number }) {
         approvalUi,
       );
       await waitForTxReceipt(splitHash);
-      const takerFill = whole ? remainingTaker : sharesTake;
+      const have = await readShareBalance(
+        order.positionId,
+        account as Address,
+      );
+      if (have < takerFill) {
+        throw new Error(
+          `Minted shares aren't available yet (need ${formatToken(takerFill, decimals)}, have ${formatToken(have, decimals)}). Wait a moment and try again.`,
+        );
+      }
       await fillOrderRaw(order, takerFill);
       return;
     }
 
-    const takerFill = whole
-      ? remainingTaker
-      : (takerAmount * sharesTake) / (makerAmount || 1n);
     const fillHash = await fillOrderRaw(order, takerFill);
     await waitForTxReceipt(fillHash);
     const mergeHash = await writeContract(
@@ -766,15 +827,24 @@ export function MarketDetail({ id }: { id: number }) {
 
     let remaining = sharesRaw;
     let fills = 0;
-    if (crossable.length > 0) await ensurePolygon();
-    for (const o of crossable) {
-      if (remaining <= 0n || fills >= 12) break;
-      const avail = sharesRemainingRaw(o);
-      if (avail <= 0n) continue;
-      const take = remaining >= avail ? avail : remaining;
-      await fillUnifiedShares(o, take);
-      remaining -= take;
-      fills += 1;
+    try {
+      if (crossable.length > 0) await ensurePolygon();
+      for (const o of crossable) {
+        if (remaining <= 0n || fills >= 12) break;
+        const avail = sharesRemainingRaw(o);
+        if (avail <= 0n) continue;
+        const take = remaining >= avail ? avail : remaining;
+        await fillUnifiedShares(o, take);
+        remaining -= take;
+        fills += 1;
+      }
+    } catch (err) {
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Fill failed",
+      });
+      push({ title, description, variant: "danger" });
+      query.refetch();
+      return;
     }
 
     // Rest whatever didn't immediately fill.

@@ -75,9 +75,9 @@ const RULES: Array<{
   },
   {
     test: /INSUFFICIENT_BALANCE/i,
-    title: "Not enough shares or collateral",
+    title: "Not enough outcome shares (not gas)",
     description:
-      "This fill needs more outcome shares or USDC than your wallet holds. Try a smaller size, mint a set first, or fund your wallet.",
+      "This isn't about POL — someone in the trade doesn't hold enough conditional outcome tokens. The resting order may be stale, or you may need to mint a set / buy shares first. Try another level or a smaller size.",
   },
   {
     test: /execution reverted|reverted|revert/i,
