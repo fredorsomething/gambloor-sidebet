@@ -27,6 +27,12 @@ function usd(n: number) {
   })}`;
 }
 
+function repColor(rep: number): string {
+  if (rep > 0) return "text-success";
+  if (rep < 0) return "text-danger";
+  return "text-foreground";
+}
+
 function groupKey(u: DirectoryUser): string {
   const first = (u.username ?? "")[0]?.toUpperCase() ?? "";
   if (first >= "A" && first <= "Z") return first;
@@ -139,25 +145,25 @@ export default function UsersDirectoryPage() {
                           {shortAddr(u.address)}
                         </div>
                       )}
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums">
-                        <span className="text-muted-foreground">
-                          Rep{" "}
-                          <span className="font-semibold text-foreground">
-                            {u.rep}
-                          </span>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-0.5 text-xs tabular-nums">
+                      <span className="text-muted-foreground">
+                        Rep{" "}
+                        <span className={cn("font-semibold", repColor(u.rep))}>
+                          {u.rep}
                         </span>
-                        <span className="text-muted-foreground">
-                          PnL{" "}
-                          <span
-                            className={cn(
-                              "font-semibold",
-                              u.pnl >= 0 ? "text-success" : "text-danger",
-                            )}
-                          >
-                            {usd(u.pnl)}
-                          </span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        PnL{" "}
+                        <span
+                          className={cn(
+                            "font-semibold",
+                            u.pnl >= 0 ? "text-success" : "text-danger",
+                          )}
+                        >
+                          {usd(u.pnl)}
                         </span>
-                      </div>
+                      </span>
                     </div>
                   </Link>
                 ))}

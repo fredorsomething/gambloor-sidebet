@@ -138,7 +138,16 @@ export default function LeaderboardPage() {
                   >
                     {usd(e.pnl)}
                   </td>
-                  <td className="hidden px-4 py-3 text-right font-semibold tabular-nums sm:table-cell">
+                  <td
+                    className={cn(
+                      "hidden px-4 py-3 text-right font-semibold tabular-nums sm:table-cell",
+                      e.rep > 0
+                        ? "text-success"
+                        : e.rep < 0
+                          ? "text-danger"
+                          : "text-foreground",
+                    )}
+                  >
                     {e.rep}
                   </td>
                   <td className="hidden px-4 py-3 text-right text-muted-foreground sm:table-cell">
