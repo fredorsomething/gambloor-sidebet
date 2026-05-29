@@ -7,6 +7,7 @@ import { useState } from "react";
 import { polygon } from "wagmi/chains";
 
 import { wagmiConfig } from "@/lib/wagmi";
+import { AppReadyGate } from "@/components/AppReadyGate";
 import { ToastProvider } from "@/components/ui/Toast";
 import { FundWalletProvider } from "@/components/wallet/FundWalletModal";
 
@@ -58,7 +59,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
           <FundWalletProvider>
-            <ToastProvider>{children}</ToastProvider>
+            <ToastProvider>
+              <AppReadyGate>{children}</AppReadyGate>
+            </ToastProvider>
           </FundWalletProvider>
         </WagmiProvider>
       </QueryClientProvider>

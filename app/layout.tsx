@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import Link from "next/link";
-
 import { Providers } from "./providers";
+import { BrandLogo } from "@/components/BrandLogo";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { WalletBalance } from "@/components/wallet/WalletBalance";
 import { SearchBar } from "@/components/SearchBar";
@@ -23,6 +22,10 @@ export const metadata: Metadata = {
   title: "Sidebet — P2P bets on Polygon",
   description:
     "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon. Funds escrowed on-chain, resolved by a trusted settler.",
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({
@@ -41,14 +44,7 @@ export default function RootLayout({
             <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
               <div className="container flex items-center gap-3 py-3">
                 <ThemeToggle />
-                <Link href="/" className="flex shrink-0 items-center gap-2">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-black text-primary-foreground">
-                    S
-                  </span>
-                  <span className="hidden text-lg font-bold tracking-tight sm:block">
-                    sidebet
-                  </span>
-                </Link>
+                <BrandLogo />
 
                 <div className="flex flex-1 justify-center px-2">
                   <SearchBar />
