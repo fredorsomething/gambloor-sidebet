@@ -105,10 +105,3 @@
     @apply border-foreground bg-foreground text-background hover:text-background;
   }
 }
-
-/* Global chat sidebar — reserve space on desktop when expanded */
-@media (min-width: 768px) {
-  html.global-chat-open #app-shell {
-    margin-left: var(--global-chat-width, 300px);
-  }
-}

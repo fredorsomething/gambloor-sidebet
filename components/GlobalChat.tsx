@@ -2,7 +2,14 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImageIcon, MessageCircle, Send, Users, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ImageIcon,
+  MessageCircle,
+  Send,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
@@ -10,7 +17,6 @@ import { useAccount } from "wagmi";
 import { GifPicker } from "@/components/GifPicker";
 import { Avatar } from "@/components/profile/Identity";
 import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
-import { useProfile } from "@/lib/hooks/useProfile";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
 
@@ -29,7 +35,7 @@ type ChatMessage = {
 type ChatResponse = { messages: ChatMessage[]; online: number };
 
 const SEND_COOLDOWN_MS = 3_000;
-const CHAT_WIDTH_PX = 300;
+const CHAT_WIDTH_PX = 320;
 
 function getClientId(): string {
   if (typeof window === "undefined") return "";
@@ -67,7 +73,6 @@ function timeLabel(iso: string): string {
 export function GlobalChat() {
   const { authenticated, getAccessToken, login, ready } = usePrivy();
   const { address } = useAccount();
-  const { data: myProfile } = useProfile(address);
   const qc = useQueryClient();
 
   const [open, setOpen] = useState(true);
@@ -95,22 +100,6 @@ export function GlobalChat() {
     } catch {
       /* ignore */
     }
-  }, [open]);
-
-  // Shift main layout when the desktop sidebar is open.
-  useEffect(() => {
-    const root = document.documentElement;
-    if (open) {
-      root.classList.add("global-chat-open");
-      root.style.setProperty("--global-chat-width", `${CHAT_WIDTH_PX}px`);
-    } else {
-      root.classList.remove("global-chat-open");
-      root.style.removeProperty("--global-chat-width");
-    }
-    return () => {
-      root.classList.remove("global-chat-open");
-      root.style.removeProperty("--global-chat-width");
-    };
   }, [open]);
 
   // Tick for cooldown countdown.
@@ -173,58 +162,66 @@ export function GlobalChat() {
     send.mutate({ body, gifUrl });
   }
 
-  // Minimized launcher.
-  if (!open) {
+  /** Chevron tab on the right edge — expand when collapsed, collapse when open. */
+  function CollapseTab({ expanded }: { expanded: boolean }) {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-4 left-4 z-40 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 text-sm font-semibold shadow-lg transition-colors hover:bg-muted"
-        aria-label="Open global chat"
+        onClick={() => setOpen(!expanded)}
+        className={cn(
+          "flex shrink-0 flex-col items-center justify-center gap-1 border border-border bg-card text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground",
+          expanded
+            ? "h-20 w-7 rounded-r-xl border-l-0"
+            : "fixed left-0 top-1/2 z-50 h-24 w-8 -translate-y-1/2 rounded-r-xl border-l-0",
+        )}
+        aria-label={expanded ? "Minimize chat" : "Open global chat"}
       >
-        <MessageCircle className="h-4 w-4 text-primary" />
-        Chat
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
-          <span className="h-1.5 w-1.5 rounded-full bg-success" />
-          {online}
-        </span>
+        {expanded ? (
+          <ChevronLeft className="h-5 w-5" />
+        ) : (
+          <>
+            <ChevronRight className="h-5 w-5 text-primary" />
+            <MessageCircle className="h-4 w-4 text-primary" />
+            <span className="text-[10px] font-semibold tabular-nums text-success">
+              {online}
+            </span>
+          </>
+        )}
       </button>
     );
   }
 
+  if (!open) {
+    return <CollapseTab expanded={false} />;
+  }
+
   return (
     <>
-      <aside
+      <div
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[300px] flex-col border-r border-border bg-card shadow-xl",
-          "max-md:inset-0 max-md:z-50 max-md:w-full",
+          "fixed inset-y-0 left-0 z-50 flex",
+          "max-md:inset-0",
         )}
         aria-label="Global chat"
       >
+        <aside
+          className="flex max-w-full flex-col border-r border-border bg-card/95 shadow-2xl backdrop-blur-sm max-md:w-full"
+          style={{ width: CHAT_WIDTH_PX }}
+        >
         {/* Header */}
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
           <div className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4 text-primary" />
             <span className="text-sm font-semibold">Global chat</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-success"
-              title="Users online"
-            >
-              <Users className="h-3.5 w-3.5" />
-              <span className="h-1.5 w-1.5 rounded-full bg-success" />
-              {online} online
-            </span>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Minimize chat"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          <span
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-success"
+            title="Users online"
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+            {online} online
+          </span>
         </div>
 
         {/* Messages */}
@@ -319,7 +316,9 @@ export function GlobalChat() {
             {(send.error as Error)?.message || "Couldn't send message"}
           </p>
         )}
-      </aside>
+        </aside>
+        <CollapseTab expanded />
+      </div>
 
       {gifOpen && (
         <GifPicker
