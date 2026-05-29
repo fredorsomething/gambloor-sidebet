@@ -3,11 +3,7 @@ import { getAddress, isAddress, type Address } from "viem";
 import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
-import {
-  getMarketCollateralToken,
-  getTokenByAddress,
-  MARKET_COLLATERAL_SYMBOL,
-} from "@/lib/chains";
+import { getMarketCollateralToken, getTokenByAddress } from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { isAllowedImageUrl } from "@/lib/profile";
@@ -169,27 +165,21 @@ export async function GET(
     }
   }
 
-  // Clients must treat USDC.e as collateral (legacy DB rows may list native USDC).
-  const collateral = getMarketCollateralToken();
-  if (cond?.collateral) {
-    const chainToken = getAddress(cond.collateral);
-    const known = getTokenByAddress(market.chainId, chainToken);
-    if (
-      known?.symbol !== MARKET_COLLATERAL_SYMBOL &&
-      chainToken.toLowerCase() !== collateral.address.toLowerCase()
-    ) {
-      console.warn("market condition collateral is not USDC.e", {
-        marketId: id,
-        chainToken,
-      });
-    }
-  }
-
+  // Source of truth for collateral is the on-chain condition: splitPosition /
+  // mergePositions / fillOrder all move whatever token the condition (and its
+  // bound Exchange) was created with. Older markets used native USDC; newer
+  // ones use USDC.e. Reporting the real token keeps the UI from checking the
+  // wrong balance/allowance.
+  const fallback = getMarketCollateralToken();
+  const chainCollateral = cond?.collateral
+    ? getAddress(cond.collateral)
+    : (getAddress(market.token) as Address);
+  const known = getTokenByAddress(market.chainId, chainCollateral);
   const marketOut = {
     ...market,
-    token: collateral.address,
-    tokenSymbol: MARKET_COLLATERAL_SYMBOL,
-    decimals: collateral.decimals,
+    token: chainCollateral,
+    tokenSymbol: known?.symbol ?? market.tokenSymbol ?? fallback.symbol,
+    decimals: known?.decimals ?? market.decimals ?? fallback.decimals,
   };
 
   return jsonOk({ market: marketOut, orderBook, positions });
