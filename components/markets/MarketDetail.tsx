@@ -38,10 +38,7 @@ import {
 import { exchangeDomain, ORDER_EIP712_TYPES, randomSalt } from "@/lib/clob";
 import { MarketUsdceBanner } from "@/components/wallet/MarketUsdceBanner";
 import { formatCryptoError } from "@/lib/cryptoErrors";
-import {
-  MARKET_COLLATERAL_SYMBOL,
-  resolveTokenSymbol,
-} from "@/lib/chains";
+import { getMarketCollateralToken, MARKET_COLLATERAL_SYMBOL } from "@/lib/chains";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
@@ -98,13 +95,15 @@ export function MarketDetail({ id }: { id: number }) {
   const data = query.data;
   const market = data?.market;
 
+  // CLOB markets always settle in bridged USDC.e — never native Polygon USDC.
+  const collateral = getMarketCollateralToken();
+
   // Unified sender works for both Privy-managed (embedded) and external wallets.
   const { writeContract } = useTxSender();
   const { signTypedDataAsync } = useSignTypedData();
   const ensurePolygon = useEnsurePolygon();
-  const collateralToken = market?.token as Address | undefined;
   const collateralLive = useTokenInfo({
-    token: collateralToken,
+    token: collateral.address,
     owner: account,
     spender: market?.exchangeAddress as Address | undefined,
   });
@@ -115,8 +114,8 @@ export function MarketDetail({ id }: { id: number }) {
   const [approvingShares, setApprovingShares] = useState(false);
   const [approvalsDismissed, setApprovalsDismissed] = useState(false);
 
-  // On-chain approval state for the checklist.
-  const tokenAddr = market?.token as Address | undefined;
+  // On-chain approval state for the checklist (USDC.e only).
+  const tokenAddr = collateral.address;
   const ctfAddr = market?.ctfAddress as Address | undefined;
   const exchangeAddr = market?.exchangeAddress as Address | undefined;
   const approvalsEnabled =
@@ -175,12 +174,8 @@ export function MarketDetail({ id }: { id: number }) {
   const [shares, setShares] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const decimals = market?.decimals ?? 6;
-  const sym = resolveTokenSymbol(
-    market?.token,
-    market?.tokenSymbol,
-    MARKET_COLLATERAL_SYMBOL,
-  );
+  const decimals = collateral.decimals;
+  const sym = MARKET_COLLATERAL_SYMBOL;
   const positions = data?.positions ?? {};
 
   if (query.isLoading) {
@@ -196,7 +191,7 @@ export function MarketDetail({ id }: { id: number }) {
 
   const ctf = market.ctfAddress as Address;
   const exchange = market.exchangeAddress as Address;
-  const token = market.token as Address;
+  const token = collateral.address;
   const conditionId = market.conditionId as `0x${string}`;
   const resolved = market.status === "Resolved";
   const outcomes = market.outcomes;

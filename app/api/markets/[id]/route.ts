@@ -3,6 +3,11 @@ import { getAddress, isAddress, type Address } from "viem";
 import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
+import {
+  getMarketCollateralToken,
+  getTokenByAddress,
+  MARKET_COLLATERAL_SYMBOL,
+} from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { isAllowedImageUrl } from "@/lib/profile";
@@ -164,5 +169,28 @@ export async function GET(
     }
   }
 
-  return jsonOk({ market, orderBook, positions });
+  // Clients must treat USDC.e as collateral (legacy DB rows may list native USDC).
+  const collateral = getMarketCollateralToken();
+  if (cond?.collateral) {
+    const chainToken = getAddress(cond.collateral);
+    const known = getTokenByAddress(market.chainId, chainToken);
+    if (
+      known?.symbol !== MARKET_COLLATERAL_SYMBOL &&
+      chainToken.toLowerCase() !== collateral.address.toLowerCase()
+    ) {
+      console.warn("market condition collateral is not USDC.e", {
+        marketId: id,
+        chainToken,
+      });
+    }
+  }
+
+  const marketOut = {
+    ...market,
+    token: collateral.address,
+    tokenSymbol: MARKET_COLLATERAL_SYMBOL,
+    decimals: collateral.decimals,
+  };
+
+  return jsonOk({ market: marketOut, orderBook, positions });
 }

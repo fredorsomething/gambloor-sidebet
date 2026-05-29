@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAddress, isAddress } from "viem";
 
+import { getMarketCollateralToken, MARKET_COLLATERAL_SYMBOL } from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
@@ -152,9 +153,10 @@ export async function GET(
     };
   });
 
+  const collateral = getMarketCollateralToken();
   return jsonOk({
-    decimals: market.decimals,
-    tokenSymbol: market.tokenSymbol,
+    decimals: collateral.decimals,
+    tokenSymbol: MARKET_COLLATERAL_SYMBOL,
     openOrders,
     trades: history,
     inventory,
