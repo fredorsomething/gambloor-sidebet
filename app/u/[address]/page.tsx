@@ -12,12 +12,14 @@ import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { PnlChart } from "@/components/profile/PnlChart";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
+import { ProfileActivity } from "@/components/profile/ProfileActivity";
 import { ProfileComments } from "@/components/profile/ProfileComments";
 import { ProfileSocialLinks } from "@/components/profile/ProfileSocialLinks";
 import { RepWidget } from "@/components/profile/RepWidget";
 import { TipButton } from "@/components/profile/TipButton";
 import { UserBadges } from "@/components/profile/UserBadges";
 import { StatusBadge } from "@/components/ui/badge";
+import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { Button } from "@/components/ui/button";
 import { jsonFetch } from "@/lib/fetcher";
 import { isAdminUser } from "@/lib/admin";
@@ -274,6 +276,7 @@ export default function ProfilePage() {
         {!isAdmin && (
           <div className="space-y-6">
             <BetColumn title="Bets won" bets={won} address={address} positive />
+            <ProfileActivity address={address} />
             <BetColumn title="Bets lost" bets={lost} address={address} />
           </div>
         )}
@@ -465,18 +468,27 @@ function BetColumn({
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {b.title}
                 </span>
-                <span className="flex shrink-0 items-center gap-3">
+                <span className="flex shrink-0 items-center gap-2">
                   <span
                     className={cn(
-                      "font-mono text-sm font-semibold",
+                      "inline-flex items-center gap-1.5 font-mono text-sm font-semibold tabular-nums",
                       positive ? "text-success" : "text-danger",
                     )}
                   >
                     {delta >= 0 ? "+" : "−"}
                     {Math.abs(delta).toLocaleString(undefined, {
                       maximumFractionDigits: 2,
-                    })}{" "}
-                    {b.tokenSymbol}
+                    })}
+                    {b.tokenSymbol && (
+                      <TokenSymbol
+                        symbol={b.tokenSymbol}
+                        size={14}
+                        className={cn(
+                          "font-sans font-medium",
+                          !positive && "text-muted-foreground",
+                        )}
+                      />
+                    )}
                   </span>
                   <StatusBadge status={b.status} />
                 </span>

@@ -1,0 +1,194 @@
+import { NextRequest } from "next/server";
+import { formatUnits, getAddress, isAddress } from "viem";
+
+import { prisma } from "@/lib/db";
+import { jsonErr, jsonOk } from "@/lib/serialize";
+
+export const dynamic = "force-dynamic";
+
+export type ActivityKind =
+  | "market_buy"
+  | "market_sell"
+  | "bet_created"
+  | "bet_joined"
+  | "bet_won"
+  | "bet_lost"
+  | "bet_push"
+  | "bet_refunded"
+  | "bet_cancelled";
+
+type ActivityItem = {
+  id: string;
+  kind: ActivityKind;
+  at: string; // ISO timestamp
+  title: string;
+  link: string;
+  tokenSymbol: string | null;
+  /** Primary amount (shares for trades, stake for bets) in display units. */
+  amount: number | null;
+  /** Signed PnL/cost in collateral display units when meaningful. */
+  delta: number | null;
+  /** Outcome / side label, e.g. "Yes", "BUY". */
+  detail: string | null;
+};
+
+const num = (raw: string, decimals: number): number => {
+  try {
+    return Number(formatUnits(BigInt(raw), decimals));
+  } catch {
+    return 0;
+  }
+};
+
+const eq = (a?: string | null, b?: string | null) =>
+  !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+/**
+ * GET /api/users/[address]/activity
+ * Full trading history: market buys/sells plus sidebet lifecycle events
+ * (created, joined, won, lost, push, refunded, cancelled), newest first.
+ */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { address: string } },
+) {
+  const handle = decodeURIComponent(params.address).trim().replace(/^@/, "");
+  if (!isAddress(handle)) return jsonErr("bad address", 400);
+  const address = getAddress(handle);
+  const lower = address.toLowerCase();
+
+  const [trades, bets] = await Promise.all([
+    prisma.trade.findMany({
+      where: {
+        OR: [
+          { taker: { equals: address, mode: "insensitive" } },
+          { maker: { equals: address, mode: "insensitive" } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+      include: {
+        market: {
+          select: {
+            id: true,
+            title: true,
+            decimals: true,
+            tokenSymbol: true,
+            outcomes: { select: { index: true, label: true } },
+          },
+        },
+      },
+    }),
+    prisma.bet.findMany({
+      where: {
+        OR: [
+          { proposer: { equals: address, mode: "insensitive" } },
+          { acceptor: { equals: address, mode: "insensitive" } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+    }),
+  ]);
+
+  const items: ActivityItem[] = [];
+
+  // ---- Market trades (buys / sells from the user's perspective) ----
+  for (const t of trades) {
+    const m = t.market;
+    if (!m) continue;
+    const isTaker = t.taker.toLowerCase() === lower;
+    const userSide = isTaker
+      ? (t.side as "BUY" | "SELL")
+      : t.side === "BUY"
+        ? "SELL"
+        : "BUY";
+    const shares = num(t.shares, m.decimals);
+    const cost = num(t.cost, m.decimals);
+    const label =
+      m.outcomes.find((o) => o.index === t.outcomeIndex)?.label ??
+      `Outcome ${t.outcomeIndex}`;
+
+    items.push({
+      id: `trade-${t.id}`,
+      kind: userSide === "BUY" ? "market_buy" : "market_sell",
+      at: t.createdAt.toISOString(),
+      title: m.title,
+      link: `/markets/${m.id}`,
+      tokenSymbol: m.tokenSymbol,
+      amount: shares,
+      // Buying spends collateral (negative cash), selling returns it (positive).
+      delta: userSide === "BUY" ? -cost : cost,
+      detail: `${userSide} ${label}`,
+    });
+  }
+
+  // ---- Sidebet lifecycle ----
+  for (const b of bets) {
+    const isProposer = eq(b.proposer, address);
+    const ownStakeRaw =
+      isProposer
+        ? b.proposerStake !== "0"
+          ? b.proposerStake
+          : b.amount
+        : b.acceptorStake !== "0"
+          ? b.acceptorStake
+          : b.amount;
+    const ownStake = num(ownStakeRaw, b.decimals);
+    const fee = ownStake * 2 * (b.feeBps / 10000);
+    const link = `/bets/${b.id}`;
+
+    // Entry event: created (proposer) or joined (acceptor).
+    items.push({
+      id: `bet-${b.id}-entry`,
+      kind: isProposer ? "bet_created" : "bet_joined",
+      at: b.createdAt.toISOString(),
+      title: b.title,
+      link,
+      tokenSymbol: b.tokenSymbol,
+      amount: ownStake,
+      delta: null,
+      detail: isProposer ? "Created sidebet" : "Joined sidebet",
+    });
+
+    // Resolution event for terminal states.
+    if (["Settled", "Refunded", "Cancelled"].includes(b.status)) {
+      let kind: ActivityKind = "bet_refunded";
+      let delta: number | null = null;
+      let detail = "Refunded";
+      if (b.status === "Cancelled") {
+        kind = "bet_cancelled";
+        detail = "Cancelled";
+      } else if (b.status === "Settled") {
+        if (!b.winner) {
+          kind = "bet_push";
+          detail = "Push — stake returned";
+          delta = 0;
+        } else if (eq(b.winner, address)) {
+          kind = "bet_won";
+          detail = "Won";
+          delta = ownStake - fee;
+        } else {
+          kind = "bet_lost";
+          detail = "Lost";
+          delta = -ownStake;
+        }
+      }
+      items.push({
+        id: `bet-${b.id}-resolution`,
+        kind,
+        at: b.updatedAt.toISOString(),
+        title: b.title,
+        link,
+        tokenSymbol: b.tokenSymbol,
+        amount: ownStake,
+        delta,
+        detail,
+      });
+    }
+  }
+
+  items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+  return jsonOk({ activity: items.slice(0, 400) });
+}

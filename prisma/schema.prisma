@@ -419,6 +419,29 @@ model DirectMessage {
   @@index([sender, createdAt])
 }
 
+// Site-wide global chat. Anyone signed in can post (rate-limited); everyone can
+// read. `author` is the lowercased wallet address. `gifUrl` is an optional GIF.
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  author    String   // lowercased wallet address
+  body      String   @default("")
+  gifUrl    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([author, createdAt])
+}
+
+// Lightweight presence for the "users online" counter. One row per browser
+// session key (`cid`), refreshed on each chat poll. Online = rows seen recently.
+model Presence {
+  cid       String   @id // client-generated session id
+  address   String?  // lowercased wallet if signed in
+  lastSeen  DateTime @updatedAt
+
+  @@index([lastSeen])
+}
+
 // `blocker` blocked `blocked` from DMs (neither can message the other).
 model DmBlock {
   id        Int      @id @default(autoincrement())

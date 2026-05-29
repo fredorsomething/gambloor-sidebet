@@ -88,7 +88,7 @@ export function NavLinks() {
               : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
           )}
         >
-          Actions
+          Menu
           <ChevronDown
             className={cn(
               "h-3.5 w-3.5 transition-transform",

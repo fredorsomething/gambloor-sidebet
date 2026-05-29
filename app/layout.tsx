@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Providers } from "./providers";
 import { BrandLogo } from "@/components/BrandLogo";
+import { GlobalChat } from "@/components/GlobalChat";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { WalletBalance } from "@/components/wallet/WalletBalance";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
@@ -82,6 +83,7 @@ export default function RootLayout({
               </div>
             </footer>
           </div>
+          <GlobalChat />
         </Providers>
       </body>
     </html>

@@ -39,32 +39,26 @@ export default function HomePage() {
 
       <Link
         href="/swap"
-        className="group relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-border bg-gradient-to-r from-[hsl(222_47%_13%)] via-card to-[hsl(222_47%_13%)] p-5 transition-all hover:border-primary/50 hover:shadow-lg sm:flex-row sm:justify-between md:p-6"
+        className="group flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/40 sm:gap-4 sm:p-4"
       >
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/10 blur-3xl"
-        />
-        <div className="flex items-center gap-4">
-          <div className="flex -space-x-2.5">
-            <TokenBadge symbol="POL" />
-            <TokenBadge symbol="USDC" />
-            <TokenBadge symbol="USDC.e" />
-            <TokenBadge symbol="pUSD" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold tracking-tight md:text-xl">
-              Need tokens to bet?
-            </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Swap POL, USDC, USDC.e &amp; pUSD instantly. Right here on
-              sidebet.lol, straight to your wallet.
-            </p>
-          </div>
+        <div className="flex -space-x-2 shrink-0">
+          <TokenBadge symbol="POL" />
+          <TokenBadge symbol="USDC" />
+          <TokenBadge symbol="USDC.e" />
+          <TokenBadge symbol="pUSD" />
         </div>
-        <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform group-hover:translate-x-0.5">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold tracking-tight sm:text-base">
+            Need tokens to bet?
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
+            Swap POL, USDC, USDC.e &amp; pUSD on sidebet.lol — straight to your
+            wallet.
+          </p>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition-transform group-hover:translate-x-0.5 sm:text-sm">
           Swap now
-          <ArrowRight className="h-4 w-4" />
+          <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
         </span>
       </Link>
 
@@ -85,8 +79,8 @@ export default function HomePage() {
 
 function TokenBadge({ symbol }: { symbol: string }) {
   return (
-    <span className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-card bg-muted ring-1 ring-border">
-      <TokenIcon symbol={symbol} size={26} />
+    <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-muted ring-1 ring-border">
+      <TokenIcon symbol={symbol} size={20} />
     </span>
   );
 }

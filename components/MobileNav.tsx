@@ -111,7 +111,7 @@ export function MobileNav() {
 
             <div className="space-y-1">
               <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Actions
+                Menu
               </div>
               {ACTIONS.map((a) => {
                 const Icon = a.icon;
