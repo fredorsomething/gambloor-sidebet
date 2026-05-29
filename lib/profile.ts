@@ -14,8 +14,8 @@ export function validateBio(bio: string): string | null {
   return null;
 }
 
-/** Allowed avatar hosts after upload or legacy URLs. */
-export function isAllowedAvatarUrl(url: string): boolean {
+/** Allowed image URLs from Vercel Blob (avatars, market covers). */
+export function isAllowedImageUrl(url: string): boolean {
   if (!/^https?:\/\//.test(url)) return false;
   try {
     const host = new URL(url).hostname;
@@ -28,5 +28,10 @@ export function isAllowedAvatarUrl(url: string): boolean {
   }
 }
 
-export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+export { AVATAR_MAX_BYTES } from "@/lib/avatarFile";
 export const AVATAR_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
+
+/** @deprecated Use isAllowedImageUrl */
+export const isAllowedAvatarUrl = isAllowedImageUrl;
+
+export { BET_COVER_MAX_BYTES as BET_IMAGE_MAX_BYTES } from "@/lib/avatarFile";

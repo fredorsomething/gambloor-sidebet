@@ -15,6 +15,7 @@ export type BetRow = {
   amount: string;
   title: string;
   description: string;
+  imageUrl: string | null;
   terms: string;
   termsHash: string;
   nonce: string;

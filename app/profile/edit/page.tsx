@@ -25,7 +25,7 @@ export default function EditProfilePage() {
   return (
     <WalletGuard
       title="Connect to edit your profile"
-      description="You'll sign a free message to save changes. No bet or escrow setup required."
+      description="Use the wallet that owns this profile. Saving uses a free signature, not a paid transaction."
     >
       <EditProfileForm />
     </WalletGuard>
@@ -205,8 +205,9 @@ function EditProfileForm() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Edit profile</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Update how you appear on Sidebet. You&apos;ll sign one message to
-          confirm — no gas fee.
+          Your profile is tied to your wallet address. When you save, your
+          wallet signs a free message (not a transaction) so only you can change
+          your username, photo, and bio — no password or gas fee.
         </p>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   decodeEventLog,
   getAddress,
@@ -14,13 +14,16 @@ import {
   useAccount,
   useChainId,
   usePublicClient,
+  useSignMessage,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
 
+import { BetImageField } from "@/components/bets/BetImageField";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_ABI } from "@/lib/abi";
+import { buildProfileMessage } from "@/lib/auth";
 import { DEFAULT_SETTLER } from "@/lib/chains";
 import { useEscrow } from "@/lib/hooks/useEscrow";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
@@ -38,6 +41,7 @@ export function CreateBetForm() {
   const router = useRouter();
   const { push } = useToast();
   const { address: account } = useAccount();
+  const { signMessageAsync } = useSignMessage();
   const chainId = useChainId();
   const { escrow, tokens } = useEscrow();
   const publicClient = usePublicClient();
@@ -59,6 +63,8 @@ export function CreateBetForm() {
   const [acceptHours, setAcceptHours] = useState("72");
   const [settleHours, setSettleHours] = useState("168");
   const [feeBpsStr, setFeeBpsStr] = useState("0");
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +105,27 @@ export function CreateBetForm() {
   const createWait = useWaitForTransactionReceipt({ hash: createTx.data });
 
   const isBusy = step !== "idle" && step !== "done";
+
+  const onPickCover = useCallback(
+    (file: File, url: string) => {
+      if (coverPreview?.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
+      setCoverFile(file);
+      setCoverPreview(url);
+    },
+    [coverPreview],
+  );
+
+  const onClearCover = useCallback(() => {
+    if (coverPreview?.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
+    setCoverFile(null);
+    setCoverPreview(null);
+  }, [coverPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (coverPreview?.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
+    };
+  }, [coverPreview]);
 
   function validate(): string | null {
     if (!account) return "Connect a wallet first";
@@ -283,6 +310,38 @@ export function CreateBetForm() {
           throw new Error("Couldn't find BetCreated event in receipt");
         }
 
+        let imageUrl: string | null = null;
+        if (coverFile) {
+          const issuedAt = new Date().toISOString();
+          const message = buildProfileMessage(account, issuedAt);
+          const signature = await signMessageAsync({ message });
+          const fd = new FormData();
+          fd.append("file", coverFile);
+          fd.append("address", account);
+          fd.append("message", message);
+          fd.append("signature", signature);
+          fd.append("chainId", String(chainId));
+          fd.append("escrowAddress", escrow);
+          fd.append("onchainId", onchainId.toString());
+
+          const uploadRes = await fetch("/api/upload/bet-image", {
+            method: "POST",
+            body: fd,
+          });
+          if (!uploadRes.ok) {
+            let msg = "Cover image upload failed";
+            try {
+              const body = await uploadRes.json();
+              if (body?.error) msg = body.error;
+            } catch {
+              /* ignore */
+            }
+            throw new Error(msg);
+          }
+          const uploaded = (await uploadRes.json()) as { url: string };
+          imageUrl = uploaded.url;
+        }
+
         const indexed = await jsonFetch<{ id: number }>("/api/bets", {
           method: "POST",
           body: JSON.stringify({
@@ -298,6 +357,7 @@ export function CreateBetForm() {
             amount: amount.toString(),
             title,
             description,
+            imageUrl,
             terms,
             termsHash: pendingCreate.termsHash,
             nonce: pendingCreate.nonce,
@@ -344,6 +404,18 @@ export function CreateBetForm() {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Two-line summary of the bet"
             maxLength={500}
+          />
+        </Field>
+
+        <Field
+          label="Cover image"
+          hint="Optional — thumbnail on market cards and search."
+        >
+          <BetImageField
+            previewUrl={coverPreview}
+            onPick={onPickCover}
+            onClear={onClearCover}
+            disabled={isBusy}
           />
         </Field>
 
@@ -454,6 +526,12 @@ export function CreateBetForm() {
           )}
           . Your stake is pulled into escrow on the second tx.
         </div>
+        {coverFile && (
+          <div>
+            With a cover image, you&apos;ll also sign a free message after the
+            on-chain create (no extra gas) to upload it.
+          </div>
+        )}
       </div>
 
       {error && (

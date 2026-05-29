@@ -47,6 +47,7 @@ model Bet {
   // Off-chain content
   title           String
   description     String
+  imageUrl        String?  // market cover (Vercel Blob); not part of on-chain termsHash
   terms           String
   termsHash       String   // 0x-prefixed keccak256 hex
   nonce           String

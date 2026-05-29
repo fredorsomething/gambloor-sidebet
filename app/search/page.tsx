@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
+import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
 import { StatusBadge } from "@/components/ui/badge";
 import { jsonFetch } from "@/lib/fetcher";
@@ -15,6 +16,7 @@ type SearchResults = {
   markets: {
     id: number;
     title: string;
+    imageUrl: string | null;
     status: BetStatusName;
     amount: string;
     decimals: number;
@@ -85,8 +87,9 @@ function Results() {
             <Link
               key={m.id}
               href={`/bets/${m.id}`}
-              className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-primary/40"
+              className="card flex items-center gap-3 p-4 transition-colors hover:border-primary/40"
             >
+              <BetThumbnail imageUrl={m.imageUrl} title={m.title} size="sm" />
               <span className="min-w-0 flex-1 truncate font-medium">
                 {m.title}
               </span>

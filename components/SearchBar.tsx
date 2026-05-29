@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
 import { StatusBadge } from "@/components/ui/badge";
 import { jsonFetch } from "@/lib/fetcher";
@@ -14,6 +15,7 @@ type SearchResults = {
   markets: {
     id: number;
     title: string;
+    imageUrl: string | null;
     status: BetStatusName;
     amount: string;
     decimals: number;
@@ -144,8 +146,9 @@ export function SearchBar() {
                 <button
                   key={m.id}
                   onClick={() => go(`/bets/${m.id}`)}
-                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left hover:bg-muted"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-muted"
                 >
+                  <BetThumbnail imageUrl={m.imageUrl} title={m.title} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {m.title}
                   </span>

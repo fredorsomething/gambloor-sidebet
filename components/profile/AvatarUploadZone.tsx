@@ -5,7 +5,8 @@ import { useCallback, useRef, useState } from "react";
 
 import { Avatar } from "@/components/profile/Identity";
 import { cn } from "@/lib/utils";
-import { AVATAR_ACCEPT, AVATAR_MAX_BYTES } from "@/lib/profile";
+import { validateAvatarFileClient } from "@/lib/avatarFile";
+import { AVATAR_ACCEPT } from "@/lib/profile";
 
 type Props = {
   address: string;
@@ -36,12 +37,9 @@ export function AvatarUploadZone({
     (file: File | undefined) => {
       setLocalError(null);
       if (!file) return;
-      if (!file.type.startsWith("image/")) {
-        setLocalError("Please choose an image file.");
-        return;
-      }
-      if (file.size > AVATAR_MAX_BYTES) {
-        setLocalError("Image must be 2 MB or smaller.");
+      const validationError = validateAvatarFileClient(file);
+      if (validationError) {
+        setLocalError(validationError);
         return;
       }
       const url = URL.createObjectURL(file);

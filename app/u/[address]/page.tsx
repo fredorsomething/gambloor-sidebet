@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { isAddress } from "viem";
 import { useAccount } from "wagmi";
 
+import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
 import { StatusBadge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import type { BetStatusName } from "@/lib/abi";
 type ProfileBet = {
   id: number;
   title: string;
+  imageUrl: string | null;
   amount: string;
   decimals: number;
   tokenSymbol: string | null;
@@ -245,8 +247,9 @@ function BetColumn({
               <Link
                 key={b.id}
                 href={`/bets/${b.id}`}
-                className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-primary/40"
+                className="card flex items-center gap-3 p-4 transition-colors hover:border-primary/40"
               >
+                <BetThumbnail imageUrl={b.imageUrl} title={b.title} size="sm" />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {b.title}
                 </span>

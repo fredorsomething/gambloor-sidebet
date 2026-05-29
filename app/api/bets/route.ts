@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
 import { prisma } from "@/lib/db";
+import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,13 @@ const CreateBetSchema = z.object({
 
   title: z.string().min(3).max(200),
   description: z.string().min(1).max(2000),
+  imageUrl: z
+    .string()
+    .url()
+    .max(500)
+    .refine((u) => isAllowedImageUrl(u), "invalid image url")
+    .nullable()
+    .optional(),
   terms: z.string().min(1).max(10_000),
   termsHash: z.string().regex(HEX64, "termsHash must be 0x + 64 hex"),
   nonce: z.string().min(1).max(80),
@@ -91,6 +99,7 @@ export async function POST(req: NextRequest) {
 
         title: d.title.trim(),
         description: d.description.trim(),
+        imageUrl: d.imageUrl ?? null,
         terms: d.terms.trim(),
         termsHash: d.termsHash.toLowerCase(),
         nonce: d.nonce,

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 
+import { BetThumbnail } from "@/components/BetThumbnail";
 import { BetActions } from "@/components/BetActions";
 import { BetDetailLive } from "@/components/BetDetailLive";
 import { StatusBadge } from "@/components/ui/badge";
@@ -57,6 +58,14 @@ export default async function BetDetailPage({
             #{bet.onchainId} on chain {bet.chainId}
           </span>
         </div>
+        {bet.imageUrl && (
+          <BetThumbnail
+            imageUrl={bet.imageUrl}
+            title={bet.title}
+            size="lg"
+            className="mb-4 w-full max-w-none"
+          />
+        )}
         <h1 className="text-2xl md:text-3xl font-semibold leading-tight">
           {bet.title}
         </h1>

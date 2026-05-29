@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { BetThumbnail } from "@/components/BetThumbnail";
 import { Identity } from "@/components/profile/Identity";
 import { StatusBadge } from "@/components/ui/badge";
 import { formatToken } from "@/lib/utils";
@@ -22,12 +23,17 @@ export function BetCard({ bet }: { bet: BetRow }) {
         </span>
       </div>
 
-      <h3 className="mt-3 line-clamp-2 text-base font-semibold leading-snug group-hover:text-primary">
-        {bet.title}
-      </h3>
-      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-        {bet.description}
-      </p>
+      <div className="mt-3 flex gap-3">
+        <BetThumbnail imageUrl={bet.imageUrl} title={bet.title} size="md" />
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 text-base font-semibold leading-snug group-hover:text-primary">
+            {bet.title}
+          </h3>
+          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+            {bet.description}
+          </p>
+        </div>
+      </div>
 
       <div className="mt-4 flex items-end justify-between">
         <div>

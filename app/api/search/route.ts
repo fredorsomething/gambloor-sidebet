@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         title: true,
+        imageUrl: true,
         status: true,
         amount: true,
         decimals: true,
