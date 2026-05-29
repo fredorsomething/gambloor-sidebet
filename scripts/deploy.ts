@@ -1,9 +1,6 @@
 import hre from "hardhat";
 import { getAddress } from "viem";
 
-// Bridged USDC.e on Polygon — collateral for CLOB markets (not native USDC).
-const POLYGON_USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
-
 async function verify(address: string, constructorArguments: unknown[]) {
   try {
     await hre.run("verify:verify", { address, constructorArguments });
@@ -16,25 +13,13 @@ async function verify(address: string, constructorArguments: unknown[]) {
 async function main() {
   const network = hre.network.name;
   const defaultSettler = process.env.NEXT_PUBLIC_DEFAULT_SETTLER?.trim();
-  const collateral =
-    process.env.NEXT_PUBLIC_COLLATERAL_ADDRESS_POLYGON?.trim() || POLYGON_USDC_E;
 
   console.log(`Deploying protocol to ${network}...`);
 
-  // 1) SidebetEscrowV2 (1v1 escrow).
+  // SidebetEscrowV2 (1v1 escrow). Prediction markets are fully off-chain
+  // (custodial engine + ledger) and no longer need on-chain contracts.
   const escrowV2 = await hre.viem.deployContract("SidebetEscrowV2", []);
   console.log(`SidebetEscrowV2 deployed at: ${escrowV2.address}`);
-
-  // 2) ConditionalTokens (ERC-1155 outcome shares).
-  const ctf = await hre.viem.deployContract("ConditionalTokens", []);
-  console.log(`ConditionalTokens deployed at: ${ctf.address}`);
-
-  // 3) CTFExchange (EIP-712 order settlement) bound to the CTF + collateral.
-  const exchange = await hre.viem.deployContract("CTFExchange", [
-    ctf.address,
-    getAddress(collateral),
-  ]);
-  console.log(`CTFExchange deployed at: ${exchange.address}`);
 
   // Seed the default approved settler at 2% (200 bps) on the escrow registry.
   if (defaultSettler && /^0x[0-9a-fA-F]{40}$/.test(defaultSettler)) {
@@ -47,15 +32,11 @@ async function main() {
 
   console.log("\nAdd these to .env / Vercel:");
   console.log(`NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON=${escrowV2.address}`);
-  console.log(`NEXT_PUBLIC_CTF_ADDRESS_POLYGON=${ctf.address}`);
-  console.log(`NEXT_PUBLIC_EXCHANGE_ADDRESS_POLYGON=${exchange.address}`);
 
   if (network !== "hardhat" && process.env.POLYGONSCAN_API_KEY) {
     console.log("\nWaiting 30s before verification...");
     await new Promise((r) => setTimeout(r, 30_000));
     await verify(escrowV2.address, []);
-    await verify(ctf.address, []);
-    await verify(exchange.address, [ctf.address, getAddress(collateral)]);
   }
 }
 

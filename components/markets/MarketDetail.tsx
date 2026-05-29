@@ -2,22 +2,11 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ImagePlus, X } from "lucide-react";
+import { ImagePlus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import {
-  formatUnits,
-  maxUint256,
-  parseUnits,
-  type Address,
-} from "viem";
-import {
-  useAccount,
-  usePublicClient,
-  useReadContracts,
-  useSignTypedData,
-} from "wagmi";
-import { polygon } from "wagmi/chains";
+import { useMemo, useRef, useState } from "react";
+import { parseUnits, type Address } from "viem";
+import { useAccount } from "wagmi";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
@@ -28,57 +17,50 @@ import { Resolvers } from "@/components/Resolvers";
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
-import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { useToast } from "@/components/ui/Toast";
-import {
-  CONDITIONAL_TOKENS_ABI,
-  ERC20_ABI,
-  EXCHANGE_ABI,
-} from "@/lib/abi";
-import { exchangeDomain, ORDER_EIP712_TYPES, randomSalt } from "@/lib/clob";
-import { MarketUsdceBanner } from "@/components/wallet/MarketUsdceBanner";
-import { formatCryptoError } from "@/lib/cryptoErrors";
+import { ERC20_ABI } from "@/lib/abi";
+import { isAdminAddress } from "@/lib/admin";
 import { getMarketCollateralToken } from "@/lib/chains";
+import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useMarketSocket } from "@/lib/hooks/useMarketSocket";
 import { useTxSender } from "@/lib/hooks/useTxSender";
-import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
-import { waitForAllowance, waitForTxReceipt } from "@/lib/txWait";
 import { jsonFetch } from "@/lib/fetcher";
-import { formatToken, shortAddr } from "@/lib/utils";
-import type { MarketDetailResponse, OrderRow } from "@/lib/types";
+import { formatMicro } from "@/lib/exchange/units";
+import type { BookLevel, BookSnapshot } from "@/lib/exchange/types";
+import { shortAddr } from "@/lib/utils";
+import type { MarketDetailResponse } from "@/lib/types";
 
 type Side = "BUY" | "SELL";
-type OrderType = "limit" | "market" | "mint" | "redeem";
+type OrderType = "LIMIT" | "MARKET";
 
-/** A book level in the unified view. `_complementary` rows come from the
- * opposing outcome and are filled by minting/merging a full set. */
-type UnifiedOrder = OrderRow & { _complementary?: boolean };
+type ExchangeConfig = {
+  chainId: number;
+  treasury: string | null;
+  token: { address: string; symbol: string; decimals: number };
+  wsUrl: string | null;
+};
 
-/** Cents string for a 0–1 probability price, e.g. 0.154 -> "15.4¢". */
-function cents(price: number): string {
-  if (!Number.isFinite(price)) return "—";
-  return `${(price * 100).toFixed(1)}¢`;
+type Level = { price: number; shares: number };
+
+function cents(p: number | null): string {
+  if (p == null || !Number.isFinite(p)) return "—";
+  return `${(p * 100).toFixed(1)}¢`;
 }
-
 function money(n: number): string {
   if (!Number.isFinite(n)) return "$0.00";
   return `$${n.toFixed(2)}`;
 }
-
-/** Taker-fillable shares remaining on a resting order (raw token units). */
-function sharesRemainingRaw(o: OrderRow): bigint {
-  const remainingTaker = BigInt(o.takerAmount) - BigInt(o.filled);
-  if (remainingTaker <= 0n) return 0n;
-  const makerAmount = BigInt(o.makerAmount);
-  const takerAmount = BigInt(o.takerAmount);
-  return o.side === "SELL"
-    ? (remainingTaker * makerAmount) / (takerAmount || 1n)
-    : remainingTaker;
+function microToNum(s: string | undefined): number {
+  return Number(formatMicro(BigInt(s ?? "0")));
 }
+
+const WS_URL =
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_ENGINE_WS_URL ?? null : null;
 
 export function MarketDetail({ id }: { id: number }) {
   const { address: account } = useAccount();
-  const publicClient = usePublicClient({ chainId: polygon.id });
+  const { getAccessToken } = usePrivy();
   const { push } = useToast();
   const searchParams = useSearchParams();
 
@@ -86,87 +68,21 @@ export function MarketDetail({ id }: { id: number }) {
   const query = useQuery<MarketDetailResponse>({
     queryKey: ["market", id, account],
     queryFn: () => jsonFetch(`/api/markets/${id}${viewerQ}`),
-    // Poll briskly so the book/positions stay live without manual refreshes;
-    // pause polling while the tab is hidden to avoid wasted requests.
-    refetchInterval: 4_000,
+    refetchInterval: 5_000,
     refetchIntervalInBackground: false,
   });
+  const config = useQuery<ExchangeConfig>({
+    queryKey: ["exchange-config"],
+    queryFn: () => jsonFetch(`/api/exchange/config`),
+    staleTime: 60_000,
+  });
+
+  const live = useMarketSocket(id, WS_URL ?? config.data?.wsUrl ?? null);
 
   const data = query.data;
   const market = data?.market;
+  const book: BookSnapshot | null = live.book ?? data?.book ?? null;
 
-  // The collateral token is whatever this market's on-chain condition uses
-  // (reported by the API from chain). Newer markets use USDC.e; some older ones
-  // used native USDC. Always trust the market's own token so balance/allowance
-  // checks match what splitPosition / fillOrder actually move.
-  const fallbackCollateral = getMarketCollateralToken();
-  const collateralAddress =
-    (market?.token as Address | undefined) ?? fallbackCollateral.address;
-
-  // Unified sender works for both Privy-managed (embedded) and external wallets.
-  const { writeContract } = useTxSender();
-  const { signTypedDataAsync } = useSignTypedData();
-  const ensurePolygon = useEnsurePolygon();
-  const collateralLive = useTokenInfo({
-    token: collateralAddress,
-    owner: account,
-    spender: market?.exchangeAddress as Address | undefined,
-  });
-
-  // Pending flags for the approval popup actions.
-  const [approvingExchange, setApprovingExchange] = useState(false);
-  const [approvingCtf, setApprovingCtf] = useState(false);
-  const [approvingShares, setApprovingShares] = useState(false);
-  const [approvalsDismissed, setApprovalsDismissed] = useState(false);
-
-  // On-chain approval state for the checklist (this market's real collateral).
-  const tokenAddr = collateralAddress;
-  const ctfAddr = market?.ctfAddress as Address | undefined;
-  const exchangeAddr = market?.exchangeAddress as Address | undefined;
-  const approvalsEnabled =
-    !!account && !!tokenAddr && !!ctfAddr && !!exchangeAddr;
-
-  const approvalReads = useReadContracts({
-    allowFailure: true,
-    contracts: approvalsEnabled
-      ? [
-          {
-            address: tokenAddr!,
-            abi: ERC20_ABI,
-            functionName: "allowance",
-            args: [account as Address, exchangeAddr!],
-            chainId: polygon.id,
-          },
-          {
-            address: tokenAddr!,
-            abi: ERC20_ABI,
-            functionName: "allowance",
-            args: [account as Address, ctfAddr!],
-            chainId: polygon.id,
-          },
-          {
-            address: ctfAddr!,
-            abi: CONDITIONAL_TOKENS_ABI,
-            functionName: "isApprovedForAll",
-            args: [account as Address, exchangeAddr!],
-            chainId: polygon.id,
-          },
-        ]
-      : [],
-    query: { enabled: approvalsEnabled, refetchInterval: 15_000 },
-  });
-
-  const exchangeAllowance = (approvalReads.data?.[0]?.result as bigint) ?? 0n;
-  const ctfAllowance = (approvalReads.data?.[1]?.result as bigint) ?? 0n;
-  const exchangeCollateralApproved = exchangeAllowance > 0n;
-  const ctfCollateralApproved = ctfAllowance > 0n;
-  const collateralApproved =
-    exchangeCollateralApproved && ctfCollateralApproved;
-  const sharesApproved = (approvalReads.data?.[2]?.result as boolean) ?? false;
-
-  const approvalUi = { showWalletUIs: true as const };
-
-  // Trade panel state (seeded from ?o= / ?side= deep links on the cards).
   const [selectedIdx, setSelectedIdx] = useState(() => {
     const o = Number(searchParams.get("o"));
     return Number.isInteger(o) && o >= 0 ? o : 0;
@@ -174,16 +90,150 @@ export function MarketDetail({ id }: { id: number }) {
   const [side, setSide] = useState<Side>(
     searchParams.get("side") === "SELL" ? "SELL" : "BUY",
   );
-  const [orderType, setOrderType] = useState<OrderType>("limit");
+  const [orderType, setOrderType] = useState<OrderType>("LIMIT");
   const [limitCents, setLimitCents] = useState("");
   const [shares, setShares] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const decimals =
-    market?.decimals ?? collateralLive.decimals ?? fallbackCollateral.decimals;
-  const sym =
-    market?.tokenSymbol ?? collateralLive.symbol ?? fallbackCollateral.symbol;
-  const positions = data?.positions ?? {};
+  const fallback = getMarketCollateralToken();
+  const sym = market?.tokenSymbol ?? fallback.symbol;
+
+  // ---- folded (unified) book for the selected outcome --------------------
+  const folded = useMemo(() => {
+    if (!book || !market) return { asks: [] as Level[], bids: [] as Level[] };
+    const isBinary = market.outcomes.length === 2;
+    const sel = book.outcomes.find((o) => o.outcomeIndex === selectedIdx);
+    const toLevel = (l: BookLevel): Level => ({
+      price: Number(l.price),
+      shares: Number(l.shares),
+    });
+    const asks: Level[] = (sel?.asks ?? []).map(toLevel);
+    const bids: Level[] = (sel?.bids ?? []).map(toLevel);
+    if (isBinary) {
+      const other = book.outcomes.find((o) => o.outcomeIndex !== selectedIdx);
+      // A bid on the other outcome is an ask here at (1 - price); an ask on the
+      // other outcome is a bid here at (1 - price).
+      for (const l of other?.bids ?? []) {
+        asks.push({ price: 1 - Number(l.price), shares: Number(l.shares) });
+      }
+      for (const l of other?.asks ?? []) {
+        bids.push({ price: 1 - Number(l.price), shares: Number(l.shares) });
+      }
+    }
+    // Merge equal price levels.
+    const mergeLevels = (levels: Level[]) => {
+      const m = new Map<string, number>();
+      for (const l of levels) {
+        const k = l.price.toFixed(6);
+        m.set(k, (m.get(k) ?? 0) + l.shares);
+      }
+      return [...m.entries()].map(([p, s]) => ({ price: Number(p), shares: s }));
+    };
+    const a = mergeLevels(asks).sort((x, y) => x.price - y.price);
+    const b = mergeLevels(bids).sort((x, y) => y.price - x.price);
+    return { asks: a, bids: b };
+  }, [book, market, selectedIdx]);
+
+  const bestAsk = folded.asks[0]?.price ?? null;
+  const bestBid = folded.bids[0]?.price ?? null;
+  const mid =
+    bestAsk != null && bestBid != null ? (bestAsk + bestBid) / 2 : bestAsk ?? bestBid;
+  const spread = bestAsk != null && bestBid != null ? bestAsk - bestBid : null;
+
+  function outcomeBuyPrice(idx: number): number | null {
+    if (!book || !market) return null;
+    const isBinary = market.outcomes.length === 2;
+    const sel = book.outcomes.find((o) => o.outcomeIndex === idx);
+    let best = sel?.asks[0] ? Number(sel.asks[0].price) : null;
+    if (isBinary) {
+      const other = book.outcomes.find((o) => o.outcomeIndex !== idx);
+      if (other?.bids[0]) {
+        const p = 1 - Number(other.bids[0].price);
+        best = best == null ? p : Math.min(best, p);
+      }
+    }
+    return best;
+  }
+
+  async function authFetch(path: string, init: RequestInit) {
+    const token = await getAccessToken();
+    return jsonFetch(path, {
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  }
+
+  async function placeOrder(args: {
+    side: Side;
+    type: OrderType;
+    price?: number;
+    sharesStr: string;
+  }) {
+    if (!account || !market) return;
+    const sharesNum = Number(args.sharesStr);
+    if (!(sharesNum > 0)) {
+      push({ title: "Enter a share amount", variant: "danger" });
+      return;
+    }
+    if (args.type === "LIMIT" && !(args.price && args.price > 0 && args.price < 1)) {
+      push({ title: "Price must be between 0¢ and 100¢", variant: "danger" });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = (await authFetch(`/api/markets/${id}/orders`, {
+        method: "POST",
+        body: JSON.stringify({
+          maker: account,
+          side: args.side,
+          outcomeIndex: selectedIdx,
+          type: args.type,
+          ...(args.type === "LIMIT" ? { price: args.price } : {}),
+          shares: sharesNum,
+        }),
+      })) as { filledQty: string; restId: string | null };
+      const filled = microToNum(res.filledQty);
+      push({
+        title:
+          filled > 0
+            ? res.restId
+              ? "Partially filled — rest resting"
+              : "Order filled"
+            : "Order posted",
+        description:
+          filled > 0
+            ? `${filled.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares matched.`
+            : "Your order is resting on the book.",
+        variant: "success",
+      });
+      setShares("");
+      query.refetch();
+    } catch (err) {
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Order failed",
+      });
+      push({ title, description, variant: "danger" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function onSubmit() {
+    void placeOrder({
+      side,
+      type: orderType,
+      price: orderType === "LIMIT" ? Number(limitCents) / 100 : undefined,
+      sharesStr: shares,
+    });
+  }
+
+  function takeLevel(level: Level, takeSide: Side) {
+    // Cross immediately: market order sized to the level's available shares.
+    void placeOrder({ side: takeSide, type: "MARKET", sharesStr: String(level.shares) });
+  }
 
   if (query.isLoading) {
     return <div className="card h-48 animate-pulse bg-muted/30" />;
@@ -196,923 +246,39 @@ export function MarketDetail({ id }: { id: number }) {
     );
   }
 
-  const ctf = market.ctfAddress as Address;
-  const exchange = market.exchangeAddress as Address;
-  const token = collateralAddress;
-  const conditionId = market.conditionId as `0x${string}`;
   const resolved = market.status === "Resolved";
   const outcomes = market.outcomes;
-  const selected = outcomes[selectedIdx] ?? outcomes[0];
-  const book = data?.orderBook?.[selected.index] ?? { buys: [], sells: [] };
+  const selected = outcomes.find((o) => o.index === selectedIdx) ?? outcomes[0];
+  const viewer = data?.viewer;
+  const collateralBal = microToNum(viewer?.collateral.balance);
+  const collateralLocked = microToNum(viewer?.collateral.locked);
+  const myShares = microToNum(viewer?.shares[selected.index]?.balance);
 
-  // ---- Unified (combined Yes/No) order book ----------------------------
-  // For binary markets the two outcomes are complementary (price sums to 1),
-  // so we fold the *other* outcome's liquidity into a single book denominated
-  // in the selected outcome. A resting BUY on the other side is, economically,
-  // an ASK on this side at (1 - price); a resting SELL on the other side is a
-  // BID here at (1 - price). Complementary rows are filled peer-to-peer by
-  // minting (split) or merging a full set around the native fill.
-  const isBinary = outcomes.length === 2;
-  const otherOutcome = isBinary
-    ? outcomes.find((o) => o.index !== selected.index) ?? null
-    : null;
-  const otherBook =
-    otherOutcome != null
-      ? data?.orderBook?.[otherOutcome.index] ?? { buys: [], sells: [] }
-      : { buys: [], sells: [] };
+  const canResolve =
+    !!account &&
+    !resolved &&
+    market.status === "Open" &&
+    (account.toLowerCase() === market.settler.toLowerCase() || isAdminAddress(account));
 
-  const compl = (o: OrderRow): UnifiedOrder => ({
-    ...o,
-    price: String(1 - Number(o.price)),
-    _complementary: true,
-  });
-
-  const unifiedSells: UnifiedOrder[] = isBinary
-    ? [...book.sells, ...otherBook.buys.map(compl)].sort(
-        (a, b) => Number(a.price) - Number(b.price),
-      )
-    : (book.sells as UnifiedOrder[]);
-  const unifiedBuys: UnifiedOrder[] = isBinary
-    ? [...book.buys, ...otherBook.sells.map(compl)].sort(
-        (a, b) => Number(b.price) - Number(a.price),
-      )
-    : (book.buys as UnifiedOrder[]);
-
-  // Best prices reflect combined liquidity across both outcomes.
-  const bestAsk = unifiedSells[0] ? Number(unifiedSells[0].price) : null;
-  const bestBid = unifiedBuys[0] ? Number(unifiedBuys[0].price) : null;
-  const spread = bestAsk != null && bestBid != null ? bestAsk - bestBid : null;
-  const mid =
-    bestAsk != null && bestBid != null
-      ? (bestAsk + bestBid) / 2
-      : (bestAsk ?? bestBid);
-
-  // Best ask per outcome (cost to buy), combining native asks with the
-  // complementary bids from the opposing outcome.
-  function outcomeBuyPrice(idx: number): number | null {
-    const b = data?.orderBook?.[idx];
-    let best = b?.sells[0] ? Number(b.sells[0].price) : null;
-    if (isBinary) {
-      const other = outcomes.find((o) => o.index !== idx);
-      const ob = other ? data?.orderBook?.[other.index] : undefined;
-      if (ob?.buys[0]) {
-        const p = 1 - Number(ob.buys[0].price);
-        best = best == null ? p : Math.min(best, p);
-      }
-    }
-    return best;
-  }
-
-  // ---- on-chain actions -------------------------------------------------
-
-  async function approveExchangeCollateral() {
-    if (!account || !token) return;
-    setApprovingExchange(true);
-    try {
-      await ensurePolygon();
-      const hash = await writeContract(
-        {
-          address: token,
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [exchange, maxUint256],
-        },
-        approvalUi,
-      );
-      await waitForAllowance(token, exchange, account as Address, 1n, hash);
-      push({
-        title: `${sym} approved for trading`,
-        description: "Exchange can move your collateral for buys.",
-        variant: "success",
-      });
-      await approvalReads.refetch();
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Approval failed",
-      });
-      push({ title, description, variant: "danger" });
-    } finally {
-      setApprovingExchange(false);
-    }
-  }
-
-  async function approveCtfCollateral() {
-    if (!account || !token) return;
-    setApprovingCtf(true);
-    try {
-      await ensurePolygon();
-      const hash = await writeContract(
-        {
-          address: token,
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [ctf, maxUint256],
-        },
-        approvalUi,
-      );
-      await waitForAllowance(token, ctf, account as Address, 1n, hash);
-      push({
-        title: `${sym} approved for minting`,
-        description: "Outcome tokens can pull collateral when you mint sets.",
-        variant: "success",
-      });
-      await approvalReads.refetch();
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Approval failed",
-      });
-      push({ title, description, variant: "danger" });
-    } finally {
-      setApprovingCtf(false);
-    }
-  }
-
-  async function approveShares() {
-    setApprovingShares(true);
-    try {
-      await ensurePolygon();
-      await writeContract(
-        {
-          address: ctf,
-          abi: CONDITIONAL_TOKENS_ABI,
-          functionName: "setApprovalForAll",
-          args: [exchange, true],
-        },
-        approvalUi,
-      );
-      push({ title: "Shares approved for trading", variant: "success" });
-      approvalReads.refetch();
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Approval failed",
-      });
-      push({ title, description, variant: "danger" });
-    } finally {
-      setApprovingShares(false);
-    }
-  }
-
-  async function readCollateralBalanceOf(owner?: Address): Promise<bigint> {
-    if (!publicClient || !owner || !token) return 0n;
-    return publicClient.readContract({
-      address: token,
-      abi: ERC20_ABI,
-      functionName: "balanceOf",
-      args: [owner],
-    });
-  }
-
-  async function readCollateralBalance(): Promise<bigint> {
-    return readCollateralBalanceOf(account as Address | undefined);
-  }
-
-  /** Collateral allowance an owner has granted the exchange. */
-  async function readCollateralAllowance(owner: Address): Promise<bigint> {
-    if (!publicClient || !token) return 0n;
-    return publicClient.readContract({
-      address: token,
-      abi: ERC20_ABI,
-      functionName: "allowance",
-      args: [owner, exchange],
-    });
-  }
-
-  /** Whether an owner approved the exchange to move their outcome shares. */
-  async function readSharesApprovedFor(owner: Address): Promise<boolean> {
-    if (!publicClient) return false;
-    return publicClient.readContract({
-      address: ctf,
-      abi: CONDITIONAL_TOKENS_ABI,
-      functionName: "isApprovedForAll",
-      args: [owner, exchange],
-    });
-  }
-
-  function assertCollateralFor(amt: bigint, balance: bigint) {
-    const tokenDecimals = collateralLive.decimals ?? decimals;
-    if (amt > balance) {
-      throw new Error(
-        `Need ${formatToken(amt, tokenDecimals)} ${sym} — you have ${formatToken(balance, tokenDecimals)}`,
-      );
-    }
-  }
-
-  async function doSplit(amountStr: string) {
-    try {
-      const tokenDecimals = collateralLive.decimals ?? decimals;
-      const amt = parseUnits(amountStr || "0", tokenDecimals);
-      if (amt <= 0n) return;
-      if (!ctfCollateralApproved) {
-        setApprovalsDismissed(false);
-        throw new Error(`Approve ${sym} for minting first`);
-      }
-      await ensurePolygon();
-      const balance = await readCollateralBalance();
-      assertCollateralFor(amt, balance);
-      const hash = await writeContract(
-        {
-          address: ctf,
-          abi: CONDITIONAL_TOKENS_ABI,
-          functionName: "splitPosition",
-          args: [conditionId, amt],
-        },
-        approvalUi,
-      );
-      await waitForTxReceipt(hash);
-      push({
-        title: "Minted a full set",
-        description: `You now hold ${amountStr} of every outcome.`,
-        variant: "success",
-      });
-      setShares("");
-      await collateralLive.refetch();
-      query.refetch();
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Mint failed",
-      });
-      push({ title, description, variant: "danger" });
-    }
-  }
-
-  async function doMerge(amountStr: string) {
-    try {
-      const amt = parseUnits(amountStr || "0", decimals);
-      if (amt <= 0n) return;
-      await ensurePolygon();
-      await writeContract({
-        address: ctf,
-        abi: CONDITIONAL_TOKENS_ABI,
-        functionName: "mergePositions",
-        args: [conditionId, amt],
-      });
-      push({ title: `Merged a full set back into ${sym}`, variant: "success" });
-      setShares("");
-      query.refetch();
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Merge failed",
-      });
-      push({ title, description, variant: "danger" });
-    }
-  }
-
-  async function doRedeem() {
-    try {
-      await ensurePolygon();
-      await writeContract({
-        address: ctf,
-        abi: CONDITIONAL_TOKENS_ABI,
-        functionName: "redeemPositions",
-        args: [conditionId],
-      });
-      push({ title: "Redeemed winning shares", variant: "success" });
-      query.refetch();
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Redeem failed",
-      });
-      push({ title, description, variant: "danger" });
-    }
-  }
-
-  function sharesForOutcome(idx: number): bigint {
-    return BigInt(positions[idx] ?? "0");
-  }
-
-  async function readShareBalance(
-    positionId: string,
-    owner?: Address,
-  ): Promise<bigint> {
-    if (!publicClient || !owner) return 0n;
-    return publicClient.readContract({
-      address: ctf,
-      abi: CONDITIONAL_TOKENS_ABI,
-      functionName: "balanceOf",
-      args: [BigInt(positionId), owner],
-    });
-  }
-
-  /** Taker-side fill units for `fillOrder`, matching fillUnifiedShares. */
-  function takerFillFor(order: UnifiedOrder, sharesTake: bigint): bigint {
-    const makerAmount = BigInt(order.makerAmount);
-    const takerAmount = BigInt(order.takerAmount);
-    const remainingTaker = takerAmount - BigInt(order.filled);
-    const avail = sharesRemainingRaw(order);
-    const whole = sharesTake >= avail;
-
-    if (!order._complementary) {
-      // Native SELL (ask): taker pays collateral (collateral-denominated units).
-      // Native BUY (bid): taker delivers shares (share-denominated units).
-      if (order.side === "SELL") {
-        return whole
-          ? remainingTaker
-          : (takerAmount * sharesTake) / (makerAmount || 1n);
-      }
-      return whole ? remainingTaker : sharesTake;
-    }
-    // Complementary BUY (other-side buy → ask here): we sell the OTHER outcome
-    // into it; taker units are share-denominated.
-    if (order.side === "BUY") {
-      return whole ? remainingTaker : sharesTake;
-    }
-    // Complementary SELL (other-side sell → bid here): we buy the OTHER outcome
-    // from it; taker units are collateral-denominated.
-    return whole
-      ? remainingTaker
-      : (takerAmount * sharesTake) / (makerAmount || 1n);
-  }
-
-  function makerGivesFor(order: OrderRow, takerFill: bigint): bigint {
-    const makerAmount = BigInt(order.makerAmount);
-    const takerAmount = BigInt(order.takerAmount);
-    return (takerFill * makerAmount) / (takerAmount || 1n);
-  }
-
-  /** Pre-flight on-chain so fills fail in-app with a clear message, not a raw revert. */
-  async function assertCanFill(order: UnifiedOrder, sharesTake: bigint) {
-    const fmt = (wei: bigint) => formatToken(wei, decimals);
-    const takerFill = takerFillFor(order, sharesTake);
-    const makerGives = makerGivesFor(order, takerFill);
-    const collateralBal = await readCollateralBalance();
-
-    // The resting maker must still be able to deliver their side on-chain, or the
-    // fill reverts with a confusing ERC20/ERC1155 balance error. SELL makers owe
-    // outcome shares; BUY makers owe collateral. We also verify the maker still
-    // has the exchange approved — a revoked approval reverts the same way.
-    const maker = order.maker as Address;
-    if (order.side === "SELL") {
-      const [makerBal, makerApproved] = await Promise.all([
-        readShareBalance(order.positionId, maker),
-        readSharesApprovedFor(maker),
-      ]);
-      if (makerBal < makerGives || !makerApproved) {
-        throw new Error(
-          "This order can't be filled — the maker no longer has the outcome shares (or approval) to back it on-chain. Try another price level.",
-        );
-      }
-    } else {
-      const [makerCollateral, makerAllowance] = await Promise.all([
-        readCollateralBalanceOf(maker),
-        readCollateralAllowance(maker),
-      ]);
-      if (makerCollateral < makerGives || makerAllowance < makerGives) {
-        throw new Error(
-          `This order can't be filled — the maker no longer has enough ${sym} (or approval) to back it on-chain. Try another price level.`,
-        );
-      }
-    }
-
-    if (!order._complementary) {
-      if (order.side === "SELL") {
-        // Native buy: taker pays collateral, receives shares.
-        if (collateralBal < takerFill) {
-          throw new Error(
-            `Need ${fmt(takerFill)} ${sym} to buy — you have ${fmt(collateralBal)}`,
-          );
-        }
-        return;
-      }
-      // Native sell: taker delivers shares, receives collateral.
-      if (!sharesApproved) {
-        throw new Error("Approve outcome shares for the exchange before selling");
-      }
-      const have = await readShareBalance(order.positionId, account as Address);
-      if (have < sharesTake) {
-        const label =
-          outcomes.find((o) => o.positionId === order.positionId)?.label ??
-          "outcome";
-        throw new Error(
-          `Need ${fmt(sharesTake)} ${label} shares to sell — you have ${fmt(have)}. Mint a set or buy shares first.`,
-        );
-      }
-      return;
-    }
-
-    // Complementary BUY (buy selected by minting a set, then selling the other
-    // leg into the maker's buy): taker fronts `sharesTake` collateral to mint.
-    if (order.side === "BUY") {
-      if (collateralBal < sharesTake) {
-        throw new Error(
-          `Need ${fmt(sharesTake)} ${sym} to mint a set and fill — you have ${fmt(collateralBal)}`,
-        );
-      }
-      if (!collateralApproved) {
-        throw new Error(
-          `Approve ${sym} for minting before filling this order`,
-        );
-      }
-      return;
-    }
-
-    // Complementary SELL (sell selected by buying the other leg, then merging
-    // the set): taker fronts `takerFill` collateral to buy the other leg and
-    // must hold `sharesTake` of the selected outcome to merge.
-    if (collateralBal < takerFill) {
-      throw new Error(
-        `Need ${fmt(takerFill)} ${sym} for this fill — you have ${fmt(collateralBal)}`,
-      );
-    }
-    if (!sharesApproved) {
-      throw new Error(
-        `Approve ${selected.label} shares for the exchange before filling this bid`,
-      );
-    }
-    const haveSelected = await readShareBalance(
-      selected.positionId,
-      account as Address,
-    );
-    if (haveSelected < sharesTake) {
-      throw new Error(
-        `Need ${fmt(sharesTake)} ${selected.label} shares to complete this fill — you have ${fmt(haveSelected)}. Mint a set or buy shares first.`,
-      );
-    }
-  }
-
-  /** Submit one on-chain `fillOrder` against a resting order; returns the tx hash. */
-  async function fillOrderRaw(
-    order: OrderRow,
-    takerFill: bigint,
-  ): Promise<import("viem").Hex> {
-    if (takerFill <= 0n) throw new Error("Fill amount must be positive");
-    return writeContract({
-      address: exchange,
-      abi: EXCHANGE_ABI,
-      functionName: "fillOrder",
-      args: [
-        {
-          salt: BigInt(order.salt),
-          maker: order.maker as Address,
-          tokenId: BigInt(order.positionId),
-          makerAmount: BigInt(order.makerAmount),
-          takerAmount: BigInt(order.takerAmount),
-          expiration: BigInt(order.expiry),
-          side: order.side === "BUY" ? 0 : 1,
-        },
-        order.signature as `0x${string}`,
-        takerFill,
-      ],
-    });
-  }
-
-  /**
-   * Record a confirmed fill off-chain, from BOTH the taker's and maker's
-   * economic perspective. For complementary fills the taker's outcome differs
-   * from the maker's (selected vs. the opposing outcome), so both legs are
-   * stored explicitly to keep each side's inventory + cost basis correct.
-   */
-  async function recordFill(args: {
-    order: UnifiedOrder;
-    takerFill: bigint; // taker-side units of the resting order (filled tracking)
-    sharesTake: bigint; // selected-outcome shares the taker netted
-    txHash: import("viem").Hex;
-  }) {
-    const { order, takerFill, sharesTake, txHash } = args;
-    const makerGives = makerGivesFor(order, takerFill);
-
-    let takerLeg: { outcomeIndex: number; side: Side; shares: bigint; cost: bigint; positionId: string };
-    let makerLeg: { outcomeIndex: number; side: Side; shares: bigint; cost: bigint; positionId: string };
-
-    if (!order._complementary) {
-      if (order.side === "SELL") {
-        // Taker buys the order's outcome for collateral.
-        takerLeg = { outcomeIndex: order.outcomeIndex, side: "BUY", shares: makerGives, cost: takerFill, positionId: order.positionId };
-        makerLeg = { outcomeIndex: order.outcomeIndex, side: "SELL", shares: makerGives, cost: takerFill, positionId: order.positionId };
-      } else {
-        // Taker sells the order's outcome for collateral.
-        takerLeg = { outcomeIndex: order.outcomeIndex, side: "SELL", shares: takerFill, cost: makerGives, positionId: order.positionId };
-        makerLeg = { outcomeIndex: order.outcomeIndex, side: "BUY", shares: takerFill, cost: makerGives, positionId: order.positionId };
-      }
-    } else if (order.side === "BUY") {
-      // Other-side BUY (ask here): taker minted a set and sold the other leg
-      // into the maker's buy, keeping `sharesTake` of the selected outcome.
-      takerLeg = { outcomeIndex: selected.index, side: "BUY", shares: sharesTake, cost: sharesTake - makerGives, positionId: selected.positionId };
-      makerLeg = { outcomeIndex: order.outcomeIndex, side: "BUY", shares: takerFill, cost: makerGives, positionId: order.positionId };
-    } else {
-      // Other-side SELL (bid here): taker bought the other leg, then merged the
-      // set, netting collateral for `sharesTake` of the selected outcome.
-      takerLeg = { outcomeIndex: selected.index, side: "SELL", shares: sharesTake, cost: sharesTake - takerFill, positionId: selected.positionId };
-      makerLeg = { outcomeIndex: order.outcomeIndex, side: "SELL", shares: makerGives, cost: takerFill, positionId: order.positionId };
-    }
-
-    await jsonFetch(`/api/markets/${id}/fills`, {
-      method: "POST",
-      body: JSON.stringify({
-        orderHash: order.hash,
-        taker: account,
-        takerFillAmount: takerFill.toString(),
-        txHash,
-        takerOutcomeIndex: takerLeg.outcomeIndex,
-        takerSide: takerLeg.side,
-        takerShares: takerLeg.shares.toString(),
-        takerCost: takerLeg.cost.toString(),
-        takerPositionId: takerLeg.positionId,
-        makerOutcomeIndex: makerLeg.outcomeIndex,
-        makerSide: makerLeg.side,
-        makerShares: makerLeg.shares.toString(),
-        makerCost: makerLeg.cost.toString(),
-        makerPositionId: makerLeg.positionId,
-      }),
-    });
-  }
-
-  /**
-   * Fill `sharesTake` (selected-outcome share units) of a resting order. Native
-   * orders are a direct fill. Complementary orders (from the opposing outcome)
-   * mint a set before / merge a set after the native fill, so the taker ends up
-   * holding the selected outcome. Fills are only recorded once the chain
-   * confirms, so a failed leg never leaves the book or inventory out of sync.
-   */
-  async function fillUnifiedShares(order: UnifiedOrder, sharesTake: bigint) {
-    if (sharesTake <= 0n) return;
-    await assertCanFill(order, sharesTake);
-
-    const takerFill = takerFillFor(order, sharesTake);
-
-    if (!order._complementary) {
-      const txHash = await fillOrderRaw(order, takerFill);
-      await waitForTxReceipt(txHash);
-      await recordFill({ order, takerFill, sharesTake, txHash });
-      return;
-    }
-
-    if (order.side === "BUY") {
-      // Mint a full set, then sell the opposing leg into the maker's buy.
-      const splitHash = await writeContract(
-        {
-          address: ctf,
-          abi: CONDITIONAL_TOKENS_ABI,
-          functionName: "splitPosition",
-          args: [conditionId, sharesTake],
-        },
-        approvalUi,
-      );
-      await waitForTxReceipt(splitHash);
-      const have = await readShareBalance(order.positionId, account as Address);
-      if (have < takerFill) {
-        throw new Error(
-          `Minted shares aren't available yet (need ${formatToken(takerFill, decimals)}, have ${formatToken(have, decimals)}). Wait a moment and try again.`,
-        );
-      }
-      const fillHash = await fillOrderRaw(order, takerFill);
-      await waitForTxReceipt(fillHash);
-      await recordFill({ order, takerFill, sharesTake, txHash: fillHash });
-      return;
-    }
-
-    // Complementary SELL: buy the opposing leg, then merge the set to collateral.
-    const fillHash = await fillOrderRaw(order, takerFill);
-    await waitForTxReceipt(fillHash);
-    await recordFill({ order, takerFill, sharesTake, txHash: fillHash });
-    const mergeHash = await writeContract(
-      {
-        address: ctf,
-        abi: CONDITIONAL_TOKENS_ABI,
-        functionName: "mergePositions",
-        args: [conditionId, sharesTake],
-      },
-      approvalUi,
-    );
-    await waitForTxReceipt(mergeHash);
-  }
-
-  /** Fill a single resting order completely (used by the book "take" buttons). */
-  async function takeOrder(order: UnifiedOrder) {
+  async function resolveMarket(winningOutcome: number) {
     if (!account) return;
     try {
-      const availShares = sharesRemainingRaw(order);
-      if (availShares <= 0n) return;
-      await ensurePolygon();
-      await fillUnifiedShares(order, availShares);
-      push({ title: "Order filled", variant: "success" });
+      await authFetch(`/api/markets/${id}/resolve`, {
+        method: "POST",
+        body: JSON.stringify({ address: account, winningOutcome }),
+      });
+      push({ title: "Market resolved", variant: "success" });
       query.refetch();
     } catch (err) {
       const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Fill failed",
+        fallbackTitle: "Resolve failed",
       });
       push({ title, description, variant: "danger" });
     }
   }
-
-  /** Sweep the book to fill a market order for ~`sharesStr` shares. */
-  async function marketSweep(takeSide: Side, sharesStr: string) {
-    if (!account) return;
-    const targetShares = parseUnits(sharesStr || "0", decimals);
-    if (targetShares <= 0n) {
-      push({ title: "Enter a share amount", variant: "danger" });
-      return;
-    }
-    // BUY consumes asks (sells); SELL consumes bids (buys) across the unified book.
-    const resting = (takeSide === "BUY" ? unifiedSells : unifiedBuys).filter(
-      (o) => o.maker.toLowerCase() !== account.toLowerCase(),
-    );
-    if (resting.length === 0) {
-      push({
-        title: "No liquidity to take",
-        description: "Post a limit order instead.",
-        variant: "danger",
-      });
-      return;
-    }
-
-    let remainingShares = targetShares;
-    let fills = 0;
-    try {
-      await ensurePolygon();
-      for (const order of resting) {
-        if (remainingShares <= 0n || fills >= 12) break;
-        const availShares = sharesRemainingRaw(order);
-        if (availShares <= 0n) continue;
-
-        const sharesTaken =
-          remainingShares >= availShares ? availShares : remainingShares;
-        await fillUnifiedShares(order, sharesTaken);
-        remainingShares -= sharesTaken;
-        fills += 1;
-      }
-      push({
-        title: takeSide === "BUY" ? "Bought shares" : "Sold shares",
-        description: `${fills} order${fills === 1 ? "" : "s"} filled.`,
-        variant: "success",
-      });
-      setShares("");
-      query.refetch();
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Order failed",
-      });
-      push({ title, description, variant: "danger" });
-      query.refetch();
-    }
-  }
-
-  /** Sign + post one resting limit order for `sharesRaw` shares at `price`. */
-  async function postRestingOrder(a: {
-    outcomeIndex: number;
-    positionId: string;
-    side: Side;
-    price: number;
-    sharesRaw: bigint;
-  }) {
-    const collateralRaw = BigInt(Math.round(Number(a.sharesRaw) * a.price));
-    if (collateralRaw <= 0n || a.sharesRaw <= 0n) return;
-
-    const sideNum = a.side === "BUY" ? 0 : 1;
-    const makerAmount = a.side === "BUY" ? collateralRaw : a.sharesRaw;
-    const takerAmount = a.side === "BUY" ? a.sharesRaw : collateralRaw;
-    const salt = randomSalt();
-    const expiration = 0n;
-
-    const signature = await signTypedDataAsync({
-      domain: exchangeDomain(market!.chainId, exchange),
-      types: ORDER_EIP712_TYPES,
-      primaryType: "Order",
-      message: {
-        salt,
-        maker: account as Address,
-        tokenId: BigInt(a.positionId),
-        makerAmount,
-        takerAmount,
-        expiration,
-        side: sideNum,
-      },
-    } as Parameters<typeof signTypedDataAsync>[0]);
-
-    await jsonFetch(`/api/markets/${id}/orders`, {
-      method: "POST",
-      body: JSON.stringify({
-        outcomeIndex: a.outcomeIndex,
-        side: a.side,
-        salt: salt.toString(),
-        maker: account,
-        tokenId: a.positionId,
-        makerAmount: makerAmount.toString(),
-        takerAmount: takerAmount.toString(),
-        expiration: expiration.toString(),
-        signature,
-      }),
-    });
-  }
-
-  /**
-   * Place a limit order. First it crosses any marketable resting liquidity (a
-   * BUY at/above the best asks, or a SELL at/below the best bids) and fills it
-   * on-chain, then rests the unfilled remainder on the book. This is why a limit
-   * order priced into the spread now fills instead of just sitting at a 0¢
-   * spread against an existing order.
-   */
-  async function placeLimit(args: {
-    outcomeIndex: number;
-    positionId: string;
-    side: Side;
-    price: number; // 0–1
-    sharesStr: string;
-  }) {
-    if (!account) return;
-    if (!(args.price > 0) || args.price >= 1) {
-      push({ title: "Price must be between 0¢ and 100¢", variant: "danger" });
-      return;
-    }
-    const sharesRaw = parseUnits(args.sharesStr || "0", decimals);
-    if (sharesRaw <= 0n) {
-      push({ title: "Enter a share amount", variant: "danger" });
-      return;
-    }
-
-    // Marketable side: a BUY crosses asks priced <= limit; a SELL crosses bids
-    // priced >= limit. Use a tiny epsilon so an exact-price match still fills.
-    const EPS = 1e-9;
-    const opposing = args.side === "BUY" ? unifiedSells : unifiedBuys;
-    const crossable = opposing.filter(
-      (o) =>
-        o.maker.toLowerCase() !== account.toLowerCase() &&
-        sharesRemainingRaw(o) > 0n &&
-        (args.side === "BUY"
-          ? Number(o.price) <= args.price + EPS
-          : Number(o.price) >= args.price - EPS),
-    );
-
-    let remaining = sharesRaw;
-    let fills = 0;
-    try {
-      if (crossable.length > 0) await ensurePolygon();
-      for (const o of crossable) {
-        if (remaining <= 0n || fills >= 12) break;
-        const avail = sharesRemainingRaw(o);
-        if (avail <= 0n) continue;
-        const take = remaining >= avail ? avail : remaining;
-        await fillUnifiedShares(o, take);
-        remaining -= take;
-        fills += 1;
-      }
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Fill failed",
-      });
-      push({ title, description, variant: "danger" });
-      query.refetch();
-      return;
-    }
-
-    // Rest whatever didn't immediately fill.
-    if (remaining > 0n) {
-      await postRestingOrder({
-        outcomeIndex: args.outcomeIndex,
-        positionId: args.positionId,
-        side: args.side,
-        price: args.price,
-        sharesRaw: remaining,
-      });
-    }
-
-    const filledAll = remaining <= 0n;
-    push({
-      title:
-        fills > 0
-          ? filledAll
-            ? "Order filled"
-            : "Partially filled — rest posted"
-          : "Order posted",
-      description:
-        fills > 0
-          ? `${fills} order${fills === 1 ? "" : "s"} taken${
-              filledAll ? "" : "; remainder resting on the book"
-            }.`
-          : "Your signed order is resting on the book.",
-      variant: "success",
-    });
-    setShares("");
-    query.refetch();
-  }
-
-  // ---- submit dispatcher -------------------------------------------------
-
-  async function onSubmit() {
-    if (!account) return;
-    setSubmitting(true);
-    try {
-      if (orderType === "mint") {
-        await doSplit(shares);
-      } else if (orderType === "redeem") {
-        await doMerge(shares);
-      } else if (orderType === "market") {
-        await marketSweep(side, shares);
-      } else {
-        await placeLimit({
-          outcomeIndex: selected.index,
-          positionId: selected.positionId,
-          side,
-          price: Number(limitCents) / 100,
-          sharesStr: shares,
-        });
-      }
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Action failed",
-      });
-      push({ title, description, variant: "danger" });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const tokenDecimals = collateralLive.decimals ?? decimals;
-  const collateralBal = collateralLive.balance ?? 0n;
-  const walletBalanceLabel = formatToken(collateralBal, tokenDecimals);
-
-  /** Disable trade/mint/redeem actions with a clear reason before sending txs. */
-  function getTradeBlockedReason(): string | null {
-    let amt = 0n;
-    try {
-      amt = parseUnits(shares || "0", tokenDecimals);
-    } catch {
-      return "Invalid amount";
-    }
-
-    if (orderType === "limit" || orderType === "market") {
-      if (side === "BUY" && !exchangeCollateralApproved) {
-        return `Approve ${sym} to buy`;
-      }
-      if (side === "SELL" && !sharesApproved) {
-        return "Approve shares to sell";
-      }
-      if (side === "BUY" && amt > 0n) {
-        const price =
-          orderType === "limit"
-            ? Number(limitCents) / 100
-            : (bestAsk ?? 0);
-        if (price > 0) {
-          const priceBps = Math.round(price * 10_000);
-          const cost = (amt * BigInt(priceBps)) / 10_000n;
-          if (cost > collateralBal) {
-            return `Need ${formatToken(cost, tokenDecimals)} ${sym} — you have ${walletBalanceLabel}`;
-          }
-        }
-      }
-      return null;
-    }
-
-    if (orderType === "mint") {
-      if (!ctfCollateralApproved) return `Approve ${sym} to mint`;
-      if (amt > 0n && amt > collateralBal) {
-        return `Need ${formatToken(amt, tokenDecimals)} ${sym} — you have ${walletBalanceLabel}`;
-      }
-      return null;
-    }
-
-    if (orderType === "redeem") {
-      if (!sharesApproved) return "Approve shares to merge";
-      let minHeld: bigint | null = null;
-      for (const o of outcomes) {
-        const h = BigInt(positions[o.index] ?? "0");
-        minHeld = minHeld === null || h < minHeld ? h : minHeld;
-      }
-      const held = minHeld ?? 0n;
-      if (amt > 0n && amt > held) {
-        return `Need ${formatToken(amt, tokenDecimals)} shares per outcome — you have ${formatToken(held, tokenDecimals)}`;
-      }
-    }
-
-    return null;
-  }
-
-  const tradeBlockedReason = getTradeBlockedReason();
-
-  function setMaxMintAmount() {
-    if (collateralBal <= 0n) {
-      setShares("");
-      return;
-    }
-    setShares(formatUnits(collateralBal, tokenDecimals));
-  }
-
-  // Approvals are surfaced as an unavoidable popup rather than a permanent
-  // panel: it appears when the market is tradeable and approvals are missing,
-  // and disappears automatically once both approvals are satisfied.
-  const tradeable = market.status === "Open" && !resolved;
-  const approvalsReady = collateralApproved && sharesApproved;
-  const needsApprovals = tradeable && !approvalsReady;
-  const showApprovalModal =
-    !!account && needsApprovals && !approvalsDismissed;
 
   return (
     <div className="space-y-6">
-      {showApprovalModal && (
-        <ApprovalsModal
-          sym={sym}
-          exchangeCollateralApproved={exchangeCollateralApproved}
-          ctfCollateralApproved={ctfCollateralApproved}
-          sharesApproved={sharesApproved}
-          loading={approvalReads.isLoading}
-          onApproveExchange={approveExchangeCollateral}
-          onApproveCtf={approveCtfCollateral}
-          onApproveShares={approveShares}
-          exchangePending={approvingExchange}
-          ctfPending={approvingCtf}
-          sharesPending={approvingShares}
-          onClose={() => setApprovalsDismissed(true)}
-        />
-      )}
       {/* Header */}
       <div className="card p-6 space-y-3">
         <TypeTag kind="market" />
@@ -1124,27 +290,20 @@ export function MarketDetail({ id }: { id: number }) {
             imageUrl={market.imageUrl}
             title={market.title}
             isCreator={
-              !!account &&
-              account.toLowerCase() === market.creator.toLowerCase()
+              !!account && account.toLowerCase() === market.creator.toLowerCase()
             }
             account={account}
             onDone={() => query.refetch()}
           />
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold md:text-3xl">
-              {market.title}
-            </h1>
-            <CollapsibleBlurb
-              text={market.description}
-              maxLines={3}
-              className="mt-2"
-            />
+            <h1 className="text-2xl font-semibold md:text-3xl">{market.title}</h1>
+            <CollapsibleBlurb text={market.description} maxLines={3} className="mt-2" />
           </div>
         </div>
         {market.status === "Pending" && (
           <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-            <b>Awaiting admin approval.</b> This market isn&apos;t shown in the
-            public feed until a verifier approves it.
+            <b>Awaiting admin approval.</b> This market isn&apos;t open for trading
+            until a verifier approves it.
           </div>
         )}
         {market.status === "Rejected" && (
@@ -1154,52 +313,44 @@ export function MarketDetail({ id }: { id: number }) {
         )}
         {resolved && market.winningOutcome != null && (
           <div className="rounded-md bg-success/10 p-3 text-sm text-success">
-            Winning outcome:{" "}
-            <b>{market.outcomes[market.winningOutcome]?.label}</b>
+            Winning outcome: <b>{outcomes[market.winningOutcome]?.label}</b>
           </div>
         )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        {/* Left column: order book, rules, comments. On mobile this renders
-            after the trade panel so traders don't have to scroll past it. */}
         <div className="order-2 space-y-6 lg:order-none lg:col-start-1 lg:row-start-1">
           <OrderBookPanel
             outcomes={outcomes}
             selectedIdx={selected.index}
             onSelectOutcome={setSelectedIdx}
             outcomeBuyPrice={outcomeBuyPrice}
-            buys={unifiedBuys}
-            sells={unifiedSells}
-            decimals={decimals}
+            asks={folded.asks}
+            bids={folded.bids}
             bestAsk={bestAsk}
             bestBid={bestBid}
             spread={spread}
             mid={mid}
-            account={account}
             resolved={resolved}
-            unified={isBinary}
+            canTake={!resolved && !!account}
             selectedLabel={selected.label}
-            otherLabel={otherOutcome?.label ?? null}
-            onTake={takeOrder}
-            onPickOrder={(o, tone) => {
-              setOrderType("limit");
+            unified={outcomes.length === 2}
+            connected={live.connected}
+            onTake={takeLevel}
+            onPickLevel={(level, tone) => {
+              setOrderType("LIMIT");
               setSide(tone === "ask" ? "BUY" : "SELL");
-              setLimitCents((Number(o.price) * 100).toFixed(1));
-              setShares(
-                formatUnits(sharesRemainingRaw(o), decimals),
-              );
+              setLimitCents((level.price * 100).toFixed(1));
+              setShares(String(level.shares));
             }}
           />
 
+          {live.trades.length > 0 && (
+            <TradeTape trades={live.trades} outcomes={outcomes} />
+          )}
+
           {account && (
-            <MarketPortfolio
-              marketId={market.id}
-              account={account}
-              exchange={exchange}
-              positions={positions}
-              onChanged={() => query.refetch()}
-            />
+            <MarketPortfolio marketId={market.id} account={account} onChanged={() => query.refetch()} />
           )}
 
           <RulesPanel terms={market.terms} description={market.description} />
@@ -1215,25 +366,54 @@ export function MarketDetail({ id }: { id: number }) {
             <ProposeResolutionButton
               subjectType="market"
               subjectId={market.id}
-              outcomes={market.outcomes.map((o) => o.label)}
+              outcomes={outcomes.map((o) => o.label)}
               participants={[market.creator, market.settler]}
             />
+          )}
+
+          {canResolve && (
+            <section className="card p-5 space-y-3">
+              <h3 className="font-semibold">Resolve market</h3>
+              <p className="text-xs text-muted-foreground">
+                As the settler you can resolve this market. Winning shares redeem
+                to {sym} 1:1; the book is cleared and locks refunded.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {outcomes.map((o) => (
+                  <Button
+                    key={o.index}
+                    size="sm"
+                    variant="outline"
+                    onClick={() => resolveMarket(o.index)}
+                  >
+                    {o.label} wins
+                  </Button>
+                ))}
+              </div>
+            </section>
           )}
 
           <Comments basePath={`/api/markets/${market.id}/comments`} />
         </div>
 
-        {/* Right column: trade panel. Ordered first on mobile so it's reachable
-            without scrolling past the book/comments. */}
         <aside className="order-1 space-y-4 lg:order-none lg:col-start-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
           {!account ? (
             <div className="card p-5 text-sm text-muted-foreground">
-              Sign in to trade, mint, or redeem shares.
+              Sign in to deposit funds and trade.
             </div>
           ) : (
             <>
-              <LowGasBanner />
-              <MarketUsdceBanner />
+              <WalletCard
+                account={account}
+                sym={sym}
+                balance={collateralBal}
+                locked={collateralLocked}
+                treasury={config.data?.treasury ?? null}
+                tokenAddress={config.data?.token.address ?? fallback.address}
+                tokenDecimals={config.data?.token.decimals ?? fallback.decimals}
+                onChanged={() => query.refetch()}
+                authFetch={authFetch}
+              />
 
               <TradePanel
                 outcomes={outcomes}
@@ -1249,42 +429,22 @@ export function MarketDetail({ id }: { id: number }) {
                 shares={shares}
                 setShares={setShares}
                 sym={sym}
-                decimals={decimals}
                 bestAsk={bestAsk}
                 bestBid={bestBid}
-                myPosition={
-                  positions[selected.index]
-                    ? formatUnits(BigInt(positions[selected.index]), decimals)
-                    : "0"
-                }
+                myPosition={myShares}
+                balance={collateralBal}
                 resolved={resolved}
-                blockedReason={tradeBlockedReason}
-                walletBalance={walletBalanceLabel}
+                tradeable={market.status === "Open"}
                 submitting={submitting}
                 onSubmit={onSubmit}
-                onMaxMint={setMaxMintAmount}
-                onRedeemWinnings={doRedeem}
-                onApprovalNeeded={() => setApprovalsDismissed(false)}
               />
 
               <section className="card p-4 text-xs text-muted-foreground space-y-1">
                 <div>
-                  CTF:{" "}
-                  <span className="font-mono">
-                    {shortAddr(market.ctfAddress)}
-                  </span>
-                </div>
-                <div>
-                  Exchange:{" "}
-                  <span className="font-mono">
-                    {shortAddr(market.exchangeAddress)}
-                  </span>
-                </div>
-                <div>
-                  Settler:{" "}
-                  <span className="font-mono">{shortAddr(market.settler)}</span>{" "}
+                  Settler: <span className="font-mono">{shortAddr(market.settler)}</span>{" "}
                   · fee {(market.feeBps / 100).toFixed(2)}%
                 </div>
+                <div>Custodial off-chain exchange · USDC.e collateral</div>
               </section>
             </>
           )}
@@ -1295,179 +455,141 @@ export function MarketDetail({ id }: { id: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Approvals popup
+// Wallet (deposit / withdraw)
 // ---------------------------------------------------------------------------
 
-function ApprovalsModal({
+function WalletCard({
+  account,
   sym,
-  exchangeCollateralApproved,
-  ctfCollateralApproved,
-  sharesApproved,
-  loading,
-  onApproveExchange,
-  onApproveCtf,
-  onApproveShares,
-  exchangePending,
-  ctfPending,
-  sharesPending,
-  onClose,
+  balance,
+  locked,
+  treasury,
+  tokenAddress,
+  tokenDecimals,
+  onChanged,
+  authFetch,
 }: {
+  account: string;
   sym: string;
-  exchangeCollateralApproved: boolean;
-  ctfCollateralApproved: boolean;
-  sharesApproved: boolean;
-  loading: boolean;
-  onApproveExchange: () => void;
-  onApproveCtf: () => void;
-  onApproveShares: () => void;
-  exchangePending: boolean;
-  ctfPending: boolean;
-  sharesPending: boolean;
-  onClose: () => void;
+  balance: number;
+  locked: number;
+  treasury: string | null;
+  tokenAddress: string;
+  tokenDecimals: number;
+  onChanged: () => void;
+  authFetch: (path: string, init: RequestInit) => Promise<unknown>;
 }) {
-  // Lock background scroll while the popup is up.
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  const { push } = useToast();
+  const { writeContract } = useTxSender();
+  const ensurePolygon = useEnsurePolygon();
+  const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function deposit() {
+    if (!treasury) {
+      push({ title: "Deposits unavailable", description: "Treasury not configured.", variant: "danger" });
+      return;
+    }
+    const amt = Number(amount);
+    if (!(amt > 0)) return;
+    setBusy(true);
+    try {
+      await ensurePolygon();
+      await writeContract({
+        address: tokenAddress as Address,
+        abi: ERC20_ABI,
+        functionName: "transfer",
+        args: [treasury as Address, parseUnits(amount, tokenDecimals)],
+      });
+      push({
+        title: "Deposit sent",
+        description: "Your balance will credit once the transfer confirms.",
+        variant: "success",
+      });
+      setAmount("");
+    } catch (err) {
+      const { title, description } = formatCryptoError(err, { fallbackTitle: "Deposit failed" });
+      push({ title, description, variant: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdraw() {
+    const amt = Number(amount);
+    if (!(amt > 0)) return;
+    if (amt > balance) {
+      push({ title: "Amount exceeds balance", variant: "danger" });
+      return;
+    }
+    setBusy(true);
+    try {
+      await authFetch(`/api/users/${account}/withdraw`, {
+        method: "POST",
+        body: JSON.stringify({ amount: amt }),
+      });
+      push({
+        title: "Withdrawal requested",
+        description: `${sym} will be sent to your wallet shortly.`,
+        variant: "success",
+      });
+      setAmount("");
+      onChanged();
+    } catch (err) {
+      const { title, description } = formatCryptoError(err, { fallbackTitle: "Withdrawal failed" });
+      push({ title, description, variant: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-2xl">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
-        <div className="mb-1 flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[hsl(var(--warning))] opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[hsl(var(--warning))]" />
-          </span>
-          <h3 className="text-lg font-semibold">Approve to trade</h3>
+    <section className="card p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">Balance</h3>
+        <span className="inline-flex items-center gap-1 font-mono text-sm">
+          {money(balance)} <TokenSymbol symbol={sym} size={13} />
+        </span>
+      </div>
+      {locked > 0 && (
+        <div className="text-xs text-muted-foreground">
+          {money(locked)} {sym} locked in open orders / withdrawals
         </div>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Three one-time wallet confirmations let you trade. Do them in order —
-          one at a time.
-        </p>
-
-        <ul className="space-y-2.5">
-          <ChecklistRow
-            done={exchangeCollateralApproved}
-            loading={loading}
-            title={
-              <span className="inline-flex items-center gap-1">
-                1. <TokenSymbol symbol={sym} size={13} /> for exchange
-              </span>
-            }
-            hint="Required to buy shares on the book"
-            actionLabel={exchangePending ? "Approving…" : "Approve"}
-            onAction={onApproveExchange}
-            pending={exchangePending || ctfPending || sharesPending}
-            disabled={exchangeCollateralApproved}
-          />
-          <ChecklistRow
-            done={ctfCollateralApproved}
-            loading={loading}
-            title={
-              <span className="inline-flex items-center gap-1">
-                2. <TokenSymbol symbol={sym} size={13} /> for minting
-              </span>
-            }
-            hint="Required to mint outcome token sets"
-            actionLabel={ctfPending ? "Approving…" : "Approve"}
-            onAction={onApproveCtf}
-            pending={exchangePending || ctfPending || sharesPending}
-            disabled={ctfCollateralApproved || !exchangeCollateralApproved}
-          />
-          <ChecklistRow
-            done={sharesApproved}
-            loading={loading}
-            title="3. Approve shares"
-            hint="Required to sell or merge shares"
-            actionLabel={sharesPending ? "Approving…" : "Approve"}
-            onAction={onApproveShares}
-            pending={exchangePending || ctfPending || sharesPending}
-            disabled={
-              !exchangeCollateralApproved ||
-              !ctfCollateralApproved ||
-              sharesApproved
-            }
-          />
-        </ul>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-4 w-full text-center text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Maybe later
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ChecklistRow({
-  done,
-  loading,
-  title,
-  hint,
-  actionLabel,
-  onAction,
-  pending,
-  disabled,
-}: {
-  done: boolean;
-  loading: boolean;
-  title: React.ReactNode;
-  hint: string;
-  actionLabel: string;
-  onAction: () => void;
-  pending: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <li className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 p-2.5">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center">
-        {done ? (
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-success/15 text-success">
-            <Check className="h-3.5 w-3.5" />
-          </span>
-        ) : (
-          // Eye-catching yellow dot signalling a required step.
-          <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[hsl(var(--warning))] opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-[hsl(var(--warning))]" />
-          </span>
-        )}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium leading-tight">{title}</div>
-        <div className="text-xs text-muted-foreground">{hint}</div>
-      </div>
-      {!done && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onAction}
-          disabled={disabled || pending || loading}
-        >
-          {actionLabel}
-        </Button>
       )}
-    </li>
+      <div className="flex rounded-lg bg-muted/50 p-0.5 text-sm">
+        {(["deposit", "withdraw"] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className={`flex-1 rounded-md py-1.5 font-semibold capitalize transition-colors ${
+              mode === m ? "bg-foreground text-background" : "text-muted-foreground"
+            }`}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+      <input
+        className="input font-mono"
+        inputMode="decimal"
+        placeholder={`Amount (${sym})`}
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+      <Button
+        className="w-full"
+        disabled={busy}
+        onClick={() => (mode === "deposit" ? void deposit() : void withdraw())}
+      >
+        {busy ? "Working…" : mode === "deposit" ? `Deposit ${sym}` : `Withdraw ${sym}`}
+      </Button>
+      <p className="text-center text-[11px] text-muted-foreground">
+        {mode === "deposit"
+          ? `Sends ${sym} to the exchange treasury and credits your balance.`
+          : `Sends ${sym} from your balance back to your wallet.`}
+      </p>
+    </section>
   );
 }
 
@@ -1480,69 +602,67 @@ function OrderBookPanel({
   selectedIdx,
   onSelectOutcome,
   outcomeBuyPrice,
-  buys,
-  sells,
-  decimals,
+  asks,
+  bids,
   bestAsk,
   bestBid,
   spread,
   mid,
-  account,
   resolved,
-  unified,
+  canTake,
   selectedLabel,
-  otherLabel,
+  unified,
+  connected,
   onTake,
-  onPickOrder,
+  onPickLevel,
 }: {
-  outcomes: { index: number; label: string; positionId: string }[];
+  outcomes: { index: number; label: string }[];
   selectedIdx: number;
   onSelectOutcome: (idx: number) => void;
   outcomeBuyPrice: (idx: number) => number | null;
-  buys: UnifiedOrder[];
-  sells: UnifiedOrder[];
-  decimals: number;
+  asks: Level[];
+  bids: Level[];
   bestAsk: number | null;
   bestBid: number | null;
   spread: number | null;
   mid: number | null;
-  account?: string;
   resolved: boolean;
-  unified?: boolean;
+  canTake: boolean;
   selectedLabel: string;
-  otherLabel?: string | null;
-  onTake: (o: UnifiedOrder) => void;
-  onPickOrder: (o: UnifiedOrder, tone: "ask" | "bid") => void;
+  unified: boolean;
+  connected: boolean;
+  onTake: (level: Level, side: Side) => void;
+  onPickLevel: (level: Level, tone: "ask" | "bid") => void;
 }) {
-  // Asks: worst (highest) at top, best (lowest) just above the spread line.
-  const asks = [...sells].slice(0, 8).reverse();
-  const bids = buys.slice(0, 8);
+  const topAsks = asks.slice(0, 8);
+  const topBids = bids.slice(0, 8);
+  const askView = [...topAsks].reverse();
 
-  // Cumulative totals for depth display.
-  function cumulative(orders: OrderRow[]): number[] {
+  function cumulative(levels: Level[]): number[] {
     let sum = 0;
-    return orders.map((o) => {
-      const sh = Number(formatUnits(sharesRemainingRaw(o), decimals));
-      sum += sh * Number(o.price);
+    return levels.map((l) => {
+      sum += l.shares * l.price;
       return sum;
     });
   }
-  const bidTotals = cumulative(bids);
-  // For asks we reversed; compute totals from best→worst then map back.
-  const askTotalsBestFirst = cumulative([...sells].slice(0, 8));
-  const askTotals = [...askTotalsBestFirst].reverse();
+  const bidTotals = cumulative(topBids);
+  const askTotals = [...cumulative(topAsks)].reverse();
 
   return (
     <section className="card p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="font-semibold">
-          Order book{" "}
-          <span className="text-muted-foreground">· {selectedLabel}</span>
+          Order book <span className="text-muted-foreground">· {selectedLabel}</span>
         </h3>
-        {unified && <span className="badge badge-accent">Unified</span>}
+        <div className="flex items-center gap-2">
+          {unified && <span className="badge badge-accent">Unified</span>}
+          <span
+            className={`h-2 w-2 rounded-full ${connected ? "bg-success" : "bg-muted-foreground/40"}`}
+            title={connected ? "Live" : "Polling"}
+          />
+        </div>
       </div>
 
-      {/* Outcome selector tabs */}
       <div className="mb-4 flex flex-wrap gap-1.5">
         {outcomes.map((o) => {
           const active = o.index === selectedIdx;
@@ -1558,87 +678,63 @@ function OrderBookPanel({
               }`}
             >
               Trade {o.label}
-              {p != null && (
-                <span className="ml-1.5 opacity-80">{cents(p)}</span>
-              )}
+              {p != null && <span className="ml-1.5 opacity-80">{cents(p)}</span>}
             </button>
           );
         })}
       </div>
 
-      {/* Column header */}
       <div className="grid grid-cols-[1fr_1fr_1fr] gap-2 px-2 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
         <span>Price</span>
         <span className="text-right">Shares</span>
         <span className="text-right">Total</span>
       </div>
 
-      {/* Asks */}
       <div className="mb-1 px-2 text-[11px] font-medium text-[hsl(var(--danger))]">
         Asks · buy {selectedLabel} here
       </div>
       <div className="space-y-px">
-        {asks.length === 0 && (
-          <div className="px-2 py-1.5 text-xs text-muted-foreground">
-            No asks.
-          </div>
+        {askView.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">No asks.</div>
         )}
-        {asks.map((o, i) => (
+        {askView.map((l, i) => (
           <BookRow
-            key={o.hash}
-            order={o}
-            decimals={decimals}
+            key={`ask-${l.price}-${i}`}
+            level={l}
             total={askTotals[i]}
             tone="ask"
-            selectedLabel={selectedLabel}
-            mine={!!account && o.maker.toLowerCase() === account.toLowerCase()}
-            canTake={!resolved && !!account}
-            otherLabel={otherLabel}
+            canTake={canTake}
             onTake={onTake}
-            onPickOrder={onPickOrder}
+            onPickLevel={onPickLevel}
           />
         ))}
       </div>
 
-      {/* Spread / mid */}
       <div className="my-1.5 flex items-center justify-between rounded-md bg-muted/40 px-2 py-1.5 text-xs">
         <span className="text-muted-foreground">
-          Mid{" "}
-          <span className="font-mono text-foreground">
-            {mid != null ? cents(mid) : "—"}
-          </span>
+          Mid <span className="font-mono text-foreground">{cents(mid)}</span>
         </span>
         <span className="text-muted-foreground">
-          Spread{" "}
-          <span className="font-mono text-foreground">
-            {spread != null ? cents(spread) : "—"}
-          </span>
+          Spread <span className="font-mono text-foreground">{cents(spread)}</span>
         </span>
       </div>
 
-      {/* Bids */}
       <div className="mb-1 px-2 text-[11px] font-medium text-[hsl(var(--success))]">
         Bids · sell {selectedLabel} here
       </div>
       <div className="space-y-px">
-        {bids.length === 0 && (
-          <div className="px-2 py-1.5 text-xs text-muted-foreground">
-            No bids.
-          </div>
+        {topBids.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">No bids.</div>
         )}
-        {bids.map((o, i) => (
+        {topBids.map((l, i) => (
           <BookRow
-            key={o.hash}
-            order={o}
-            decimals={decimals}
+            key={`bid-${l.price}-${i}`}
+            level={l}
             total={bidTotals[i]}
             tone="bid"
-            selectedLabel={selectedLabel}
-            mine={!!account && o.maker.toLowerCase() === account.toLowerCase()}
-            canTake={!resolved && !!account}
-            otherLabel={otherLabel}
+            canTake={canTake}
             onTake={onTake}
-            onPickOrder={onPickOrder}
+            onPickLevel={onPickLevel}
           />
         ))}
       </div>
@@ -1650,75 +746,46 @@ function OrderBookPanel({
 }
 
 function BookRow({
-  order,
-  decimals,
+  level,
   total,
   tone,
-  selectedLabel,
-  mine,
   canTake,
-  otherLabel,
   onTake,
-  onPickOrder,
+  onPickLevel,
 }: {
-  order: UnifiedOrder;
-  decimals: number;
+  level: Level;
   total: number;
   tone: "ask" | "bid";
-  selectedLabel: string;
-  mine: boolean;
   canTake: boolean;
-  otherLabel?: string | null;
-  onTake: (o: UnifiedOrder) => void;
-  onPickOrder: (o: UnifiedOrder, tone: "ask" | "bid") => void;
+  onTake: (level: Level, side: Side) => void;
+  onPickLevel: (level: Level, tone: "ask" | "bid") => void;
 }) {
-  const price = Number(order.price);
-  const sharesNum = Number(formatUnits(sharesRemainingRaw(order), decimals));
   const isAsk = tone === "ask";
-  const complementary = !!order._complementary;
   const tint = isAsk ? "hsl(var(--danger))" : "hsl(var(--success))";
-
   return (
     <button
       type="button"
-      onClick={() => onPickOrder(order, tone)}
-      title={`Load ${cents(price)} × ${sharesNum.toLocaleString(undefined, {
-        maximumFractionDigits: 2,
-      })} ${selectedLabel} into the ticket`}
+      onClick={() => onPickLevel(level, tone)}
       className="group relative grid w-full grid-cols-[1fr_1fr_1fr] items-center gap-2 rounded-md px-2 py-1 text-xs hover:ring-1 hover:ring-border"
       style={{
-        background: `linear-gradient(to left, ${tint}0F ${Math.min(
-          100,
-          total,
-        )}%, transparent 0)`,
+        background: `linear-gradient(to left, ${tint}0F ${Math.min(100, total)}%, transparent 0)`,
       }}
     >
-      <span
-        className="text-left font-mono font-medium"
-        style={{ color: tint }}
-      >
-        {cents(price)}
+      <span className="text-left font-mono font-medium" style={{ color: tint }}>
+        {cents(level.price)}
       </span>
       <span className="text-right font-mono text-foreground">
-        {sharesNum.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-        {complementary && otherLabel && (
-          <span
-            className="ml-1 text-[9px] uppercase text-muted-foreground"
-            title={`Liquidity routed from the ${otherLabel} book`}
-          >
-            ·{otherLabel.slice(0, 4)}
-          </span>
-        )}
+        {level.shares.toLocaleString(undefined, { maximumFractionDigits: 2 })}
       </span>
       <span className="flex items-center justify-end gap-2">
         <span className="font-mono text-muted-foreground">{money(total)}</span>
-        {canTake && !mine && (
+        {canTake && (
           <span
             role="button"
             tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
-              onTake(order);
+              onTake(level, isAsk ? "BUY" : "SELL");
             }}
             className={`hidden rounded px-2 py-0.5 font-medium text-white group-hover:inline-block ${
               isAsk ? "bg-[hsl(var(--success))]" : "bg-[hsl(var(--danger))]"
@@ -1727,23 +794,59 @@ function BookRow({
             {isAsk ? "Buy" : "Sell"}
           </span>
         )}
-        {mine && <span className="text-[10px] text-muted-foreground">you</span>}
       </span>
     </button>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Rules / Market context
+// Trade tape
 // ---------------------------------------------------------------------------
 
-function RulesPanel({
-  terms,
-  description,
+function TradeTape({
+  trades,
+  outcomes,
 }: {
-  terms: string;
-  description: string;
+  trades: { outcomeIndex: number; side: Side; price: string; shares: string; ts: number }[];
+  outcomes: { index: number; label: string }[];
 }) {
+  return (
+    <section className="card p-5">
+      <h3 className="mb-3 font-semibold">Recent trades</h3>
+      <div className="space-y-1">
+        {trades.slice(0, 12).map((t, i) => {
+          const label = outcomes.find((o) => o.index === t.outcomeIndex)?.label ?? "";
+          return (
+            <div key={`${t.ts}-${i}`} className="flex items-center gap-3 text-xs">
+              <span
+                className={`rounded px-1.5 py-0.5 font-semibold ${
+                  t.side === "BUY" ? "bg-success/15 text-success" : "bg-danger/15 text-danger"
+                }`}
+              >
+                {t.side}
+              </span>
+              <span className="flex-1 truncate">
+                {Number(formatMicro(BigInt(t.shares))).toLocaleString(undefined, {
+                  maximumFractionDigits: 2,
+                })}{" "}
+                {label}
+              </span>
+              <span className="font-mono text-muted-foreground">
+                {cents(Number(formatMicro(BigInt(t.price))))}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rules
+// ---------------------------------------------------------------------------
+
+function RulesPanel({ terms, description }: { terms: string; description: string }) {
   const [tab, setTab] = useState<"rules" | "context">("rules");
   return (
     <section className="card p-5">
@@ -1775,15 +878,8 @@ function RulesPanel({
 // Trade panel
 // ---------------------------------------------------------------------------
 
-const ORDER_TYPE_LABELS: Record<OrderType, string> = {
-  limit: "Limit",
-  market: "Market",
-  mint: "Mint full set",
-  redeem: "Redeem / merge",
-};
-
 function TradePanel(props: {
-  outcomes: { index: number; label: string; positionId: string }[];
+  outcomes: { index: number; label: string }[];
   selectedIdx: number;
   onSelectOutcome: (idx: number) => void;
   outcomeBuyPrice: (idx: number) => number | null;
@@ -1796,18 +892,14 @@ function TradePanel(props: {
   shares: string;
   setShares: (v: string) => void;
   sym: string;
-  decimals: number;
   bestAsk: number | null;
   bestBid: number | null;
-  myPosition: string;
+  myPosition: number;
+  balance: number;
   resolved: boolean;
-  blockedReason: string | null;
-  walletBalance: string;
+  tradeable: boolean;
   submitting: boolean;
   onSubmit: () => void;
-  onMaxMint: () => void;
-  onRedeemWinnings: () => void;
-  onApprovalNeeded: () => void;
 }) {
   const {
     outcomes,
@@ -1826,49 +918,41 @@ function TradePanel(props: {
     bestAsk,
     bestBid,
     myPosition,
+    balance,
     resolved,
-    blockedReason,
-    walletBalance,
+    tradeable,
     submitting,
     onSubmit,
-    onMaxMint,
-    onRedeemWinnings,
-    onApprovalNeeded,
   } = props;
 
-  const isOrder = orderType === "limit" || orderType === "market";
   const sharesNum = Number(shares) || 0;
-
-  // Effective price used for totals.
   const priceForCalc =
-    orderType === "limit"
+    orderType === "LIMIT"
       ? Number(limitCents) / 100
       : side === "BUY"
         ? bestAsk ?? 0
         : bestBid ?? 0;
-
-  const total = sharesNum * priceForCalc; // collateral in/out
-  const toWin = side === "BUY" ? sharesNum : sharesNum * (1 - priceForCalc);
+  const total = sharesNum * priceForCalc;
+  const toWin = sharesNum;
+  const selectedLabel = outcomes.find((o) => o.index === selectedIdx)?.label ?? "";
 
   function bump(delta: number) {
     const next = Math.max(0, Math.round((sharesNum + delta) * 100) / 100);
     setShares(next ? String(next) : "");
   }
 
-  const selectedLabel =
-    outcomes.find((o) => o.index === selectedIdx)?.label ?? "";
-
-  let actionLabel = "Place order";
-  if (orderType === "limit")
-    actionLabel = `${side === "BUY" ? "Buy" : "Sell"} ${selectedLabel}`;
-  else if (orderType === "market")
-    actionLabel = `${side === "BUY" ? "Buy" : "Sell"} at market`;
-  else if (orderType === "mint") actionLabel = "Mint full set";
-  else if (orderType === "redeem") actionLabel = `Merge into ${sym}`;
+  const insufficient =
+    side === "BUY" && total > balance && total > 0
+      ? `Need ${money(total)} ${sym} — you have ${money(balance)}`
+      : null;
+  const insufficientShares =
+    side === "SELL" && sharesNum > myPosition && sharesNum > 0
+      ? `You only hold ${myPosition.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares`
+      : null;
+  const blocked = insufficient ?? insufficientShares;
 
   return (
     <section className="card p-5 space-y-4">
-      {/* Outcome selector */}
       <div className="grid grid-cols-2 gap-2">
         {outcomes.slice(0, 2).map((o) => {
           const active = o.index === selectedIdx;
@@ -1878,15 +962,11 @@ function TradePanel(props: {
               key={o.index}
               onClick={() => onSelectOutcome(o.index)}
               className={`rounded-xl border px-3 py-2 text-left transition-colors ${
-                active
-                  ? "border-primary bg-primary/10"
-                  : "border-border hover:border-foreground/30"
+                active ? "border-primary bg-primary/10" : "border-border hover:border-foreground/30"
               }`}
             >
               <div className="text-sm font-semibold">{o.label}</div>
-              <div className="text-xs text-muted-foreground">
-                {p != null ? cents(p) : "—"}
-              </div>
+              <div className="text-xs text-muted-foreground">{cents(p)}</div>
             </button>
           );
         })}
@@ -1900,41 +980,31 @@ function TradePanel(props: {
           {outcomes.map((o) => (
             <option key={o.index} value={o.index}>
               {o.label}
-              {outcomeBuyPrice(o.index) != null
-                ? ` · ${cents(outcomeBuyPrice(o.index)!)}`
-                : ""}
             </option>
           ))}
         </select>
       )}
 
-      {/* Buy / Sell + order type */}
-      {isOrder && (
-        <div className="flex items-center gap-2">
-          <div className="flex flex-1 rounded-lg bg-muted/50 p-0.5">
-            <button
-              onClick={() => setSide("BUY")}
-              className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
-                side === "BUY"
-                  ? "bg-success text-white"
-                  : "text-muted-foreground"
-              }`}
-            >
-              Buy
-            </button>
-            <button
-              onClick={() => setSide("SELL")}
-              className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
-                side === "SELL"
-                  ? "bg-[hsl(var(--danger))] text-white"
-                  : "text-muted-foreground"
-              }`}
-            >
-              Sell
-            </button>
-          </div>
+      <div className="flex items-center gap-2">
+        <div className="flex flex-1 rounded-lg bg-muted/50 p-0.5">
+          <button
+            onClick={() => setSide("BUY")}
+            className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
+              side === "BUY" ? "bg-success text-white" : "text-muted-foreground"
+            }`}
+          >
+            Buy
+          </button>
+          <button
+            onClick={() => setSide("SELL")}
+            className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
+              side === "SELL" ? "bg-[hsl(var(--danger))] text-white" : "text-muted-foreground"
+            }`}
+          >
+            Sell
+          </button>
         </div>
-      )}
+      </div>
 
       <div>
         <label className="label mb-1 block">Order type</label>
@@ -1943,17 +1013,12 @@ function TradePanel(props: {
           value={orderType}
           onChange={(e) => setOrderType(e.target.value as OrderType)}
         >
-          <option value="limit">{ORDER_TYPE_LABELS.limit}</option>
-          <option value="market">{ORDER_TYPE_LABELS.market}</option>
-          <optgroup label="Advanced">
-            <option value="mint">{ORDER_TYPE_LABELS.mint}</option>
-            <option value="redeem">{ORDER_TYPE_LABELS.redeem}</option>
-          </optgroup>
+          <option value="LIMIT">Limit</option>
+          <option value="MARKET">Market</option>
         </select>
       </div>
 
-      {/* Inputs by order type */}
-      {orderType === "limit" && (
+      {orderType === "LIMIT" && (
         <div>
           <label className="label mb-1 block">Limit price</label>
           <div className="relative">
@@ -1972,145 +1037,79 @@ function TradePanel(props: {
       )}
 
       <div>
-        <label className="label mb-1 block">
-          {orderType === "mint"
-            ? `Sets (costs ${sym})`
-            : orderType === "redeem"
-              ? "Shares to merge"
-              : "Shares"}
-        </label>
-          <input
-            className="input font-mono"
-            inputMode="decimal"
-            placeholder="0"
-            value={shares}
-            onChange={(e) => setShares(e.target.value)}
-          />
-          <div className="mt-2 grid grid-cols-4 gap-1.5">
-            {[-100, -10, 10, 100].map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => bump(d)}
-                className="rounded-lg border border-border py-1 text-xs font-medium text-muted-foreground hover:border-foreground/30 hover:text-foreground"
-              >
-                {d > 0 ? `+${d}` : d}
-              </button>
-            ))}
-          </div>
-          {orderType === "mint" && (
+        <label className="label mb-1 block">Shares</label>
+        <input
+          className="input font-mono"
+          inputMode="decimal"
+          placeholder="0"
+          value={shares}
+          onChange={(e) => setShares(e.target.value)}
+        />
+        <div className="mt-2 grid grid-cols-4 gap-1.5">
+          {[-100, -10, 10, 100].map((d) => (
             <button
+              key={d}
               type="button"
-              onClick={onMaxMint}
-              className="mt-1.5 text-xs font-medium text-primary hover:underline"
+              onClick={() => bump(d)}
+              className="rounded-lg border border-border py-1 text-xs font-medium text-muted-foreground hover:border-foreground/30 hover:text-foreground"
             >
-              Use max {sym}
+              {d > 0 ? `+${d}` : d}
             </button>
-          )}
+          ))}
+        </div>
       </div>
 
-      {/* Position + totals */}
       <div className="space-y-1.5 rounded-xl border border-border bg-muted/20 p-3 text-sm">
         <Row label="Your position">
-          <span className="font-mono">{myPosition} sh</span>
+          <span className="font-mono">
+            {myPosition.toLocaleString(undefined, { maximumFractionDigits: 2 })} sh
+          </span>
         </Row>
-        {isOrder && (
-          <>
-            <Row label={side === "BUY" ? "Total cost" : "You receive"}>
-              <span className="inline-flex items-center gap-1 font-mono text-primary">
-                {money(total)}
-                <TokenIcon symbol={sym} size={12} />
-              </span>
-            </Row>
-            {side === "BUY" && (
-              <Row label="To win">
-                <span className="inline-flex items-center gap-1 font-mono text-success">
-                  {money(toWin)}
-                  <TokenIcon symbol={sym} size={12} />
-                </span>
-              </Row>
-            )}
-          </>
-        )}
-        {orderType === "mint" && (
-          <>
-            <Row label={`${sym} balance`}>
-              <span className="inline-flex items-center gap-1 font-mono">
-                {walletBalance}
-                <TokenSymbol symbol={sym} size={12} />
-              </span>
-            </Row>
-            <Row label="Cost">
-              <span className="inline-flex items-center gap-1 font-mono text-primary">
-                {money(sharesNum)} <TokenSymbol symbol={sym} size={12} />
-              </span>
-            </Row>
-          </>
-        )}
-        {orderType === "redeem" && (
-          <Row label="Returns">
+        <Row label={side === "BUY" ? "Total cost" : "You receive"}>
+          <span className="inline-flex items-center gap-1 font-mono text-primary">
+            {money(total)}
+            <TokenIcon symbol={sym} size={12} />
+          </span>
+        </Row>
+        {side === "BUY" && (
+          <Row label="To win">
             <span className="inline-flex items-center gap-1 font-mono text-success">
-              {money(sharesNum)} <TokenSymbol symbol={sym} size={12} />
+              {money(toWin)}
+              <TokenIcon symbol={sym} size={12} />
             </span>
           </Row>
         )}
       </div>
 
-      {blockedReason ? (
-        <Button
-          className="w-full"
-          variant="secondary"
-          onClick={
-            blockedReason.includes("Approve")
-              ? onApprovalNeeded
-              : undefined
-          }
-          disabled={!blockedReason.includes("Approve")}
-          title={blockedReason}
-        >
-          {blockedReason}
+      {blocked ? (
+        <Button className="w-full" variant="secondary" disabled title={blocked}>
+          {blocked}
         </Button>
       ) : (
         <Button
           className="w-full"
-          variant={
-            isOrder ? (side === "BUY" ? "success" : "danger") : "default"
-          }
-          disabled={submitting || (orderType !== "redeem" && resolved)}
+          variant={side === "BUY" ? "success" : "danger"}
+          disabled={submitting || resolved || !tradeable}
           onClick={() => void onSubmit()}
         >
-          {submitting ? "Working…" : actionLabel}
+          {submitting
+            ? "Working…"
+            : `${side === "BUY" ? "Buy" : "Sell"} ${selectedLabel}${
+                orderType === "MARKET" ? " at market" : ""
+              }`}
         </Button>
       )}
 
-      {resolved && (
-        <Button
-          className="w-full"
-          variant="success"
-          onClick={onRedeemWinnings}
-        >
-          Redeem winning shares
-        </Button>
-      )}
-
-      {isOrder && (
-        <p className="text-center text-[11px] text-muted-foreground">
-          {orderType === "limit"
-            ? "Signed limit orders rest on the book until matched."
-            : "Market orders take the best resting liquidity instantly."}
-        </p>
-      )}
+      <p className="text-center text-[11px] text-muted-foreground">
+        {orderType === "LIMIT"
+          ? "Limit orders cross marketable liquidity, then rest on the book."
+          : "Market orders take the best resting liquidity instantly."}
+      </p>
     </section>
   );
 }
 
-function Row({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-muted-foreground">{label}</span>
@@ -2147,11 +1146,8 @@ function CoverEditor({
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
-  // Non-creators just see the cover (with fallback) — no controls.
   if (!isCreator) {
-    return (
-      <BetThumbnail imageUrl={imageUrl} title={title} size="lg" fallback />
-    );
+    return <BetThumbnail imageUrl={imageUrl} title={title} size="lg" fallback />;
   }
 
   async function upload(file: File) {
@@ -2160,32 +1156,26 @@ function CoverEditor({
     try {
       const token = await getAccessToken();
       if (!token) throw new Error("Your session expired. Please sign in again.");
-
       const fd = new FormData();
       fd.append("file", file);
       fd.append("address", account);
       fd.append("chainId", String(chainId));
       fd.append("conditionId", conditionId);
-
       const uploadRes = await fetch("/api/upload/market-image", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
       if (!uploadRes.ok) {
-        const j = (await uploadRes.json().catch(() => null)) as {
-          error?: string;
-        } | null;
+        const j = (await uploadRes.json().catch(() => null)) as { error?: string } | null;
         throw new Error(j?.error || "upload failed");
       }
       const { url } = (await uploadRes.json()) as { url: string };
-
       await jsonFetch(`/api/markets/${marketId}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({ creator: account, imageUrl: url }),
       });
-
       push({ title: "Cover updated", variant: "success" });
       onDone();
     } catch (err) {

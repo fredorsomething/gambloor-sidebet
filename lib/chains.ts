@@ -55,22 +55,6 @@ export function getEscrowV2Address(_chainId?: number): Address | undefined {
   return ESCROW_V2_ADDRESS;
 }
 
-/** ConditionalTokens (ERC-1155 outcome shares) for CLOB markets. */
-export const CTF_ADDRESS = (process.env.NEXT_PUBLIC_CTF_ADDRESS_POLYGON ||
-  undefined) as Address | undefined;
-
-export function getCtfAddress(_chainId?: number): Address | undefined {
-  return CTF_ADDRESS;
-}
-
-/** CTFExchange (EIP-712 order settlement) for CLOB markets. */
-export const EXCHANGE_ADDRESS = (process.env
-  .NEXT_PUBLIC_EXCHANGE_ADDRESS_POLYGON || undefined) as Address | undefined;
-
-export function getExchangeAddress(_chainId?: number): Address | undefined {
-  return EXCHANGE_ADDRESS;
-}
-
 /** Platform default settler (@admin) on the create-bet form. */
 export const DEFAULT_SETTLER = (process.env.NEXT_PUBLIC_DEFAULT_SETTLER?.trim() ||
   "0x445525f628D4840e2F14148f2547e6F270Caa3eb") as Address;

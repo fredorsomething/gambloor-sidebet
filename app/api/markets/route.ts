@@ -3,7 +3,6 @@ import { z } from "zod";
 import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
 import {
-  getExchangeAddress,
   getMarketCollateralToken,
   getTokenByAddress,
 } from "@/lib/chains";
@@ -17,13 +16,16 @@ export const dynamic = "force-dynamic";
 const HEX64 = /^0x[0-9a-fA-F]{64}$/;
 const DECIMAL = /^[0-9]+$/;
 
+// Markets are fully off-chain now (custodial engine + ledger). The legacy
+// on-chain address columns are retained for schema stability; new markets store
+// this sentinel so the (chainId, exchangeAddress, conditionId) key stays unique
+// on the random conditionId alone.
+const OFFCHAIN_SENTINEL = "0x0000000000000000000000000000000000000000";
+
 const CreateMarketSchema = z.object({
   chainId: z.number().int().positive(),
-  exchangeAddress: z.string().refine(isAddress, "bad exchange address"),
-  ctfAddress: z.string().refine(isAddress, "bad ctf address"),
   conditionId: z.string().regex(HEX64, "conditionId must be 0x + 64 hex"),
   questionId: z.string().regex(HEX64, "questionId must be 0x + 64 hex"),
-  txHash: z.string().regex(HEX64).optional(),
 
   creator: z.string().refine(isAddress, "bad creator"),
   settler: z.string().refine(isAddress, "bad settler"),
@@ -107,18 +109,18 @@ export async function POST(req: NextRequest) {
       where: {
         chainId_exchangeAddress_conditionId: {
           chainId: d.chainId,
-          exchangeAddress: getAddress(d.exchangeAddress),
+          exchangeAddress: OFFCHAIN_SENTINEL,
           conditionId: d.conditionId.toLowerCase(),
         },
       },
-      update: { txHash: d.txHash },
+      update: {},
       create: {
         chainId: d.chainId,
-        exchangeAddress: getAddress(d.exchangeAddress),
-        ctfAddress: getAddress(d.ctfAddress),
+        exchangeAddress: OFFCHAIN_SENTINEL,
+        ctfAddress: OFFCHAIN_SENTINEL,
         conditionId: d.conditionId.toLowerCase(),
         questionId: d.questionId.toLowerCase(),
-        txHash: d.txHash,
+        txHash: null,
 
         creator: getAddress(d.creator),
         settler: getAddress(d.settler),
@@ -186,10 +188,6 @@ export async function GET(req: NextRequest) {
 
   const where: Record<string, unknown> = {};
   if (q.chainId) where.chainId = q.chainId;
-  // Only surface markets on the current exchange (USDC.e). Markets created on a
-  // retired exchange are not shown.
-  const activeExchange = getExchangeAddress();
-  if (activeExchange) where.exchangeAddress = getAddress(activeExchange);
   if (q.status) {
     const statuses = q.status
       .split(",")
@@ -225,12 +223,13 @@ export async function GET(req: NextRequest) {
     prisma.market.count({ where }),
   ]);
 
-  // Compute compact per-outcome quotes (best bid/ask/mid) for card odds.
+  // Compute compact per-outcome quotes (best bid/ask/mid) for card odds from the
+  // engine's denormalized OutcomeStat read model (micro prices).
   const ids = rows.map((r) => r.id);
-  const orders = ids.length
-    ? await prisma.order.findMany({
-        where: { marketId: { in: ids }, status: "Open" },
-        select: { marketId: true, outcomeIndex: true, side: true, price: true },
+  const stats = ids.length
+    ? await prisma.outcomeStat.findMany({
+        where: { marketId: { in: ids } },
+        select: { marketId: true, outcomeIndex: true, bestBid: true, bestAsk: true },
       })
     : [];
 
@@ -238,24 +237,16 @@ export async function GET(req: NextRequest) {
     number,
     Map<number, { bestBid: number | null; bestAsk: number | null }>
   >();
-  for (const o of orders) {
-    const p = Number(o.price);
-    if (!Number.isFinite(p)) continue;
-    let byOutcome = levels.get(o.marketId);
+  for (const s of stats) {
+    let byOutcome = levels.get(s.marketId);
     if (!byOutcome) {
       byOutcome = new Map();
-      levels.set(o.marketId, byOutcome);
+      levels.set(s.marketId, byOutcome);
     }
-    let lvl = byOutcome.get(o.outcomeIndex);
-    if (!lvl) {
-      lvl = { bestBid: null, bestAsk: null };
-      byOutcome.set(o.outcomeIndex, lvl);
-    }
-    if (o.side === "BUY") {
-      lvl.bestBid = lvl.bestBid == null ? p : Math.max(lvl.bestBid, p);
-    } else {
-      lvl.bestAsk = lvl.bestAsk == null ? p : Math.min(lvl.bestAsk, p);
-    }
+    byOutcome.set(s.outcomeIndex, {
+      bestBid: s.bestBid != null ? Number(s.bestBid) / 1_000_000 : null,
+      bestAsk: s.bestAsk != null ? Number(s.bestAsk) / 1_000_000 : null,
+    });
   }
 
   const items = rows.map((r) => {

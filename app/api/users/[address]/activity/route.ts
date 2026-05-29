@@ -3,6 +3,8 @@ import { formatUnits, getAddress, isAddress } from "viem";
 
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { formatMicro } from "@/lib/exchange/units";
+import { userLegs } from "@/lib/exchange/userStats";
 
 export const dynamic = "force-dynamic";
 
@@ -84,27 +86,13 @@ export async function GET(
 
   const profileLink = `/u/${address}`;
 
-  const [trades, bets, walletNotes] = await Promise.all([
-    prisma.trade.findMany({
+  const [fills, bets, walletNotes] = await Promise.all([
+    prisma.fill.findMany({
       where: {
-        OR: [
-          { taker: { equals: address, mode: "insensitive" } },
-          { maker: { equals: address, mode: "insensitive" } },
-        ],
+        OR: [{ taker: lower }, { maker: lower }],
       },
       orderBy: { createdAt: "desc" },
       take: 500,
-      include: {
-        market: {
-          select: {
-            id: true,
-            title: true,
-            decimals: true,
-            tokenSymbol: true,
-            outcomes: { select: { index: true, label: true } },
-          },
-        },
-      },
     }),
     prisma.bet.findMany({
       where: {
@@ -129,32 +117,40 @@ export async function GET(
   const items: ActivityItem[] = [];
 
   // ---- Market trades (buys / sells from the user's perspective) ----
-  for (const t of trades) {
-    const m = t.market;
+  const marketIds = [...new Set(fills.map((f) => f.marketId))];
+  const markets = marketIds.length
+    ? await prisma.market.findMany({
+        where: { id: { in: marketIds } },
+        select: {
+          id: true,
+          title: true,
+          tokenSymbol: true,
+          outcomes: { select: { index: true, label: true } },
+        },
+      })
+    : [];
+  const marketById = new Map(markets.map((m) => [m.id, m]));
+  const legs = userLegs(fills, lower);
+  let legIdx = 0;
+  for (const leg of legs) {
+    const m = marketById.get(leg.marketId);
     if (!m) continue;
-    const isTaker = t.taker.toLowerCase() === lower;
-    const userSide = isTaker
-      ? (t.side as "BUY" | "SELL")
-      : t.side === "BUY"
-        ? "SELL"
-        : "BUY";
-    const shares = num(t.shares, m.decimals);
-    const cost = num(t.cost, m.decimals);
+    const shares = Number(formatMicro(leg.shares));
+    const cost = Number(formatMicro(leg.cost));
     const label =
-      m.outcomes.find((o) => o.index === t.outcomeIndex)?.label ??
-      `Outcome ${t.outcomeIndex}`;
-
+      m.outcomes.find((o) => o.index === leg.outcome)?.label ??
+      `Outcome ${leg.outcome}`;
     items.push({
-      id: `trade-${t.id}`,
-      kind: userSide === "BUY" ? "market_buy" : "market_sell",
-      at: t.createdAt.toISOString(),
+      id: `fill-${leg.marketId}-${legIdx++}-${leg.t}`,
+      kind: leg.side === "BUY" ? "market_buy" : "market_sell",
+      at: new Date(leg.t).toISOString(),
       title: m.title,
       link: `/markets/${m.id}`,
       tokenSymbol: m.tokenSymbol,
       amount: shares,
       // Buying spends collateral (negative cash), selling returns it (positive).
-      delta: userSide === "BUY" ? -cost : cost,
-      detail: `${userSide} ${label}`,
+      delta: leg.side === "BUY" ? -cost : cost,
+      detail: `${leg.side} ${label}`,
     });
   }
 

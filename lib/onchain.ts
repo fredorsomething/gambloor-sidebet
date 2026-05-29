@@ -9,7 +9,6 @@ import { POLYGON_CHAIN_ID } from "@/lib/chains";
 import {
   SIDEBET_ESCROW_ABI,
   SIDEBET_ESCROW_V2_ABI,
-  CONDITIONAL_TOKENS_ABI,
   BET_STATUS,
   type BetStatusName,
 } from "@/lib/abi";
@@ -174,42 +173,6 @@ export async function readBetV2(
     };
   } catch (err) {
     console.warn("readBetV2 failed", { chainId, escrow, id: id.toString(), err });
-    return null;
-  }
-}
-
-export type OnchainCondition = {
-  settler: Address;
-  collateral: Address;
-  outcomeSlotCount: number;
-  resolved: boolean;
-  winningOutcome: number;
-};
-
-export async function readCondition(
-  chainId: number,
-  ctf: Address,
-  conditionId: `0x${string}`,
-): Promise<OnchainCondition | null> {
-  const publicClient = getPublicClient(chainId);
-  if (!publicClient) return null;
-  try {
-    const raw = (await publicClient.readContract({
-      address: ctf,
-      abi: CONDITIONAL_TOKENS_ABI,
-      functionName: "conditions",
-      args: [conditionId],
-    })) as readonly [Address, Address, number, boolean, number];
-
-    return {
-      settler: raw[0],
-      collateral: raw[1],
-      outcomeSlotCount: Number(raw[2]),
-      resolved: raw[3],
-      winningOutcome: Number(raw[4]),
-    };
-  } catch (err) {
-    console.warn("readCondition failed", { chainId, ctf, conditionId, err });
     return null;
   }
 }

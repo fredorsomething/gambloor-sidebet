@@ -1,15 +1,15 @@
 import { NextRequest } from "next/server";
-import { getAddress, isAddress, type Address } from "viem";
+import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
-import { getMarketCollateralToken, getTokenByAddress } from "@/lib/chains";
+import { getMarketCollateralToken } from "@/lib/chains";
 import { prisma } from "@/lib/db";
-import { notify } from "@/lib/notifications";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
-import { getPublicClient, readCondition } from "@/lib/onchain";
-import { CONDITIONAL_TOKENS_ABI, EXCHANGE_ABI } from "@/lib/abi";
+import { engineSnapshot, EngineError } from "@/lib/engineClient";
+import { collateralKey, shareKey } from "@/lib/exchange/keys";
+import type { BookSnapshot } from "@/lib/exchange/types";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +60,19 @@ export async function PATCH(
   return jsonOk(updated);
 }
 
+function emptyBook(marketId: number, numOutcomes: number): BookSnapshot {
+  return {
+    marketId,
+    numOutcomes,
+    outcomes: Array.from({ length: numOutcomes }, (_, i) => ({
+      outcomeIndex: i,
+      bids: [],
+      asks: [],
+    })),
+    ts: Date.now(),
+  };
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } },
@@ -73,173 +86,63 @@ export async function GET(
   });
   if (!market) return jsonErr("not found", 404);
 
-  // Opportunistic resolution sync from the CTF condition.
-  const cond = await readCondition(
-    market.chainId,
-    getAddress(market.ctfAddress) as Address,
-    market.conditionId as `0x${string}`,
-  );
-  if (cond?.resolved && market.status !== "Resolved") {
-    try {
-      await prisma.market.update({
-        where: { id },
-        data: { status: "Resolved", winningOutcome: cond.winningOutcome },
-      });
-      const winLabel =
-        market.outcomes.find((o) => o.index === cond.winningOutcome)?.label ??
-        `Outcome ${cond.winningOutcome}`;
-      market.status = "Resolved";
-      market.winningOutcome = cond.winningOutcome;
-      // Notify the market creator that it resolved.
-      await notify({
-        recipient: market.creator,
-        type: "market_resolved",
-        title: "Your market resolved",
-        body: `"${market.title}" resolved to ${winLabel}.`,
-        link: `/markets/${market.id}`,
-      });
-    } catch (err) {
-      console.warn("market sync failed", err);
-    }
+  const numOutcomes = market.outcomes.length || 2;
+
+  // Live order book from the matching engine (Redis-backed). Degrade gracefully
+  // to an empty book if the engine is temporarily unavailable.
+  let book: BookSnapshot;
+  try {
+    book = await engineSnapshot(id);
+  } catch (err) {
+    if (!(err instanceof EngineError)) console.error("snapshot failed", err);
+    book = emptyBook(id, numOutcomes);
   }
 
-  // Expire stale orders lazily.
-  const now = Math.floor(Date.now() / 1000);
-  await prisma.order.updateMany({
-    where: {
-      marketId: id,
-      status: "Open",
-      expiry: { gt: 0n, lt: BigInt(now) },
-    },
-    data: { status: "Expired" },
-  });
-
-  let orders = await prisma.order.findMany({
-    where: { marketId: id, status: "Open" },
-    orderBy: { createdAt: "asc" },
-  });
-
-  // Reconcile each resting order against the exchange's on-chain `filled` /
-  // `cancelled` maps. The chain is the source of truth; the client posts fills
-  // after its tx, but that POST can be missed (closed tab, error). Reading the
-  // contract here guarantees the book decrements and closes orders correctly.
-  {
-    const client = getPublicClient(market.chainId);
-    if (client && orders.length > 0) {
-      const exchange = getAddress(market.exchangeAddress) as Address;
-      const updates: Promise<unknown>[] = [];
-      const reconciled = await Promise.all(
-        orders.map(async (o) => {
-          try {
-            const [chainFilled, cancelled] = await Promise.all([
-              client.readContract({
-                address: exchange,
-                abi: EXCHANGE_ABI,
-                functionName: "filled",
-                args: [o.hash as `0x${string}`],
-              }) as Promise<bigint>,
-              client.readContract({
-                address: exchange,
-                abi: EXCHANGE_ABI,
-                functionName: "cancelled",
-                args: [o.hash as `0x${string}`],
-              }) as Promise<boolean>,
-            ]);
-            // On-chain `filled` is taker-denominated, same units we store, and
-            // is authoritative — the optimistic client POST is just a fast path.
-            const filled = chainFilled;
-            const fullyFilled = filled >= BigInt(o.takerAmount);
-            const nextStatus = cancelled
-              ? "Cancelled"
-              : fullyFilled
-                ? "Filled"
-                : "Open";
-            if (
-              nextStatus !== "Open" ||
-              filled.toString() !== o.filled
-            ) {
-              updates.push(
-                prisma.order.update({
-                  where: { hash: o.hash },
-                  data: { filled: filled.toString(), status: nextStatus },
-                }),
-              );
-            }
-            return { ...o, filled: filled.toString(), status: nextStatus };
-          } catch {
-            return o;
-          }
-        }),
-      );
-      if (updates.length > 0) {
-        await Promise.allSettled(updates);
+  // Optional viewer custodial state (collateral + per-outcome shares) from the
+  // ledger — these are the authoritative internal balances.
+  let viewer:
+    | {
+        collateral: { balance: string; locked: string };
+        shares: Record<number, { balance: string; locked: string }>;
       }
-      orders = reconciled.filter((o) => o.status === "Open") as typeof orders;
+    | undefined;
+  const viewerAddr = req.nextUrl.searchParams.get("viewer");
+  if (viewerAddr && isAddress(viewerAddr)) {
+    const lower = getAddress(viewerAddr).toLowerCase();
+    const [coll, shares] = await Promise.all([
+      prisma.account.findUnique({
+        where: { key: collateralKey(lower) },
+        select: { balance: true, locked: true },
+      }),
+      prisma.account.findMany({
+        where: { owner: lower, kind: "SHARE", marketId: id },
+        select: { outcomeIndex: true, balance: true, locked: true },
+      }),
+    ]);
+    const shareMap: Record<number, { balance: string; locked: string }> = {};
+    for (const o of market.outcomes) shareMap[o.index] = { balance: "0", locked: "0" };
+    for (const s of shares) {
+      if (s.outcomeIndex == null) continue;
+      shareMap[s.outcomeIndex] = {
+        balance: s.balance.toString(),
+        locked: s.locked.toString(),
+      };
     }
+    viewer = {
+      collateral: {
+        balance: (coll?.balance ?? 0n).toString(),
+        locked: (coll?.locked ?? 0n).toString(),
+      },
+      shares: shareMap,
+    };
   }
 
-  const orderBook: Record<number, { buys: unknown[]; sells: unknown[] }> = {};
-  for (const o of market.outcomes) {
-    orderBook[o.index] = { buys: [], sells: [] };
-  }
-  for (const o of orders) {
-    const bucket = orderBook[o.outcomeIndex];
-    if (!bucket) continue;
-    if (o.side === "BUY") bucket.buys.push(o);
-    else bucket.sells.push(o);
-  }
-  // Sort: best BUY = highest price first; best SELL = lowest price first.
-  for (const idx of Object.keys(orderBook)) {
-    const b = orderBook[Number(idx)];
-    b.buys.sort(
-      (x: any, y: any) => Number(y.price) - Number(x.price),
-    );
-    b.sells.sort(
-      (x: any, y: any) => Number(x.price) - Number(y.price),
-    );
-  }
-
-  // Optional viewer positions (on-chain ERC-1155 balances).
-  let positions: Record<number, string> | undefined;
-  const viewer = req.nextUrl.searchParams.get("viewer");
-  if (viewer && isAddress(viewer)) {
-    const client = getPublicClient(market.chainId);
-    if (client) {
-      positions = {};
-      await Promise.all(
-        market.outcomes.map(async (o) => {
-          try {
-            const bal = (await client.readContract({
-              address: getAddress(market.ctfAddress) as Address,
-              abi: CONDITIONAL_TOKENS_ABI,
-              functionName: "balanceOf",
-              args: [BigInt(o.positionId), getAddress(viewer) as Address],
-            })) as bigint;
-            positions![o.index] = bal.toString();
-          } catch {
-            positions![o.index] = "0";
-          }
-        }),
-      );
-    }
-  }
-
-  // Source of truth for collateral is the on-chain condition: splitPosition /
-  // mergePositions / fillOrder all move whatever token the condition (and its
-  // bound Exchange) was created with. Older markets used native USDC; newer
-  // ones use USDC.e. Reporting the real token keeps the UI from checking the
-  // wrong balance/allowance.
   const fallback = getMarketCollateralToken();
-  const chainCollateral = cond?.collateral
-    ? getAddress(cond.collateral)
-    : (getAddress(market.token) as Address);
-  const known = getTokenByAddress(market.chainId, chainCollateral);
   const marketOut = {
     ...market,
-    token: chainCollateral,
-    tokenSymbol: known?.symbol ?? market.tokenSymbol ?? fallback.symbol,
-    decimals: known?.decimals ?? market.decimals ?? fallback.decimals,
+    tokenSymbol: market.tokenSymbol ?? fallback.symbol,
+    decimals: market.decimals ?? fallback.decimals,
   };
 
-  return jsonOk({ market: marketOut, orderBook, positions });
+  return jsonOk({ market: marketOut, book, viewer });
 }

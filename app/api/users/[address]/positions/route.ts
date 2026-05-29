@@ -1,17 +1,19 @@
 import { NextRequest } from "next/server";
-import { formatUnits, getAddress, isAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 
+import { MARKET_COLLATERAL_SYMBOL } from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { formatMicro, formatPrice, SCALE } from "@/lib/exchange/units";
+import { replay, userLegs } from "@/lib/exchange/userStats";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/users/[address]/positions
- * Aggregates the user's open CLOB market positions across every market: net
- * shares held per outcome and the capital tied up in them (running average cost
- * basis). The total value is the sum of that cost basis — so buying a position
- * moves value out of the wallet into "positions" rather than disappearing.
+ * Open share holdings across all markets, valued at the last traded price, with
+ * average cost basis from fills. Holdings come from the authoritative ledger;
+ * resolved markets are already redeemed to collateral so they don't appear.
  */
 export async function GET(
   _req: NextRequest,
@@ -22,126 +24,79 @@ export async function GET(
   const address = getAddress(handle);
   const lower = address.toLowerCase();
 
-  const trades = await prisma.trade.findMany({
-    where: {
-      OR: [
-        { taker: { equals: address, mode: "insensitive" } },
-        { maker: { equals: address, mode: "insensitive" } },
-      ],
-    },
-    orderBy: { createdAt: "asc" },
-    include: {
-      market: {
-        select: {
-          id: true,
-          title: true,
-          imageUrl: true,
-          status: true,
-          decimals: true,
-          tokenSymbol: true,
-          winningOutcome: true,
-          outcomes: { select: { index: true, label: true } },
-        },
-      },
-    },
-    take: 2000,
+  const shareAccts = await prisma.account.findMany({
+    where: { owner: lower, kind: "SHARE" },
+    select: { marketId: true, outcomeIndex: true, balance: true, locked: true },
   });
+  const held = shareAccts
+    .map((s) => ({
+      marketId: s.marketId!,
+      outcomeIndex: s.outcomeIndex!,
+      qty: s.balance + s.locked,
+    }))
+    .filter((s) => s.qty > 0n);
 
-  type Acc = {
-    marketId: number;
-    title: string;
-    imageUrl: string | null;
-    status: string;
-    decimals: number;
-    tokenSymbol: string | null;
-    winningOutcome: number | null;
-    outcomeIndex: number;
-    label: string;
-    qty: bigint; // net shares held (raw units)
-    cost: bigint; // remaining cost basis for held shares (raw units)
-  };
+  if (held.length === 0) return jsonOk({ totalValue: 0, positions: [] });
 
-  const positions = new Map<string, Acc>();
+  const marketIds = [...new Set(held.map((h) => h.marketId))];
+  const [markets, stats, fills] = await Promise.all([
+    prisma.market.findMany({
+      where: { id: { in: marketIds } },
+      select: {
+        id: true,
+        title: true,
+        imageUrl: true,
+        status: true,
+        decimals: true,
+        tokenSymbol: true,
+        winningOutcome: true,
+        outcomes: { select: { index: true, label: true } },
+      },
+    }),
+    prisma.outcomeStat.findMany({ where: { marketId: { in: marketIds } } }),
+    prisma.fill.findMany({
+      where: { marketId: { in: marketIds }, OR: [{ taker: lower }, { maker: lower }] },
+      orderBy: { createdAt: "asc" },
+      take: 4000,
+    }),
+  ]);
 
-  for (const t of trades) {
-    const m = t.market;
-    if (!m) continue;
-    const isTaker = t.taker.toLowerCase() === lower;
-    // Taker fields are the taker's perspective; maker fields (when present) are
-    // the maker's perspective on their own outcome — these differ for
-    // complementary (cross-outcome) fills. Legacy rows mirror the taker side.
-    const userOutcome = isTaker
-      ? t.outcomeIndex
-      : t.makerOutcomeIndex ?? t.outcomeIndex;
-    const userSide = isTaker
-      ? (t.side as "BUY" | "SELL")
-      : ((t.makerSide as "BUY" | "SELL" | null) ??
-        (t.side === "BUY" ? "SELL" : "BUY"));
-
-    const shares = BigInt(
-      isTaker ? t.shares : t.makerShares ?? t.shares,
-    );
-    const cost = BigInt(isTaker ? t.cost : t.makerCost ?? t.cost);
-    if (shares <= 0n) continue;
-
-    const key = `${t.marketId}:${userOutcome}`;
-    let acc = positions.get(key);
-    if (!acc) {
-      acc = {
-        marketId: t.marketId,
-        title: m.title,
-        imageUrl: m.imageUrl,
-        status: m.status,
-        decimals: m.decimals,
-        tokenSymbol: m.tokenSymbol,
-        winningOutcome: m.winningOutcome,
-        outcomeIndex: userOutcome,
-        label:
-          m.outcomes.find((o) => o.index === userOutcome)?.label ??
-          `Outcome ${userOutcome}`,
-        qty: 0n,
-        cost: 0n,
-      };
-      positions.set(key, acc);
-    }
-
-    if (userSide === "BUY") {
-      acc.qty += shares;
-      acc.cost += cost;
-    } else {
-      // Reduce holdings at the running average cost.
-      const sold = shares > acc.qty ? acc.qty : shares;
-      const costOut = acc.qty > 0n ? (acc.cost * sold) / acc.qty : 0n;
-      acc.qty -= sold;
-      acc.cost -= costOut;
-    }
+  const marketById = new Map(markets.map((m) => [m.id, m]));
+  const lastByKey = new Map<string, bigint>();
+  for (const s of stats) {
+    if (s.lastPrice != null) lastByKey.set(`${s.marketId}:${s.outcomeIndex}`, s.lastPrice);
   }
+  const { positions: costByKey } = replay(userLegs(fills, lower));
 
   let totalValue = 0;
-  const items = [...positions.values()]
-    .filter((p) => p.qty > 0n)
-    .map((p) => {
-      const value = Number(formatUnits(p.cost, p.decimals));
-      const shares = Number(formatUnits(p.qty, p.decimals));
-      totalValue += value;
-      return {
-        marketId: p.marketId,
-        title: p.title,
-        imageUrl: p.imageUrl,
-        status: p.status,
-        tokenSymbol: p.tokenSymbol,
-        decimals: p.decimals,
-        outcomeIndex: p.outcomeIndex,
-        label: p.label,
-        isWinner:
-          p.status === "Resolved" && p.winningOutcome === p.outcomeIndex,
-        shares,
-        sharesRaw: p.qty.toString(),
-        costBasis: value,
-        avgPrice: shares > 0 ? value / shares : 0,
-      };
-    })
-    .sort((a, b) => b.costBasis - a.costBasis);
+  const items = held.map((h) => {
+    const key = `${h.marketId}:${h.outcomeIndex}`;
+    const m = marketById.get(h.marketId);
+    const last = lastByKey.get(key) ?? SCALE / 2n; // default to 0.50
+    const valueMicro = (last * h.qty) / SCALE;
+    const value = Number(formatMicro(valueMicro));
+    totalValue += value;
+    const acc = costByKey.get(key);
+    const avg = acc && acc.qty > 0n ? formatPrice((acc.cost * SCALE) / acc.qty) : "0";
+    return {
+      marketId: h.marketId,
+      title: m?.title ?? `Market ${h.marketId}`,
+      imageUrl: m?.imageUrl ?? null,
+      status: m?.status ?? "Open",
+      tokenSymbol: m?.tokenSymbol ?? MARKET_COLLATERAL_SYMBOL,
+      decimals: m?.decimals ?? 6,
+      outcomeIndex: h.outcomeIndex,
+      label:
+        m?.outcomes.find((o) => o.index === h.outcomeIndex)?.label ??
+        `Outcome ${h.outcomeIndex}`,
+      shares: Number(formatMicro(h.qty)),
+      sharesRaw: h.qty.toString(),
+      lastPrice: Number(formatPrice(last)),
+      value,
+      avgPrice: Number(avg),
+    };
+  });
+  items.sort((a, b) => b.value - a.value);
 
   return jsonOk({ totalValue: Number(totalValue.toFixed(2)), positions: items });
 }

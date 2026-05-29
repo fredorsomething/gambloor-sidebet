@@ -6,12 +6,7 @@ import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
 import { ConnectButton } from "@/components/ConnectButton";
-import {
-  getCtfAddress,
-  getEscrowAddress,
-  getEscrowV2Address,
-  getExchangeAddress,
-} from "@/lib/chains";
+import { getEscrowAddress, getEscrowV2Address } from "@/lib/chains";
 
 /** Requires a signed-in Privy account on Polygon mainnet + deployed contracts. */
 export function ChainGuard({
@@ -61,21 +56,9 @@ export function ChainGuard({
     );
   }
 
+  // Markets are fully off-chain (custodial engine + ledger); a signed-in account
+  // on Polygon is all that's needed.
   if (requirement === "market") {
-    const ctf = getCtfAddress();
-    const exchange = getExchangeAddress();
-    if (!ctf || !exchange) {
-      return (
-        <div className="card p-8 space-y-2">
-          <h2 className="text-lg font-semibold">Markets not configured</h2>
-          <p className="text-sm text-muted-foreground">
-            Set <code>NEXT_PUBLIC_CTF_ADDRESS_POLYGON</code> and{" "}
-            <code>NEXT_PUBLIC_EXCHANGE_ADDRESS_POLYGON</code> to your deployed
-            contracts on Polygon mainnet, then redeploy the app.
-          </p>
-        </div>
-      );
-    }
     return <>{children}</>;
   }
 

@@ -7,6 +7,7 @@ import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { engineReloadMarket } from "@/lib/engineClient";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,11 @@ export async function POST(
     data: { status: approved ? "Open" : "Rejected" },
     include: { outcomes: { orderBy: { index: "asc" } } },
   });
+
+  // Let the engine pick up the new status (it caches market metadata).
+  if (approved) {
+    await engineReloadMarket(id).catch(() => {});
+  }
 
   await notify({
     recipient: market.creator,

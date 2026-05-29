@@ -5,11 +5,8 @@ import { useChainId } from "wagmi";
 import { polygon } from "wagmi/chains";
 
 import {
-  getCtfAddress,
   getEscrowAddress,
   getEscrowV2Address,
-  getExchangeAddress,
-  getMarketCollateralToken,
   getTokens,
   POLYGON_CHAIN_ID,
 } from "@/lib/chains";
@@ -30,23 +27,6 @@ export function useEscrow() {
     escrowLegacy,
     tokens,
     isSupported: onPolygon && !!escrow,
-    onPolygon,
-  };
-}
-
-/** Resolves CLOB market contracts (ConditionalTokens + Exchange) on Polygon. */
-export function useMarketContracts() {
-  const chainId = useChainId();
-  const onPolygon = chainId === polygon.id;
-  const ctf = onPolygon ? getCtfAddress() : undefined;
-  const exchange = onPolygon ? getExchangeAddress() : undefined;
-  const tokens = useMemo(() => [getMarketCollateralToken()], []);
-  return {
-    chainId: POLYGON_CHAIN_ID,
-    ctf,
-    exchange,
-    tokens,
-    isSupported: onPolygon && !!ctf && !!exchange,
     onPolygon,
   };
 }

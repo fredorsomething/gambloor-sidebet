@@ -16,27 +16,27 @@ datasource db {
 model User {
   // Wallet address is the identity. Stored checksummed. With Privy this is the
   // embedded or external EVM wallet linked to the authenticated Privy account.
-  address    String   @id
+  address String @id
 
   // Privy account linkage (a Privy user can link multiple wallets; we key the
   // profile by the active wallet address but record who owns it).
-  privyId    String?  @unique
-  email      String?
+  privyId String? @unique
+  email   String?
 
-  username   String?  @unique
-  avatarUrl  String?
-  bio        String?
-  twitter    String?
-  discord    String?
+  username  String? @unique
+  avatarUrl String?
+  bio       String?
+  twitter   String?
+  discord   String?
 
   // Staff / trusted traders — shows verified.png after their display name.
-  verified   Boolean  @default(false)
+  verified Boolean @default(false)
 
   // Profile badge chips (Admin is derived from wallet, not stored here).
-  badges     String[] @default(["User"])
+  badges String[] @default(["User"])
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([username])
   @@index([privyId])
@@ -48,8 +48,8 @@ model User {
 // `User` row always take priority over history when resolving a handle.
 model UsernameHistory {
   id        Int      @id @default(autoincrement())
-  address   String   // checksummed wallet that used this username
-  username  String   // lowercased former username
+  address   String // checksummed wallet that used this username
+  username  String // lowercased former username
   createdAt DateTime @default(now())
 
   @@unique([username, address])
@@ -63,26 +63,26 @@ model UsernameHistory {
 // because the on-chain bet's stakes/terms are fixed at creation, an accepted
 // offer is realized by the proposer relaunching the bet with the agreed terms.
 model BetNegotiation {
-  id            Int      @id @default(autoincrement())
-  betId         Int
-  fromAddress   String   // lowercased sender of this offer (proposer or would-be acceptor)
-  toAddress     String?  // lowercased recipient (legacy rows default to proposer in API)
+  id          Int     @id @default(autoincrement())
+  betId       Int
+  fromAddress String // lowercased sender of this offer (proposer or would-be acceptor)
+  toAddress   String? // lowercased recipient (legacy rows default to proposer in API)
 
   // Proposed stakes (wei-unit decimal strings) from the PROPOSER's perspective,
   // mirroring how a Bet stores them. The would-be acceptor stakes `acceptorStake`.
   proposerStake String
   acceptorStake String
 
-  terms         String?  // optional revised resolution terms
-  message       String?  // optional note to the other party
+  terms   String? // optional revised resolution terms
+  message String? // optional note to the other party
 
-  status        String   @default("Pending") // Pending | Accepted | Declined | Withdrawn
+  status String @default("Pending") // Pending | Accepted | Declined | Withdrawn
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  bet            Bet              @relation(fields: [betId], references: [id], onDelete: Cascade)
-  lockedOnBet    Bet?             @relation("LockedNegotiation")
+  bet            Bet             @relation(fields: [betId], references: [id], onDelete: Cascade)
+  lockedOnBet    Bet?            @relation("LockedNegotiation")
   directMessages DirectMessage[]
 
   @@index([betId, status])
@@ -96,7 +96,7 @@ model BetNegotiation {
 model RepVote {
   voter     String
   target    String
-  value     Int      // +1 or -1
+  value     Int // +1 or -1
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -108,11 +108,11 @@ model RepVote {
 // user's profile; it persists for everyone to see. Authors can delete their own.
 model ProfileComment {
   id        Int      @id @default(autoincrement())
-  target    String   // profile owner address (lowercase)
-  author    String   // commenter address (lowercase)
+  target    String // profile owner address (lowercase)
+  author    String // commenter address (lowercase)
   body      String
-  gifUrl    String?  // optional attached GIF (e.g. Giphy/Tenor media url)
-  parentId  Int?     // reply target (another ProfileComment.id) for threaded replies
+  gifUrl    String? // optional attached GIF (e.g. Giphy/Tenor media url)
+  parentId  Int? // reply target (another ProfileComment.id) for threaded replies
   createdAt DateTime @default(now())
 
   @@index([target, createdAt])
@@ -125,12 +125,12 @@ model ProfileComment {
 // Anyone signed in can comment; authors can delete their own.
 model ThreadComment {
   id          Int      @id @default(autoincrement())
-  subjectType String   // "bet" | "market"
+  subjectType String // "bet" | "market"
   subjectId   Int
-  author      String   // commenter address (lowercase)
+  author      String // commenter address (lowercase)
   body        String
-  gifUrl      String?  // optional attached GIF media url
-  parentId    Int?     // reply target (another ThreadComment.id)
+  gifUrl      String? // optional attached GIF media url
+  parentId    Int? // reply target (another ThreadComment.id)
   createdAt   DateTime @default(now())
 
   @@index([subjectType, subjectId, createdAt])
@@ -142,9 +142,9 @@ model ThreadComment {
 // to ("thread" | "profile"). One like per (scope, commentId, liker).
 model CommentLike {
   id        Int      @id @default(autoincrement())
-  scope     String   // "thread" | "profile"
+  scope     String // "thread" | "profile"
   commentId Int
-  liker     String   // lowercased address
+  liker     String // lowercased address
   createdAt DateTime @default(now())
 
   @@unique([scope, commentId, liker])
@@ -156,8 +156,8 @@ model CommentLike {
 // visitors. The profile view count is the number of distinct rows for a target.
 model ProfileView {
   id        Int      @id @default(autoincrement())
-  target    String   // lowercased address being viewed
-  viewer    String   // lowercased viewer address, or "anon:<id>"
+  target    String // lowercased address being viewed
+  viewer    String // lowercased viewer address, or "anon:<id>"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -170,8 +170,8 @@ model ProfileView {
 // something relevant happens (comment, resolution, settlement, deposit, etc).
 model Notification {
   id        Int      @id @default(autoincrement())
-  recipient String   // lowercase address
-  type      String   // comment | reply | resolution_proposed | resolution_verified | resolution_rejected | market_approved | market_rejected | bet_settled | market_resolved | deposit | withdrawal | status
+  recipient String // lowercase address
+  type      String // comment | reply | resolution_proposed | resolution_verified | resolution_rejected | market_approved | market_rejected | bet_settled | market_resolved | deposit | withdrawal | status
   title     String
   body      String?
   link      String?
@@ -186,13 +186,13 @@ model Notification {
 // admin/verifier for review before the outcome is finalized on-chain.
 model ResolutionProposal {
   id              Int      @id @default(autoincrement())
-  subjectType     String   // "bet" | "market"
+  subjectType     String // "bet" | "market"
   subjectId       Int
-  proposedBy      String   // lowercase address
-  proposedOutcome Int      // winning outcome index the proposer claims
+  proposedBy      String // lowercase address
+  proposedOutcome Int // winning outcome index the proposer claims
   note            String?
   status          String   @default("Pending") // Pending | Approved | Rejected
-  reviewedBy      String?  // lowercase admin address
+  reviewedBy      String? // lowercase admin address
   reviewNote      String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -206,13 +206,13 @@ model ResolutionProposal {
 // approved request lets a neutral admin/verifier act as an extra resolver.
 model ResolverRequest {
   id          Int      @id @default(autoincrement())
-  subjectType String   // "bet" | "market"
+  subjectType String // "bet" | "market"
   subjectId   Int
-  requestedBy String   // lowercase address of the requester
-  suggested   String?  // optional suggested resolver address (lowercase)
+  requestedBy String // lowercase address of the requester
+  suggested   String? // optional suggested resolver address (lowercase)
   reason      String?
   status      String   @default("Pending") // Pending | Approved | Rejected
-  reviewedBy  String?  // lowercase admin address
+  reviewedBy  String? // lowercase admin address
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -234,61 +234,61 @@ model ApprovedSettler {
 }
 
 model Bet {
-  id              Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // On-chain references
-  chainId         Int
-  escrowAddress   String
-  onchainId       String   // uint256 from the escrow, stored as decimal string
-  txHash          String?
+  chainId       Int
+  escrowAddress String
+  onchainId     String // uint256 from the escrow, stored as decimal string
+  txHash        String?
 
   // Roles + token snapshot (kept in sync with chain on read)
-  proposer        String
-  acceptor        String?
-  settler         String
-  token           String
-  tokenSymbol     String?
-  decimals        Int      @default(6)
+  proposer    String
+  acceptor    String?
+  settler     String
+  token       String
+  tokenSymbol String?
+  decimals    Int     @default(6)
 
   // Asymmetric stakes (wei-units, decimal strings). `amount` kept as the
   // proposer-side stake for backwards compatibility / legacy reads.
-  amount          String
-  proposerStake   String   @default("0")
-  acceptorStake   String   @default("0")
+  amount        String
+  proposerStake String @default("0")
+  acceptorStake String @default("0")
 
   // Outcomes: ordered labels (e.g. ["Yes","No"] or custom brackets) and the
   // outcome index each side is backing.
-  outcomes        Json     @default("[\"Yes\",\"No\"]")
-  proposerOutcome Int      @default(0)
-  acceptorOutcome Int      @default(1)
+  outcomes        Json @default("[\"Yes\",\"No\"]")
+  proposerOutcome Int  @default(0)
+  acceptorOutcome Int  @default(1)
 
   // Off-chain content
-  title           String
-  description     String
-  imageUrl        String?  // market cover (Vercel Blob); not part of on-chain termsHash
-  terms           String
-  termsHash       String   // 0x-prefixed keccak256 hex
-  nonce           String
+  title       String
+  description String
+  imageUrl    String? // market cover (Vercel Blob); not part of on-chain termsHash
+  terms       String
+  termsHash   String // 0x-prefixed keccak256 hex
+  nonce       String
 
   // Lifecycle
-  status          String   @default("Open") // Open | Matched | Settled | Cancelled | Refunded
-  winner          String?
-  winningOutcome  Int?
-  feeBps          Int      @default(0) // settler fee snapshot at creation
-  acceptDeadline  BigInt?
+  status           String    @default("Open") // Open | Matched | Settled | Cancelled | Refunded
+  winner           String?
+  winningOutcome   Int?
+  feeBps           Int       @default(0) // settler fee snapshot at creation
+  acceptDeadline   BigInt?
   estimatedEndDate DateTime?
 
   // When a counter-offer is accepted, terms/stakes lock onto this bet row.
   // `escrowRevisionNeeded` stays true until the proposer publishes a fresh
   // on-chain offer (new onchainId) for the same indexed bet.
-  lockedNegotiationId   Int?     @unique
-  intendedAcceptor      String?  // lowercased wallet that should take the bet
-  escrowRevisionNeeded  Boolean  @default(false)
+  lockedNegotiationId  Int?    @unique
+  intendedAcceptor     String? // lowercased wallet that should take the bet
+  escrowRevisionNeeded Boolean @default(false)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  lockedNegotiation BetNegotiation? @relation("LockedNegotiation", fields: [lockedNegotiationId], references: [id], onDelete: SetNull)
+  lockedNegotiation BetNegotiation?  @relation("LockedNegotiation", fields: [lockedNegotiationId], references: [id], onDelete: SetNull)
   negotiations      BetNegotiation[]
 
   @@unique([chainId, escrowAddress, onchainId])
@@ -301,43 +301,43 @@ model Bet {
 // ---------------- CLOB prediction markets ----------------
 
 model Market {
-  id               Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // On-chain references
-  chainId          Int
-  exchangeAddress  String   // CTFExchange address
-  ctfAddress       String   // ConditionalTokens address
-  conditionId      String   // bytes32 hex
-  questionId       String   // bytes32 hex (keccak of termsHash + nonce)
-  txHash           String?
+  chainId         Int
+  exchangeAddress String // CTFExchange address
+  ctfAddress      String // ConditionalTokens address
+  conditionId     String // bytes32 hex
+  questionId      String // bytes32 hex (keccak of termsHash + nonce)
+  txHash          String?
 
   // Roles + collateral
-  creator          String
-  settler          String
-  feeBps           Int      @default(200) // settler fee snapshot
-  token            String
-  tokenSymbol      String?
-  decimals         Int      @default(6)
+  creator     String
+  settler     String
+  feeBps      Int     @default(200) // settler fee snapshot
+  token       String
+  tokenSymbol String?
+  decimals    Int     @default(6)
 
   // Off-chain content
-  title            String
-  description      String
-  imageUrl         String?
-  terms            String
-  termsHash        String
-  nonce            String
+  title       String
+  description String
+  imageUrl    String?
+  terms       String
+  termsHash   String
+  nonce       String
 
   // Lifecycle. New markets start "Pending" until an admin approves them.
-  status           String   @default("Open") // Pending | Open | Resolved | Rejected
+  status           String    @default("Open") // Pending | Open | Resolved | Rejected
   winningOutcome   Int?
   estimatedEndDate DateTime?
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  outcomes         MarketOutcome[]
-  orders           Order[]
-  trades           Trade[]
+  outcomes MarketOutcome[]
+  fills    Fill[]
+  stats    OutcomeStat[]
 
   @@unique([chainId, exchangeAddress, conditionId])
   @@index([chainId, status])
@@ -352,97 +352,173 @@ model MarketOutcome {
   label      String
   positionId String // ERC-1155 token id, uint256 as decimal string
 
-  market     Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  market Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
 
   @@unique([marketId, index])
   @@index([positionId])
 }
 
-model Order {
-  // Order hash (EIP-712) as the primary key.
-  hash         String   @id
+// ---------------- Custodial off-chain exchange (ledger) ----------------
+//
+// The matching engine (single-writer service) owns the live order book in
+// Redis/memory; Postgres is the durable, auditable financial source of truth.
+// All amounts are integer micro-units (10^6) of the collateral (USDC.e, 6
+// decimals). A whole share redeems for 1 collateral unit (1_000_000 micro).
 
-  marketId     Int
-  maker        String
-  side         String   // BUY | SELL  (maker's perspective on the outcome share)
-  outcomeIndex Int
-  positionId   String   // ERC-1155 token id (decimal string)
+// A balance bucket. `kind` selects the asset:
+//   COLLATERAL  -> a user's spendable USDC.e balance (marketId/outcomeIndex null)
+//   SHARE       -> a user's outcome-share balance for (marketId, outcomeIndex)
+//   RESERVE     -> per-market collateral backing minted complete sets
+//   FEE         -> the house fee account (collateral)
+// `balance` is free; `locked` is reserved by resting orders / pending withdrawals.
+model Account {
+  id           Int    @id @default(autoincrement())
+  // Deterministic uniqueness key: `${kind}|${owner}|${marketId}|${outcomeIndex}`.
+  // (Nullable columns can't be used in a composite unique because NULLs are
+  // distinct in Postgres, so we key on a precomputed string instead.)
+  key          String @unique
+  owner        String // lowercased wallet address, or "house" / "market:<id>"
+  kind         String // COLLATERAL | SHARE | RESERVE | FEE
+  marketId     Int?
+  outcomeIndex Int?
 
-  // Price in collateral units per whole share (decimal string, scaled by token decimals).
-  price        String
+  balance BigInt @default(0)
+  locked  BigInt @default(0)
 
-  // Raw EIP-712 order fields (decimal strings).
-  makerAmount  String
-  takerAmount  String
-  salt         String
-  expiry       BigInt   @default(0) // unix seconds, 0 = no expiry
-  signature    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Fill tracking (taker-side amount filled, decimal string).
-  filled       String   @default("0")
-  status       String   @default("Open") // Open | Filled | Cancelled | Expired
+  lines LedgerLine[]
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  market       Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  trades       Trade[]
-
-  @@index([marketId, status])
-  @@index([maker])
-  @@index([positionId, side, status])
+  @@index([owner])
+  @@index([marketId])
+  @@index([kind])
 }
 
-model Trade {
-  id           Int      @id @default(autoincrement())
-  marketId     Int
-  orderHash    String
-  taker        String
-  maker        String
-  // Taker's economic perspective on the outcome they actually traded. For
-  // complementary (cross-outcome) fills this differs from the resting order's
-  // outcome, so the maker's perspective is recorded separately below.
-  side         String   // taker's side: BUY | SELL
-  outcomeIndex Int      // taker's outcome
-  positionId   String   // taker's position id
-  shares       String   // taker's share amount (decimal string)
-  cost         String   // taker's collateral amount (decimal string)
+// Double-entry journal. One row per economic event; its `lines` record the
+// signed balance/locked movements across accounts. Collateral lines (including
+// RESERVE + FEE) net to zero per transaction; share lines net by mint/merge.
+model LedgerTx {
+  id        Int      @id @default(autoincrement())
+  type      String // DEPOSIT | WITHDRAWAL | TRADE | FEE | SETTLEMENT | LOCK | UNLOCK | CANCEL
+  refId     String? // external reference (fill id, deposit txHash, withdrawal id...)
+  marketId  Int?
+  createdAt DateTime @default(now())
 
-  // Maker's perspective (their resting order's outcome). Null on legacy rows,
-  // in which case the maker side is the opposite of `side` on `outcomeIndex`.
-  makerSide         String?
-  makerOutcomeIndex Int?
-  makerPositionId   String?
-  makerShares       String?
-  makerCost         String?
+  lines LedgerLine[]
 
-  txHash       String?
-
-  createdAt    DateTime @default(now())
-
-  market       Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  order        Order    @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
-
+  @@index([type])
   @@index([marketId])
+  @@index([createdAt])
+}
+
+model LedgerLine {
+  id           Int    @id @default(autoincrement())
+  txId         Int
+  accountId    Int
+  balanceDelta BigInt @default(0)
+  lockedDelta  BigInt @default(0)
+
+  tx      LedgerTx @relation(fields: [txId], references: [id], onDelete: Cascade)
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([txId])
+  @@index([accountId])
+}
+
+// Durable trade history (one row per matched fill). Replaces the old `Trade`.
+model Fill {
+  id        Int    @id @default(autoincrement())
+  marketId  Int
+  matchType String // NORMAL | MINT | MERGE
+  qty       BigInt // micro-shares matched
+  price     BigInt // taker execution price (micro-USDC per share) on taker outcome
+
+  taker        String // lowercased
+  takerSide    String // BUY | SELL
+  takerOutcome Int
+  takerCost    BigInt // micro-USDC the taker paid (BUY) or received (SELL), pre-fee
+  takerFee     BigInt @default(0)
+
+  maker        String // lowercased
+  makerOrderId String
+  makerSide    String
+  makerOutcome Int
+  makerCost    BigInt
+
+  createdAt DateTime @default(now())
+
+  market Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@index([marketId, createdAt])
   @@index([taker])
   @@index([maker])
+}
+
+// Denormalized read model for fast market-list odds, kept in sync by the engine
+// on every book change. Not the order book itself — just best bid/ask/last.
+model OutcomeStat {
+  id           Int      @id @default(autoincrement())
+  marketId     Int
+  outcomeIndex Int
+  bestBid      BigInt?
+  bestAsk      BigInt?
+  lastPrice    BigInt?
+  updatedAt    DateTime @updatedAt
+
+  market Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@unique([marketId, outcomeIndex])
+  @@index([marketId])
+}
+
+// On-chain USDC.e deposit credited to a user's collateral balance. Idempotent
+// per (txHash, logIndex) so the indexer can re-scan safely.
+model Deposit {
+  id        Int      @id @default(autoincrement())
+  address   String // lowercased credited wallet
+  amount    BigInt // micro-USDC
+  txHash    String
+  logIndex  Int
+  chainId   Int      @default(137)
+  createdAt DateTime @default(now())
+
+  @@unique([txHash, logIndex])
+  @@index([address])
+}
+
+// A user withdrawal request. Collateral is debited (moved to `locked`) on
+// request; the bridge worker sends USDC.e on-chain and records the tx.
+model Withdrawal {
+  id        Int      @id @default(autoincrement())
+  address   String // lowercased destination wallet
+  amount    BigInt // micro-USDC sent to the user (net of fee)
+  fee       BigInt   @default(0)
+  status    String   @default("Pending") // Pending | Review | Processing | Sent | Failed | Rejected
+  txHash    String?
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([address])
+  @@index([status])
 }
 
 // Private 1:1 direct messages between two wallets. `sender`/`recipient` are
 // lowercased addresses. `pair` is the deterministic conversation key
 // (`min(addr)|max(addr)`) so a thread is easy to query regardless of direction.
 model DirectMessage {
-  id              Int       @id @default(autoincrement())
-  pair            String
-  sender          String
-  recipient       String
-  body            String    @default("")
-  gifUrl          String?
-  negotiationId   Int?      // structured counter-offer card (body may be empty)
-  readAt          DateTime?
-  createdAt       DateTime  @default(now())
+  id            Int       @id @default(autoincrement())
+  pair          String
+  sender        String
+  recipient     String
+  body          String    @default("")
+  gifUrl        String?
+  negotiationId Int? // structured counter-offer card (body may be empty)
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
 
-  negotiation     BetNegotiation? @relation(fields: [negotiationId], references: [id], onDelete: SetNull)
+  negotiation BetNegotiation? @relation(fields: [negotiationId], references: [id], onDelete: SetNull)
 
   @@index([pair, createdAt])
   @@index([recipient, readAt])
@@ -454,7 +530,7 @@ model DirectMessage {
 // read. `author` is the lowercased wallet address. `gifUrl` is an optional GIF.
 model ChatMessage {
   id        Int      @id @default(autoincrement())
-  author    String   // lowercased wallet address
+  author    String // lowercased wallet address
   body      String   @default("")
   gifUrl    String?
   createdAt DateTime @default(now())
@@ -468,7 +544,7 @@ model ChatMute {
   address    String    @id // lowercased wallet
   mutedUntil DateTime?
   reason     String?
-  mutedBy    String    // lowercased admin wallet
+  mutedBy    String // lowercased admin wallet
   createdAt  DateTime  @default(now())
 
   @@index([mutedUntil])
@@ -477,9 +553,9 @@ model ChatMute {
 // Lightweight presence for the "users online" counter. One row per browser
 // session key (`cid`), refreshed on each chat poll. Online = rows seen recently.
 model Presence {
-  cid       String   @id // client-generated session id
-  address   String?  // lowercased wallet if signed in
-  lastSeen  DateTime @updatedAt
+  cid      String   @id // client-generated session id
+  address  String? // lowercased wallet if signed in
+  lastSeen DateTime @updatedAt
 
   @@index([lastSeen])
 }
@@ -487,8 +563,8 @@ model Presence {
 // `blocker` blocked `blocked` from DMs (neither can message the other).
 model DmBlock {
   id        Int      @id @default(autoincrement())
-  blocker   String   // lowercase wallet
-  blocked   String   // lowercase wallet
+  blocker   String // lowercase wallet
+  blocked   String // lowercase wallet
   createdAt DateTime @default(now())
 
   @@unique([blocker, blocked])

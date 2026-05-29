@@ -3,6 +3,8 @@ import { formatUnits, getAddress, isAddress } from "viem";
 
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { SCALE } from "@/lib/exchange/units";
+import { replay, userLegs } from "@/lib/exchange/userStats";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +23,9 @@ type PnlEvent = { t: number; delta: number };
 
 /**
  * GET /api/users/[address]/pnl
- * Builds a realized-PnL timeline from settled sidebets and CLOB trade history,
- * returned as cumulative points the client can window by time range.
+ * Realized-PnL timeline from settled sidebets plus CLOB activity: realized
+ * trading PnL on sells AND market-resolution payouts (winning shares redeemed
+ * at 1, losing shares at 0).
  */
 export async function GET(
   _req: NextRequest,
@@ -31,6 +34,7 @@ export async function GET(
   const handle = decodeURIComponent(params.address).trim().replace(/^@/, "");
   if (!isAddress(handle)) return jsonErr("bad address", 400);
   const address = getAddress(handle);
+  const lower = address.toLowerCase();
 
   const events: PnlEvent[] = [];
 
@@ -64,60 +68,35 @@ export async function GET(
     if (delta !== 0) events.push({ t: b.updatedAt.getTime(), delta });
   }
 
-  // --- CLOB trades: realized PnL via running average cost basis ------------
-  const trades = await prisma.trade.findMany({
-    where: {
-      OR: [
-        { taker: { equals: address, mode: "insensitive" } },
-        { maker: { equals: address, mode: "insensitive" } },
-      ],
-    },
+  // --- CLOB trades: realized PnL on sells ----------------------------------
+  const fills = await prisma.fill.findMany({
+    where: { OR: [{ taker: lower }, { maker: lower }] },
     orderBy: { createdAt: "asc" },
-    include: { market: { select: { decimals: true } } },
   });
+  const { positions, realized } = replay(userLegs(fills, lower));
+  for (const r of realized) events.push({ t: r.t, delta: r.delta });
 
-  // Per (marketId:outcomeIndex) running position.
-  const pos = new Map<string, { qty: number; cost: number }>();
-  const lower = address.toLowerCase();
-  for (const t of trades) {
-    const decimals = t.market?.decimals ?? 6;
-    const isTaker = t.taker.toLowerCase() === lower;
-    // Maker fields (when present) capture the maker's outcome for complementary
-    // fills; legacy rows mirror the taker side on the same outcome.
-    const userOutcome = isTaker
-      ? t.outcomeIndex
-      : t.makerOutcomeIndex ?? t.outcomeIndex;
-    const userSide = isTaker
-      ? (t.side as "BUY" | "SELL")
-      : ((t.makerSide as "BUY" | "SELL" | null) ??
-        (t.side === "BUY" ? "SELL" : "BUY"));
-    const shares = dollars(isTaker ? t.shares : t.makerShares ?? t.shares, decimals);
-    const cost = dollars(isTaker ? t.cost : t.makerCost ?? t.cost, decimals);
-    if (shares <= 0) continue;
-
-    const key = `${t.marketId}:${userOutcome}`;
-    const p = pos.get(key) ?? { qty: 0, cost: 0 };
-
-    if (userSide === "BUY") {
-      p.qty += shares;
-      p.cost += cost;
-      pos.set(key, p);
-    } else {
-      // Realize PnL against average cost.
-      const avg = p.qty > 0 ? p.cost / p.qty : 0;
-      const sold = Math.min(shares, p.qty > 0 ? p.qty : shares);
-      const realized = cost - avg * sold;
-      // Reduce the position.
-      p.cost -= avg * Math.min(sold, p.qty);
-      p.qty = Math.max(0, p.qty - shares);
-      pos.set(key, p);
-      if (realized !== 0)
-        events.push({ t: t.createdAt.getTime(), delta: realized });
+  // --- Market resolution payouts ------------------------------------------
+  const remainingKeys = [...positions.entries()].filter(([, p]) => p.qty > 0n);
+  if (remainingKeys.length > 0) {
+    const marketIds = [...new Set(remainingKeys.map(([k]) => Number(k.split(":")[0])))];
+    const resolved = await prisma.market.findMany({
+      where: { id: { in: marketIds }, status: "Resolved" },
+      select: { id: true, winningOutcome: true, updatedAt: true },
+    });
+    const resolvedById = new Map(resolved.map((m) => [m.id, m]));
+    for (const [key, p] of remainingKeys) {
+      const [mId, outcome] = key.split(":").map(Number);
+      const m = resolvedById.get(mId);
+      if (!m) continue;
+      const payoutMicro = m.winningOutcome === outcome ? p.qty : 0n; // 1 micro-USDC / micro-share
+      const realizedMicro = payoutMicro - p.cost;
+      const delta = Number(realizedMicro) / Number(SCALE);
+      if (delta !== 0) events.push({ t: m.updatedAt.getTime(), delta });
     }
   }
 
   events.sort((a, b) => a.t - b.t);
-
   let cum = 0;
   const points = events.map((e) => {
     cum += e.delta;

@@ -4,29 +4,17 @@ import { getAddress, isAddress } from "viem";
 import { getMarketCollateralToken, MARKET_COLLATERAL_SYMBOL } from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { engineOpenOrders, EngineError } from "@/lib/engineClient";
+import { collateralKey } from "@/lib/exchange/keys";
+import { formatMicro, formatPrice } from "@/lib/exchange/units";
+import { replay, userLegs } from "@/lib/exchange/userStats";
 
 export const dynamic = "force-dynamic";
 
-/** Taker-fillable shares remaining on a resting order (raw token units). */
-function sharesRemainingRaw(o: {
-  side: string;
-  makerAmount: string;
-  takerAmount: string;
-  filled: string;
-}): bigint {
-  const remainingTaker = BigInt(o.takerAmount) - BigInt(o.filled);
-  if (remainingTaker <= 0n) return 0n;
-  const makerAmount = BigInt(o.makerAmount);
-  const takerAmount = BigInt(o.takerAmount) || 1n;
-  return o.side === "SELL"
-    ? (remainingTaker * makerAmount) / takerAmount
-    : remainingTaker;
-}
-
 /**
  * GET /api/markets/[id]/portfolio?address=0x...
- * Returns the viewer's open orders, trade history, and per-outcome inventory
- * (shares bought/sold, cost basis, realized proceeds) for this market.
+ * Viewer's open orders (from the engine), per-outcome positions and average
+ * cost (from the ledger + fills) and recent fill history for this market.
  */
 export async function GET(
   req: NextRequest,
@@ -45,135 +33,95 @@ export async function GET(
     include: { outcomes: { orderBy: { index: "asc" } } },
   });
   if (!market) return jsonErr("not found", 404);
-
   const labelOf = (idx: number) =>
     market.outcomes.find((o) => o.index === idx)?.label ?? `Outcome ${idx}`;
 
-  // Open orders by this maker.
-  const orders = await prisma.order.findMany({
-    where: { marketId: id, maker: address, status: "Open" },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const openOrders = orders
-    .map((o) => ({
-      hash: o.hash,
+  // Open orders from the engine (degrade gracefully if it's down).
+  let openOrders: {
+    id: string;
+    outcomeIndex: number;
+    label: string;
+    side: "BUY" | "SELL";
+    price: string;
+    shares: string;
+    createdAt: number;
+  }[] = [];
+  try {
+    const eng = await engineOpenOrders(id, lower);
+    openOrders = eng.map((o) => ({
+      id: o.id,
       outcomeIndex: o.outcomeIndex,
       label: labelOf(o.outcomeIndex),
       side: o.side,
-      price: o.price,
-      makerAmount: o.makerAmount,
-      takerAmount: o.takerAmount,
-      filled: o.filled,
-      salt: o.salt,
-      expiry: o.expiry.toString(),
-      signature: o.signature,
-      positionId: o.positionId,
-      sharesRemaining: sharesRemainingRaw(o).toString(),
-      createdAt: o.createdAt.toISOString(),
-    }))
-    .filter((o) => BigInt(o.sharesRemaining) > 0n);
-
-  // Trades where this user is taker or maker.
-  const trades = await prisma.trade.findMany({
-    where: { marketId: id, OR: [{ taker: address }, { maker: address }] },
-    orderBy: { createdAt: "desc" },
-    take: 500,
-  });
-
-  // Normalise each trade to the user's perspective.
-  type Norm = {
-    outcomeIndex: number;
-    label: string;
-    side: "BUY" | "SELL"; // user gained shares (BUY) or sold them (SELL)
-    shares: string;
-    cost: string;
-    counterparty: string;
-    role: "taker" | "maker";
-    txHash: string | null;
-    createdAt: string;
-  };
-  const history: Norm[] = trades.map((t) => {
-    const isTaker = t.taker.toLowerCase() === lower;
-    // The taker fields are the taker's perspective. The maker fields (when
-    // present) are the maker's perspective on their own resting order's
-    // outcome — these differ for complementary (cross-outcome) fills. Legacy
-    // rows have no maker* fields, so fall back to mirroring the taker side.
-    if (isTaker) {
-      return {
-        outcomeIndex: t.outcomeIndex,
-        label: labelOf(t.outcomeIndex),
-        side: t.side as "BUY" | "SELL",
-        shares: t.shares,
-        cost: t.cost,
-        counterparty: t.maker,
-        role: "taker" as const,
-        txHash: t.txHash,
-        createdAt: t.createdAt.toISOString(),
-      };
-    }
-    const mOutcome = t.makerOutcomeIndex ?? t.outcomeIndex;
-    const mSide =
-      (t.makerSide as "BUY" | "SELL" | null) ??
-      (t.side === "BUY" ? "SELL" : "BUY");
-    return {
-      outcomeIndex: mOutcome,
-      label: labelOf(mOutcome),
-      side: mSide,
-      shares: t.makerShares ?? t.shares,
-      cost: t.makerCost ?? t.cost,
-      counterparty: t.taker,
-      role: "maker" as const,
-      txHash: t.txHash,
-      createdAt: t.createdAt.toISOString(),
-    };
-  });
-
-  // Per-outcome inventory aggregates (raw token units, summed as bigint).
-  const agg = new Map<
-    number,
-    { bought: bigint; costBought: bigint; sold: bigint; proceeds: bigint }
-  >();
-  const touch = (idx: number) => {
-    if (!agg.has(idx))
-      agg.set(idx, { bought: 0n, costBought: 0n, sold: 0n, proceeds: 0n });
-    return agg.get(idx)!;
-  };
-  for (const t of history) {
-    const a = touch(t.outcomeIndex);
-    if (t.side === "BUY") {
-      a.bought += BigInt(t.shares);
-      a.costBought += BigInt(t.cost);
-    } else {
-      a.sold += BigInt(t.shares);
-      a.proceeds += BigInt(t.cost);
-    }
+      price: formatPrice(BigInt(o.price)),
+      shares: formatMicro(BigInt(o.remaining)),
+      createdAt: o.createdAt,
+    }));
+  } catch (err) {
+    if (!(err instanceof EngineError)) console.error("openOrders failed", err);
   }
 
+  // Authoritative share holdings from the ledger.
+  const shareAccts = await prisma.account.findMany({
+    where: { owner: lower, kind: "SHARE", marketId: id },
+    select: { outcomeIndex: true, balance: true, locked: true },
+  });
+  const heldByOutcome = new Map<number, bigint>();
+  for (const s of shareAccts) {
+    if (s.outcomeIndex == null) continue;
+    heldByOutcome.set(s.outcomeIndex, s.balance + s.locked);
+  }
+
+  // Average cost basis from fills.
+  const fills = await prisma.fill.findMany({
+    where: { marketId: id, OR: [{ taker: lower }, { maker: lower }] },
+    orderBy: { createdAt: "asc" },
+    take: 1000,
+  });
+  const { positions } = replay(userLegs(fills, lower));
+
   const inventory = market.outcomes.map((o) => {
-    const a = agg.get(o.index) ?? {
-      bought: 0n,
-      costBought: 0n,
-      sold: 0n,
-      proceeds: 0n,
-    };
+    const held = heldByOutcome.get(o.index) ?? 0n;
+    const acc = positions.get(`${id}:${o.index}`);
+    const avg =
+      acc && acc.qty > 0n ? formatPrice((acc.cost * 1_000_000n) / acc.qty) : "0";
     return {
       outcomeIndex: o.index,
       label: o.label,
-      positionId: o.positionId,
-      sharesBought: a.bought.toString(),
-      costBought: a.costBought.toString(),
-      sharesSold: a.sold.toString(),
-      proceeds: a.proceeds.toString(),
+      shares: formatMicro(held),
+      sharesMicro: held.toString(),
+      avgPrice: avg,
     };
+  });
+
+  // Recent fill history from this user's perspective.
+  const legs = userLegs(fills, lower).slice(-200).reverse();
+  const trades = legs.map((leg, i) => ({
+    id: `${id}-${i}-${leg.t}`,
+    outcomeIndex: leg.outcome,
+    label: labelOf(leg.outcome),
+    side: leg.side,
+    shares: formatMicro(leg.shares),
+    cost: formatMicro(leg.cost),
+    price: leg.shares > 0n ? formatPrice((leg.cost * 1_000_000n) / leg.shares) : "0",
+    createdAt: new Date(leg.t).toISOString(),
+  }));
+
+  const coll = await prisma.account.findUnique({
+    where: { key: collateralKey(lower) },
+    select: { balance: true, locked: true },
   });
 
   const collateral = getMarketCollateralToken();
   return jsonOk({
     decimals: collateral.decimals,
     tokenSymbol: MARKET_COLLATERAL_SYMBOL,
+    collateral: {
+      balance: (coll?.balance ?? 0n).toString(),
+      locked: (coll?.locked ?? 0n).toString(),
+    },
     openOrders,
-    trades: history,
     inventory,
+    trades,
   });
 }

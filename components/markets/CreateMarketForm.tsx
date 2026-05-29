@@ -11,28 +11,21 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { useAccount, useChainId, usePublicClient, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 
 import { BetImageField } from "@/components/bets/BetImageField";
 import { SettlerSelect } from "@/components/SettlerSelect";
-import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
-import { CONDITIONAL_TOKENS_ABI } from "@/lib/abi";
-import { cryptoErrorSummary, formatCryptoError } from "@/lib/cryptoErrors";
-import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
-import { useTxSender } from "@/lib/hooks/useTxSender";
-import { getMarketCollateralToken } from "@/lib/chains";
-import { useMarketContracts } from "@/lib/hooks/useEscrow";
+import { getMarketCollateralToken, POLYGON_CHAIN_ID } from "@/lib/chains";
 import {
   computeConditionId,
   computePositionId,
   computeQuestionId,
 } from "@/lib/clob";
 import { jsonFetch } from "@/lib/fetcher";
-import { shortAddr } from "@/lib/utils";
 
-type Step = "idle" | "preparing" | "indexing" | "done";
+type Step = "idle" | "submitting" | "done";
 
 function buildMarketTermsHash(args: {
   title: string;
@@ -61,10 +54,7 @@ export function CreateMarketForm() {
   const { push } = useToast();
   const { address: account } = useAccount();
   const { getAccessToken } = usePrivy();
-  const chainId = useChainId();
-  const { ctf, exchange } = useMarketContracts();
-  const publicClient = usePublicClient();
-  const ensurePolygon = useEnsurePolygon();
+  const chainId = useChainId() || POLYGON_CHAIN_ID;
 
   const marketToken = getMarketCollateralToken();
   const tokenAddress = marketToken.address;
@@ -82,11 +72,7 @@ export function CreateMarketForm() {
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
-
-  const { writeContract } = useTxSender();
-  const [prepareHash, setPrepareHash] = useState<Hex>();
-  const prepareWait = useWaitForTransactionReceipt({ hash: prepareHash });
-  const isBusy = step !== "idle" && step !== "done";
+  const isBusy = step === "submitting";
 
   const outcomes = useMemo(
     () => customOutcomes.map((o) => o.trim()),
@@ -121,8 +107,7 @@ export function CreateMarketForm() {
 
   function validate(): string | null {
     if (!account) return "Connect a wallet first";
-    if (!ctf || !exchange) return "Markets not configured for this chain";
-    if (!tokenAddress || !isAddress(tokenAddress)) return "Pick a valid collateral token";
+    if (!tokenAddress || !isAddress(tokenAddress)) return "Collateral misconfigured";
     if (title.trim().length < 3) return "Title needs at least 3 characters";
     if (description.trim().length < 1) return "Add a short description";
     if (terms.trim().length < 1) return "Spell out the resolution terms";
@@ -144,7 +129,7 @@ export function CreateMarketForm() {
       setError(v);
       return;
     }
-    if (!account || !ctf || !exchange || !tokenAddress) return;
+    if (!account || !tokenAddress) return;
 
     const nonce = crypto.randomUUID();
     const termsHash = buildMarketTermsHash({
@@ -167,143 +152,82 @@ export function CreateMarketForm() {
       : 0;
 
     try {
-      setStep("preparing");
-      push({
-        title: "Creating condition",
-        description: "Confirm the transaction in your wallet.",
-      });
-      await ensurePolygon();
-      const hash = await writeContract({
-        address: ctf as Address,
-        abi: CONDITIONAL_TOKENS_ABI,
-        functionName: "prepareCondition",
-        args: [settlerAddr, tokenAddress as Address, questionId, numOutcomes],
-      });
-      setPrepareHash(hash);
+      setStep("submitting");
 
-      // Stash the derived ids for the indexing effect.
-      setPending({
-        nonce,
-        termsHash,
-        questionId,
-        conditionId,
-        positionIds,
-        estimatedEndDate,
-        outcomes,
-        settler: settlerAddr,
-      });
-    } catch (err: unknown) {
-      setStep("idle");
-      const msg = cryptoErrorSummary(err, "Couldn't create market");
-      setError(msg);
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Couldn't create market",
-      });
-      push({ title, description, variant: "danger" });
-    }
-  }
+      let imageUrl: string | null = null;
+      if (coverFile) {
+        try {
+          const token = await getAccessToken();
+          if (!token) throw new Error("Your session expired. Please sign in again.");
+          const fd = new FormData();
+          fd.append("file", coverFile);
+          fd.append("address", account);
+          fd.append("chainId", String(chainId));
+          fd.append("conditionId", conditionId);
 
-  const [pending, setPending] = useState<null | {
-    nonce: string;
-    termsHash: Hex;
-    questionId: Hex;
-    conditionId: Hex;
-    positionIds: string[];
-    estimatedEndDate: number;
-    outcomes: string[];
-    settler: string;
-  }>(null);
-
-  useEffect(() => {
-    if (step !== "preparing") return;
-    if (!prepareWait.isSuccess) return;
-    if (!pending || !account || !ctf || !exchange || !tokenAddress) return;
-    void (async () => {
-      setStep("indexing");
-      try {
-        // Upload the optional cover image, keyed by the on-chain conditionId.
-        let imageUrl: string | null = null;
-        if (coverFile) {
-          try {
-            const token = await getAccessToken();
-            if (!token) {
-              throw new Error("Your session expired. Please sign in again.");
-            }
-            const fd = new FormData();
-            fd.append("file", coverFile);
-            fd.append("address", account);
-            fd.append("chainId", String(chainId));
-            fd.append("conditionId", pending.conditionId);
-
-            const uploadRes = await fetch("/api/upload/market-image", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-              body: fd,
-            });
-            if (uploadRes.ok) {
-              const uploaded = (await uploadRes.json()) as { url: string };
-              imageUrl = uploaded.url;
-            } else {
-              push({
-                title: "Cover image skipped",
-                description: "The market was still created without it.",
-                variant: "danger",
-              });
-            }
-          } catch {
+          const uploadRes = await fetch("/api/upload/market-image", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd,
+          });
+          if (uploadRes.ok) {
+            const uploaded = (await uploadRes.json()) as { url: string };
+            imageUrl = uploaded.url;
+          } else {
             push({
               title: "Cover image skipped",
               description: "The market was still created without it.",
               variant: "danger",
             });
           }
+        } catch {
+          push({
+            title: "Cover image skipped",
+            description: "The market was still created without it.",
+            variant: "danger",
+          });
         }
-
-        const indexed = await jsonFetch<{ id: number }>("/api/markets", {
-          method: "POST",
-          body: JSON.stringify({
-            chainId,
-            exchangeAddress: exchange,
-            ctfAddress: ctf,
-            conditionId: pending.conditionId,
-            questionId: pending.questionId,
-            txHash: prepareHash,
-            creator: account,
-            settler: pending.settler,
-            token: tokenAddress,
-            tokenSymbol: tokenMeta?.symbol,
-            decimals: tokenMeta?.decimals ?? 6,
-            title,
-            description,
-            imageUrl,
-            terms,
-            termsHash: pending.termsHash,
-            nonce: pending.nonce,
-            outcomes: pending.outcomes,
-            positionIds: pending.positionIds,
-            estimatedEndDate: pending.estimatedEndDate || 0,
-          }),
-        });
-        setStep("done");
-        push({
-          title: "Market submitted",
-          description: "An admin will review it before it goes live.",
-          variant: "success",
-        });
-        router.push(`/markets/${indexed.id}`);
-      } catch (err: unknown) {
-        const msg = (err as Error)?.message || "Indexing failed";
-        setError(msg);
-        push({ title: "Indexing failed", description: msg, variant: "danger" });
-        setStep("idle");
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, prepareWait.isSuccess]);
+
+      const indexed = await jsonFetch<{ id: number }>("/api/markets", {
+        method: "POST",
+        body: JSON.stringify({
+          chainId,
+          conditionId,
+          questionId,
+          creator: account,
+          settler: settlerAddr,
+          token: tokenAddress,
+          tokenSymbol: tokenMeta?.symbol,
+          decimals: tokenMeta?.decimals ?? 6,
+          title,
+          description,
+          imageUrl,
+          terms,
+          termsHash,
+          nonce,
+          outcomes,
+          positionIds,
+          estimatedEndDate: estimatedEndDate || 0,
+        }),
+      });
+      setStep("done");
+      push({
+        title: "Market submitted",
+        description: "An admin will review it before it goes live.",
+        variant: "success",
+      });
+      router.push(`/markets/${indexed.id}`);
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || "Couldn't create market";
+      setError(msg);
+      push({ title: "Couldn't create market", description: msg, variant: "danger" });
+      setStep("idle");
+    }
+  }
 
   return (
     <form onSubmit={onSubmit} className="card p-6 space-y-5">
-      <LowGasBanner />
       <Field label="Title">
         <input
           className="input"
@@ -380,10 +304,7 @@ export function CreateMarketForm() {
         )}
       </div>
 
-      <Field
-        label="Collateral"
-        hint="All markets settle in USDC.e on Polygon."
-      >
+      <Field label="Collateral" hint="All markets settle in USDC.e.">
         <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm font-medium">
           USDC.e — USD Coin (bridged)
         </div>
@@ -410,14 +331,10 @@ export function CreateMarketForm() {
       </Field>
 
       <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
-        <div>
-          CTF: <span className="font-mono">{shortAddr(ctf ?? "")}</span> · Exchange:{" "}
-          <span className="font-mono">{shortAddr(exchange ?? "")}</span>
-        </div>
         <div>Settler fee: <b>{(settlerFeeBps / 100).toFixed(2)}%</b></div>
         <div>
-          You&apos;ll sign one transaction to prepare the condition on-chain. After
-          that, anyone can split collateral into shares and trade.
+          No transaction or gas needed — markets trade against your custodial
+          balance. An admin reviews each market before it goes live.
         </div>
       </div>
 
@@ -429,8 +346,7 @@ export function CreateMarketForm() {
 
       <div className="flex items-center justify-end">
         <Button type="submit" size="lg" disabled={isBusy}>
-          {step === "preparing" && "Preparing…"}
-          {step === "indexing" && "Indexing…"}
+          {step === "submitting" && "Submitting…"}
           {step === "done" && "Done"}
           {step === "idle" && "Create market"}
         </Button>

@@ -35,8 +35,8 @@ export async function collectDirectoryUsers(): Promise<DirectoryUser[]> {
     users,
     bets,
     markets,
-    orders,
-    trades,
+    ledgerAccounts,
+    fills,
     profileComments,
     threadComments,
     repVotes,
@@ -53,10 +53,12 @@ export async function collectDirectoryUsers(): Promise<DirectoryUser[]> {
     }),
     prisma.bet.findMany({ select: { proposer: true, acceptor: true } }),
     prisma.market.findMany({ select: { creator: true } }),
-    prisma.order.findMany({ select: { maker: true }, distinct: ["maker"] }),
-    prisma.trade.findMany({
-      select: { taker: true, maker: true },
+    prisma.account.findMany({
+      where: { kind: { in: ["COLLATERAL", "SHARE"] } },
+      select: { owner: true },
+      distinct: ["owner"],
     }),
+    prisma.fill.findMany({ select: { taker: true, maker: true } }),
     prisma.profileComment.findMany({
       select: { author: true, target: true },
     }),
@@ -91,8 +93,8 @@ export async function collectDirectoryUsers(): Promise<DirectoryUser[]> {
     add(b.acceptor);
   }
   for (const m of markets) add(m.creator);
-  for (const o of orders) add(o.maker);
-  for (const t of trades) {
+  for (const a of ledgerAccounts) add(a.owner);
+  for (const t of fills) {
     add(t.taker);
     add(t.maker);
   }

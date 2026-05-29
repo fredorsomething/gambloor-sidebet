@@ -1,0 +1,46 @@
+# Render blueprint for the custodial matching engine.
+#
+# The Next.js app stays on Vercel; this provisions the long-lived single-writer
+# matching engine + bridge worker and the Redis/Valkey hot store for the live
+# orderbook. The engine is the authoritative writer for the order book and the
+# Postgres ledger.
+services:
+  - type: web
+    name: sidebet-engine
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install --include=dev && npx prisma generate
+    startCommand: npm run engine:start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENGINE_PORT
+        value: "8090"
+      # Set these in the Render dashboard (do not commit secrets):
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: ENGINE_RPC_SECRET
+        sync: false
+      - key: TREASURY_PRIVATE_KEY
+        sync: false
+      - key: NEXT_PUBLIC_TREASURY_ADDRESS
+        sync: false
+      - key: NEXT_PUBLIC_POLYGON_RPC
+        sync: false
+      - key: WITHDRAWAL_AUTO_LIMIT
+        value: "500000000"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sidebet-redis
+          property: connectionString
+
+  - type: keyvalue
+    name: sidebet-redis
+    plan: starter
+    region: oregon
+    maxmemoryPolicy: noeviction
+    ipAllowList: []

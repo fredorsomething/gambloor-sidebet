@@ -55,13 +55,13 @@ describe("SidebetEscrowV2", () => {
     );
     await escrow.write.acceptBet([1n], { account: acceptor.account });
 
-    const before = await token.read.balanceOf([proposer.account.address]);
+    const before = (await token.read.balanceOf([proposer.account.address])) as bigint;
     await escrow.write.settleBet([1n, 0], { account: settler.account }); // proposer outcome wins
 
     const pool = pStake + aStake;
     const fee = (pool * 200n) / 10000n;
     const payout = pool - fee;
-    const after = await token.read.balanceOf([proposer.account.address]);
+    const after = (await token.read.balanceOf([proposer.account.address])) as bigint;
     expect(after - before).to.equal(payout);
 
     const settlerBal = await token.read.balanceOf([settler.account.address]);
@@ -79,15 +79,15 @@ describe("SidebetEscrowV2", () => {
     );
     await escrow.write.acceptBet([1n], { account: acceptor.account });
 
-    const pBefore = await token.read.balanceOf([proposer.account.address]);
-    const aBefore = await token.read.balanceOf([acceptor.account.address]);
+    const pBefore = (await token.read.balanceOf([proposer.account.address])) as bigint;
+    const aBefore = (await token.read.balanceOf([acceptor.account.address])) as bigint;
     await escrow.write.settleBet([1n, 2], { account: settler.account }); // outcome 2 unbacked
 
     expect(
-      (await token.read.balanceOf([proposer.account.address])) - pBefore,
+      ((await token.read.balanceOf([proposer.account.address])) as bigint) - pBefore,
     ).to.equal(pStake);
     expect(
-      (await token.read.balanceOf([acceptor.account.address])) - aBefore,
+      ((await token.read.balanceOf([acceptor.account.address])) as bigint) - aBefore,
     ).to.equal(aStake);
     // No fee taken.
     expect(await token.read.balanceOf([settler.account.address])).to.equal(0n);

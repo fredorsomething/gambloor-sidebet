@@ -76,11 +76,11 @@ export default function RootLayout({
             <footer className="border-t border-border py-6 text-xs text-muted-foreground">
               <div className="container flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  Sidebet is non-custodial. Funds sit in an on-chain escrow until
-                  the settler resolves the market.
+                  Sidebet wallets are non-custodial. All sidebets sit in on-chain escrow until
+                  the settler resolves the market. Never bet with funds you can't afford to lose. By using sidebet, you agree to our <a href="/terms" className="underline hover:text-foreground">Terms of Service</a> and <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>.
                 </div>
                 <div className="flex items-center gap-4">
-                  <span>Polygon · USDC · pUSD</span>
+                  <span>Join our Discord community!</span>
                   <a
                     href="https://discord.gg/Z9TZWXQtqm"
                     target="_blank"

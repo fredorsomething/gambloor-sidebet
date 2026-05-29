@@ -1,4 +1,5 @@
 import type { BetStatusName } from "@/lib/abi";
+import type { BookSnapshot } from "@/lib/exchange/types";
 
 export type BetRow = {
   id: number;
@@ -115,33 +116,16 @@ export type MarketRow = {
   quotes?: MarketQuote[];
 };
 
-export type OrderRow = {
-  hash: string;
-  marketId: number;
-  maker: string;
-  side: "BUY" | "SELL";
-  outcomeIndex: number;
-  positionId: string;
-  price: string;
-  makerAmount: string;
-  takerAmount: string;
-  salt: string;
-  expiry: string;
-  signature: string;
-  filled: string;
-  status: string;
-  createdAt: string;
-};
-
-export type OrderBookLevel = {
-  order: OrderRow;
-  sharesRemaining: string;
+/** Viewer's custodial state for a market (micro-unit decimal strings). */
+export type ViewerState = {
+  collateral: { balance: string; locked: string };
+  shares: Record<number, { balance: string; locked: string }>;
 };
 
 export type MarketDetailResponse = {
   market: MarketRow;
-  orderBook: Record<number, { buys: OrderRow[]; sells: OrderRow[] }>;
-  positions?: Record<number, string>; // outcomeIndex -> share balance (decimal string)
+  book: BookSnapshot;
+  viewer?: ViewerState;
 };
 
 export type ListMarketsResponse = {
