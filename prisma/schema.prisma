@@ -406,11 +406,24 @@ model DirectMessage {
   pair      String
   sender    String
   recipient String
-  body      String
+  body      String    @default("")
+  gifUrl    String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
   @@index([pair, createdAt])
   @@index([recipient, readAt])
   @@index([sender, createdAt])
+}
+
+// `blocker` blocked `blocked` from DMs (neither can message the other).
+model DmBlock {
+  id        Int      @id @default(autoincrement())
+  blocker   String   // lowercase wallet
+  blocked   String   // lowercase wallet
+  createdAt DateTime @default(now())
+
+  @@unique([blocker, blocked])
+  @@index([blocker])
+  @@index([blocked])
 }

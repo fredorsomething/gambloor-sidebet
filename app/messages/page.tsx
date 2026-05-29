@@ -2,13 +2,15 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Mail, Send } from "lucide-react";
+import { ArrowLeft, Ban, ImageIcon, Mail, Send } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
+import { GifPicker } from "@/components/GifPicker";
 import { Avatar } from "@/components/profile/Identity";
+import { useProfile } from "@/lib/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { jsonFetch } from "@/lib/fetcher";
@@ -17,6 +19,7 @@ import { cn, shortAddr } from "@/lib/utils";
 type Conversation = {
   address: string;
   username: string | null;
+  avatarUrl: string | null;
   lastBody: string;
   lastAt: string;
   fromMe: boolean;
@@ -26,8 +29,10 @@ type Conversation = {
 type ThreadMsg = {
   id: number;
   body: string;
+  gifUrl: string | null;
   sender: string;
   recipient: string;
+  senderAvatarUrl: string | null;
   createdAt: string;
   mine: boolean;
 };
@@ -56,6 +61,11 @@ function MessagesInner() {
 
   const me = address?.toLowerCase() ?? null;
   const selected = withParam ? withParam.toLowerCase() : null;
+  const { data: myProfile } = useProfile(address);
+
+  const [draft, setDraft] = useState("");
+  const [gifUrl, setGifUrl] = useState<string | null>(null);
+  const [gifOpen, setGifOpen] = useState(false);
 
   async function authedFetch<T>(url: string, init?: RequestInit): Promise<T> {
     const token = await getAccessToken();
@@ -74,7 +84,12 @@ function MessagesInner() {
   });
 
   const threadQ = useQuery<{
-    counterparty: { address: string; username: string | null };
+    counterparty: {
+      address: string;
+      username: string | null;
+      avatarUrl: string | null;
+    };
+    blocked: boolean;
     messages: ThreadMsg[];
   }>({
     queryKey: ["dm-thread", me, selected],
@@ -84,15 +99,20 @@ function MessagesInner() {
     refetchInterval: 4_000,
   });
 
-  const [draft, setDraft] = useState("");
   const send = useMutation({
-    mutationFn: async (body: string) =>
+    mutationFn: async (payload: { body: string; gifUrl: string | null }) =>
       authedFetch<{ message: ThreadMsg }>(`/api/messages`, {
         method: "POST",
-        body: JSON.stringify({ from: address, to: selected, body }),
+        body: JSON.stringify({
+          from: address,
+          to: selected,
+          body: payload.body,
+          gifUrl: payload.gifUrl,
+        }),
       }),
     onSuccess: () => {
       setDraft("");
+      setGifUrl(null);
       qc.invalidateQueries({ queryKey: ["dm-thread", me, selected] });
       qc.invalidateQueries({ queryKey: ["dm-convos", me] });
     },
@@ -100,7 +120,21 @@ function MessagesInner() {
       push({ title: (err as Error)?.message || "Send failed", variant: "danger" }),
   });
 
-  // Auto-scroll the thread to the newest message.
+  const blockUser = useMutation({
+    mutationFn: async () =>
+      authedFetch(`/api/messages/block`, {
+        method: "POST",
+        body: JSON.stringify({ blocker: address, blocked: selected }),
+      }),
+    onSuccess: () => {
+      push({ title: "User blocked", variant: "success" });
+      router.replace("/messages");
+      qc.invalidateQueries({ queryKey: ["dm-convos", me] });
+    },
+    onError: (err) =>
+      push({ title: (err as Error)?.message || "Block failed", variant: "danger" }),
+  });
+
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -129,15 +163,14 @@ function MessagesInner() {
 
   function submit() {
     const body = draft.trim();
-    if (!body || !selected || send.isPending) return;
-    send.mutate(body);
+    if ((!body && !gifUrl) || !selected || send.isPending) return;
+    send.mutate({ body, gifUrl });
   }
 
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="mb-4 text-2xl font-bold">Messages</h1>
       <div className="grid h-[70vh] gap-4 overflow-hidden rounded-2xl md:grid-cols-[300px_1fr]">
-        {/* Conversation list */}
         <aside
           className={cn(
             "card flex flex-col overflow-hidden p-0",
@@ -163,7 +196,11 @@ function MessagesInner() {
                   selected === c.address && "bg-muted/60",
                 )}
               >
-                <Avatar address={c.address} size={36} />
+                <Avatar
+                  address={c.address}
+                  url={c.avatarUrl}
+                  size={36}
+                />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-medium">
@@ -190,7 +227,6 @@ function MessagesInner() {
           </div>
         </aside>
 
-        {/* Thread */}
         <section
           className={cn(
             "card flex flex-col overflow-hidden p-0",
@@ -211,24 +247,56 @@ function MessagesInner() {
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </button>
-                <Avatar address={selected} size={32} />
+                <Avatar
+                  address={selected}
+                  url={counterparty?.avatarUrl}
+                  size={32}
+                />
                 <Link
                   href={`/u/${counterparty?.username ?? selected}`}
-                  className="text-sm font-semibold hover:text-primary"
+                  className="min-w-0 flex-1 truncate text-sm font-semibold hover:text-primary"
                 >
                   {cpLabel}
                 </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 text-xs"
+                  disabled={blockUser.isPending || threadQ.data?.blocked}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Block ${cpLabel}? You won't be able to message each other.`,
+                      )
+                    ) {
+                      blockUser.mutate();
+                    }
+                  }}
+                >
+                  <Ban className="mr-1 h-3.5 w-3.5" />
+                  {threadQ.data?.blocked ? "Blocked" : "Block"}
+                </Button>
               </div>
 
-              <div className="flex-1 space-y-2 overflow-y-auto p-4">
+              <div className="flex-1 space-y-3 overflow-y-auto p-4">
                 {(threadQ.data?.messages ?? []).map((m) => (
                   <div
                     key={m.id}
                     className={cn(
-                      "flex",
-                      m.mine ? "justify-end" : "justify-start",
+                      "flex gap-2",
+                      m.mine ? "flex-row-reverse" : "flex-row",
                     )}
                   >
+                    <Avatar
+                      address={m.sender}
+                      url={
+                        m.mine
+                          ? myProfile?.avatarUrl
+                          : m.senderAvatarUrl ?? counterparty?.avatarUrl
+                      }
+                      size={28}
+                      className="mt-1 shrink-0"
+                    />
                     <div
                       className={cn(
                         "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
@@ -237,7 +305,19 @@ function MessagesInner() {
                           : "rounded-bl-sm bg-muted text-foreground",
                       )}
                     >
-                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      {m.gifUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={m.gifUrl}
+                          alt=""
+                          className="mb-1 max-h-48 w-full rounded-lg object-contain"
+                        />
+                      )}
+                      {m.body.trim() && (
+                        <p className="whitespace-pre-wrap break-words">
+                          {m.body}
+                        </p>
+                      )}
                       <span
                         className={cn(
                           "mt-1 block text-[10px]",
@@ -259,7 +339,35 @@ function MessagesInner() {
                 <div ref={bottomRef} />
               </div>
 
+              {gifUrl && (
+                <div className="border-t border-border px-3 pt-2">
+                  <div className="relative inline-block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={gifUrl}
+                      alt=""
+                      className="max-h-24 rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setGifUrl(null)}
+                      className="absolute -right-2 -top-2 rounded-full bg-card px-1.5 py-0.5 text-xs shadow"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-end gap-2 border-t border-border p-3">
+                <button
+                  type="button"
+                  onClick={() => setGifOpen(true)}
+                  className="shrink-0 rounded-lg border border-border p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="Attach GIF"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                </button>
                 <textarea
                   className="input min-h-[42px] max-h-32 flex-1 resize-none"
                   rows={1}
@@ -275,7 +383,7 @@ function MessagesInner() {
                 />
                 <Button
                   onClick={submit}
-                  disabled={!draft.trim() || send.isPending}
+                  disabled={(!draft.trim() && !gifUrl) || send.isPending}
                   className="shrink-0"
                 >
                   <Send className="h-4 w-4" />
@@ -285,6 +393,16 @@ function MessagesInner() {
           )}
         </section>
       </div>
+
+      {gifOpen && (
+        <GifPicker
+          onClose={() => setGifOpen(false)}
+          onPick={(url) => {
+            setGifUrl(url);
+            setGifOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -292,7 +410,9 @@ function MessagesInner() {
 export default function MessagesPage() {
   return (
     <Suspense
-      fallback={<div className="card mx-auto mt-10 h-48 max-w-5xl animate-pulse" />}
+      fallback={
+        <div className="card mx-auto mt-10 h-48 max-w-5xl animate-pulse" />
+      }
     >
       <MessagesInner />
     </Suspense>

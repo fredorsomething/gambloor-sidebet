@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
+import { getMarketCollateralToken, getTokenByAddress } from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -86,6 +87,16 @@ export async function POST(req: NextRequest) {
   }
   const approved = await getApprovedSettler(d.settler);
   if (!approved) return jsonErr("settler is not approved", 400);
+
+  const marketCollateral = getMarketCollateralToken(d.chainId);
+  const submittedToken = getTokenByAddress(d.chainId, getAddress(d.token));
+  if (
+    !submittedToken ||
+    submittedToken.address.toLowerCase() !==
+      marketCollateral.address.toLowerCase()
+  ) {
+    return jsonErr("markets must use USDC.e collateral only", 400);
+  }
 
   try {
     const market = await prisma.market.upsert({

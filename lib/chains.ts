@@ -79,6 +79,15 @@ export function getTokens(_chainId?: number) {
   return TOKENS[polygon.id];
 }
 
+/** CLOB markets settle only in bridged USDC.e on Polygon. */
+export const MARKET_COLLATERAL_SYMBOL = "USDC.e" as const;
+
+export function getMarketCollateralToken(_chainId?: number) {
+  const t = getTokenBySymbol(POLYGON_CHAIN_ID, MARKET_COLLATERAL_SYMBOL);
+  if (!t) throw new Error("USDC.e collateral not configured");
+  return t;
+}
+
 export function getTokenBySymbol(_chainId: number, symbol: string) {
   return getTokens().find(
     (t) => t.symbol.toLowerCase() === symbol.toLowerCase(),

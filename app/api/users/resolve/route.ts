@@ -17,7 +17,11 @@ export async function GET(req: NextRequest) {
   if (checksummed.length === 0) return jsonOk({});
 
   const users = await prisma.user.findMany({
-    where: { address: { in: checksummed } },
+    where: {
+      OR: checksummed.map((a) => ({
+        address: { equals: a, mode: "insensitive" as const },
+      })),
+    },
     select: {
       address: true,
       username: true,

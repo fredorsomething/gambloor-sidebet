@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
         : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=24&rating=pg-13`;
       const res = await fetch(endpoint, { cache: "no-store" });
       const json = (await res.json()) as {
+        message?: string;
         data?: {
           id: string;
           images?: {
@@ -39,6 +40,13 @@ export async function GET(req: NextRequest) {
           };
         }[];
       };
+      if (!res.ok) {
+        return jsonOk({
+          configured: true,
+          gifs: [] as Gif[],
+          error: json.message || "Giphy request failed",
+        });
+      }
       const gifs: Gif[] = (json.data ?? [])
         .map((g) => ({
           id: g.id,

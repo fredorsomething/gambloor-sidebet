@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { CONDITIONAL_TOKENS_ABI } from "@/lib/abi";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { getMarketCollateralToken } from "@/lib/chains";
 import { useMarketContracts } from "@/lib/hooks/useEscrow";
 import {
   computeConditionId,
@@ -60,16 +61,13 @@ export function CreateMarketForm() {
   const { address: account } = useAccount();
   const { getAccessToken } = usePrivy();
   const chainId = useChainId();
-  const { ctf, exchange, tokens } = useMarketContracts();
+  const { ctf, exchange } = useMarketContracts();
   const publicClient = usePublicClient();
   const ensurePolygon = useEnsurePolygon();
 
-  const [tokenAddress, setTokenAddress] = useState<Address | "">(
-    (tokens[0]?.address as Address) ?? "",
-  );
-  const tokenMeta = tokens.find(
-    (t) => t.address.toLowerCase() === (tokenAddress || "").toLowerCase(),
-  );
+  const marketToken = getMarketCollateralToken();
+  const tokenAddress = marketToken.address;
+  const tokenMeta = marketToken;
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -377,18 +375,13 @@ export function CreateMarketForm() {
         )}
       </div>
 
-      <Field label="Collateral token">
-        <select
-          className="select"
-          value={tokenAddress}
-          onChange={(e) => setTokenAddress(e.target.value as Address)}
-        >
-          {tokens.map((t) => (
-            <option key={t.address} value={t.address}>
-              {t.symbol} — {t.name}
-            </option>
-          ))}
-        </select>
+      <Field
+        label="Collateral"
+        hint="All markets settle in USDC.e on Polygon."
+      >
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm font-medium">
+          USDC.e — USD Coin (bridged)
+        </div>
       </Field>
 
       <Field label="Settler" hint="Approved party who reports the winning outcome.">
