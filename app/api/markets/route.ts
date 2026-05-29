@@ -181,5 +181,53 @@ export async function GET(req: NextRequest) {
     prisma.market.count({ where }),
   ]);
 
-  return jsonOk({ items: rows, total });
+  // Compute compact per-outcome quotes (best bid/ask/mid) for card odds.
+  const ids = rows.map((r) => r.id);
+  const orders = ids.length
+    ? await prisma.order.findMany({
+        where: { marketId: { in: ids }, status: "Open" },
+        select: { marketId: true, outcomeIndex: true, side: true, price: true },
+      })
+    : [];
+
+  const levels = new Map<
+    number,
+    Map<number, { bestBid: number | null; bestAsk: number | null }>
+  >();
+  for (const o of orders) {
+    const p = Number(o.price);
+    if (!Number.isFinite(p)) continue;
+    let byOutcome = levels.get(o.marketId);
+    if (!byOutcome) {
+      byOutcome = new Map();
+      levels.set(o.marketId, byOutcome);
+    }
+    let lvl = byOutcome.get(o.outcomeIndex);
+    if (!lvl) {
+      lvl = { bestBid: null, bestAsk: null };
+      byOutcome.set(o.outcomeIndex, lvl);
+    }
+    if (o.side === "BUY") {
+      lvl.bestBid = lvl.bestBid == null ? p : Math.max(lvl.bestBid, p);
+    } else {
+      lvl.bestAsk = lvl.bestAsk == null ? p : Math.min(lvl.bestAsk, p);
+    }
+  }
+
+  const items = rows.map((r) => {
+    const byOutcome = levels.get(r.id);
+    const quotes = r.outcomes.map((o) => {
+      const lvl = byOutcome?.get(o.index);
+      const bestBid = lvl?.bestBid ?? null;
+      const bestAsk = lvl?.bestAsk ?? null;
+      const mid =
+        bestBid != null && bestAsk != null
+          ? (bestBid + bestAsk) / 2
+          : (bestAsk ?? bestBid);
+      return { index: o.index, bestBid, bestAsk, mid };
+    });
+    return { ...r, quotes };
+  });
+
+  return jsonOk({ items, total });
 }

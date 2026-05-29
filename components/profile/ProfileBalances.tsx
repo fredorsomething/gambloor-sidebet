@@ -3,6 +3,7 @@
 import { useChainId } from "wagmi";
 import type { Address } from "viem";
 
+import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { getTokens } from "@/lib/chains";
 import { formatToken } from "@/lib/utils";
@@ -21,7 +22,7 @@ function TokenBalanceRow({
   const bal = info.balance ?? 0n;
   return (
     <div className="flex items-center justify-between py-1.5 text-sm">
-      <span className="text-muted-foreground">{symbol}</span>
+      <TokenSymbol symbol={symbol} className="text-muted-foreground" />
       <span className="font-mono font-medium">
         {formatToken(bal, decimals, 2)}
       </span>

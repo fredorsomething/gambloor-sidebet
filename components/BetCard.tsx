@@ -2,7 +2,8 @@ import Link from "next/link";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Identity } from "@/components/profile/Identity";
-import { StatusBadge } from "@/components/ui/badge";
+import { TokenSymbol } from "@/components/ui/TokenIcon";
+import { TypeTag } from "@/components/ui/TypeTag";
 import { formatToken } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
 
@@ -36,8 +37,8 @@ export function BetCard({ bet }: { bet: BetRow }) {
       href={`/bets/${bet.id}`}
       className="card group flex flex-col p-5 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
     >
-      <div className="flex items-center justify-between">
-        <StatusBadge status={bet.status} />
+      <div className="flex items-center justify-between gap-2">
+        <TypeTag kind="sidebet" />
         <span className="text-xs font-medium text-muted-foreground">
           fee {(bet.feeBps / 100).toFixed(1)}%
         </span>
@@ -84,8 +85,9 @@ export function BetCard({ bet }: { bet: BetRow }) {
             {proposerPick ?? "their side"}
           </span>{" "}
           and puts up{" "}
-          <span className="font-mono text-foreground">
-            {formatToken(proposerStake, bet.decimals)} {sym}
+          <span className="inline-flex items-center gap-1 font-mono text-foreground">
+            {formatToken(proposerStake, bet.decimals)}
+            <TokenSymbol symbol={sym} size={12} />
           </span>
         </div>
         <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3">
@@ -95,18 +97,22 @@ export function BetCard({ bet }: { bet: BetRow }) {
             </div>
             <div className="mt-0.5 font-mono text-base font-bold">
               {formatToken(acceptorStake, bet.decimals)}{" "}
-              <span className="text-xs font-normal text-muted-foreground">
-                {sym}
-              </span>
+              <TokenSymbol
+                symbol={sym}
+                size={11}
+                className="text-xs font-normal text-muted-foreground"
+              />
             </div>
           </div>
           <div className="text-right">
             <div className="label">You win</div>
             <div className="mt-0.5 font-mono text-base font-bold text-success">
               {formatToken(payoutWei, bet.decimals)}{" "}
-              <span className="text-xs font-normal text-muted-foreground">
-                {sym}
-              </span>
+              <TokenSymbol
+                symbol={sym}
+                size={11}
+                className="text-xs font-normal text-muted-foreground"
+              />
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { BetList } from "@/components/BetList";
+import { Feed } from "@/components/Feed";
 import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
@@ -35,28 +35,30 @@ export default function HomePage() {
         </div>
       </section>
 
-      <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">
-        Need POL, pUSD, USDC or USDC.e? Get it easily with our trusted partner,{" "}
-        <a
-          href="https://bigswappa.fun/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-medium text-primary underline-offset-2 hover:underline"
-        >
-          BigSwappa
-        </a>
-      </p>
+      <div className="flex justify-center">
+        <p className="inline-flex flex-wrap items-center justify-center gap-x-1 rounded-full border border-border bg-muted/40 px-4 py-1.5 text-center text-xs text-muted-foreground">
+          Need POL, pUSD, USDC or USDC.e? Get it from our trusted partner, {" "}
+          <a
+            href="https://bigswappa.fun/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            BigSwappa
+          </a>
+        </p>
+      </div>
 
       <section id="open" className="space-y-4">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Open sidebets</h2>
+            <h2 className="text-xl font-semibold">Open now</h2>
             <p className="text-sm text-muted-foreground">
-              Recent and open 1v1 sidebets across Polygon.
+              Live CLOB markets and 1v1 sidebets across Polygon.
             </p>
           </div>
         </div>
-        <BetList defaultStatus="Open" />
+        <Feed />
       </section>
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -57,6 +58,7 @@ export function CreateMarketForm() {
   const router = useRouter();
   const { push } = useToast();
   const { address: account } = useAccount();
+  const { getAccessToken } = usePrivy();
   const chainId = useChainId();
   const { ctf, exchange, tokens } = useMarketContracts();
   const publicClient = usePublicClient();
@@ -216,10 +218,43 @@ export function CreateMarketForm() {
     void (async () => {
       setStep("indexing");
       try {
+        // Upload the optional cover image, keyed by the on-chain conditionId.
         let imageUrl: string | null = null;
-        // (Cover image upload requires a market id; skipped here for simplicity.)
-        void coverFile;
-        void imageUrl;
+        if (coverFile) {
+          try {
+            const token = await getAccessToken();
+            if (!token) {
+              throw new Error("Your session expired. Please sign in again.");
+            }
+            const fd = new FormData();
+            fd.append("file", coverFile);
+            fd.append("address", account);
+            fd.append("chainId", String(chainId));
+            fd.append("conditionId", pending.conditionId);
+
+            const uploadRes = await fetch("/api/upload/market-image", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+              body: fd,
+            });
+            if (uploadRes.ok) {
+              const uploaded = (await uploadRes.json()) as { url: string };
+              imageUrl = uploaded.url;
+            } else {
+              push({
+                title: "Cover image skipped",
+                description: "The market was still created without it.",
+                variant: "danger",
+              });
+            }
+          } catch {
+            push({
+              title: "Cover image skipped",
+              description: "The market was still created without it.",
+              variant: "danger",
+            });
+          }
+        }
 
         const indexed = await jsonFetch<{ id: number }>("/api/markets", {
           method: "POST",
@@ -237,6 +272,7 @@ export function CreateMarketForm() {
             decimals: tokenMeta?.decimals ?? 6,
             title,
             description,
+            imageUrl,
             terms,
             termsHash: pending.termsHash,
             nonce: pending.nonce,

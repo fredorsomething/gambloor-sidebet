@@ -8,6 +8,7 @@ import { useAccount, useBalance, useChainId, useReadContracts } from "wagmi";
 import { polygon } from "wagmi/chains";
 
 import { useFundWallet } from "@/components/wallet/FundWalletModal";
+import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { ERC20_ABI } from "@/lib/abi";
 import { getTokens } from "@/lib/chains";
 import { cn, shortAddr } from "@/lib/utils";
@@ -127,7 +128,10 @@ export function WalletBalance() {
                   key={t.symbol}
                   className="flex items-center justify-between text-sm"
                 >
-                  <span className="text-muted-foreground">{t.symbol}</span>
+                  <TokenSymbol
+                    symbol={t.symbol}
+                    className="text-muted-foreground"
+                  />
                   <span className="font-mono tabular-nums">
                     {t.amount.toLocaleString(undefined, {
                       maximumFractionDigits: 2,
@@ -139,7 +143,7 @@ export function WalletBalance() {
 
             <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
               <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Fuel className="h-3.5 w-3.5" />
+                <TokenIcon symbol="POL" size={14} />
                 POL (gas)
               </span>
               <span

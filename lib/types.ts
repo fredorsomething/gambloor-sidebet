@@ -75,6 +75,14 @@ export type MarketOutcomeRow = {
   positionId: string;
 };
 
+/** Compact per-outcome pricing for listing cards (probabilities in 0–1). */
+export type MarketQuote = {
+  index: number;
+  bestBid: number | null;
+  bestAsk: number | null;
+  mid: number | null;
+};
+
 export type MarketRow = {
   id: number;
   chainId: number;
@@ -101,6 +109,7 @@ export type MarketRow = {
   createdAt: string;
   updatedAt: string;
   outcomes: MarketOutcomeRow[];
+  quotes?: MarketQuote[];
 };
 
 export type OrderRow = {

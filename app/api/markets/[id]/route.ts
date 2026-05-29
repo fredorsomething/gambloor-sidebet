@@ -1,12 +1,62 @@
 import { NextRequest } from "next/server";
 import { getAddress, isAddress, type Address } from "viem";
+import { z } from "zod";
 
+import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { getPublicClient, readCondition } from "@/lib/onchain";
 import { CONDITIONAL_TOKENS_ABI } from "@/lib/abi";
 
 export const dynamic = "force-dynamic";
+
+const PatchSchema = z.object({
+  creator: z.string().refine(isAddress, "bad creator"),
+  imageUrl: z
+    .string()
+    .url()
+    .max(500)
+    .refine((u) => isAllowedImageUrl(u), "invalid image url")
+    .nullable(),
+});
+
+/** PATCH /api/markets/[id] — the creator can set or clear the cover image. */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  const id = Number(params.id);
+  if (!Number.isFinite(id) || id <= 0) return jsonErr("bad id", 400);
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonErr("invalid json");
+  }
+  const parsed = PatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonErr(parsed.error.errors.map((e) => e.message).join(", "));
+  }
+
+  const market = await prisma.market.findUnique({ where: { id } });
+  if (!market) return jsonErr("not found", 404);
+
+  const creator = getAddress(parsed.data.creator);
+  if (creator.toLowerCase() !== market.creator.toLowerCase()) {
+    return jsonErr("only the market creator can edit the cover", 403);
+  }
+  const auth = await verifyWalletAuth({ req, address: creator });
+  if (!auth.ok) return jsonErr(auth.error, auth.status);
+
+  const updated = await prisma.market.update({
+    where: { id },
+    data: { imageUrl: parsed.data.imageUrl },
+    include: { outcomes: { orderBy: { index: "asc" } } },
+  });
+  return jsonOk(updated);
+}
 
 export async function GET(
   req: NextRequest,

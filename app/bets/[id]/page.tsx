@@ -4,7 +4,10 @@ import { headers } from "next/headers";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { BetDetailLive } from "@/components/BetDetailLive";
+import { Comments } from "@/components/Comments";
 import { StatusBadge } from "@/components/ui/badge";
+import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
+import { TypeTag } from "@/components/ui/TypeTag";
 import { explorerAddress, explorerTx } from "@/lib/chains";
 import {
   formatTimestamp,
@@ -52,12 +55,13 @@ export default async function BetDetailPage({
           href="/"
           className="text-xs text-muted-foreground hover:text-foreground"
         >
-          ← All markets
+          ← Back to feed
         </Link>
       </div>
 
       <div className="card p-6 space-y-3">
         <div className="flex items-center gap-2">
+          <TypeTag kind="sidebet" />
           <StatusBadge status={bet.status} />
           <span className="text-xs text-muted-foreground">
             #{bet.onchainId} on chain {bet.chainId}
@@ -100,13 +104,30 @@ export default async function BetDetailPage({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
           <Stat
             label="Proposer stake"
-            value={`${formatToken(proposerStake, bet.decimals)} ${tokenSym}`}
+            value={
+              <>
+                {formatToken(proposerStake, bet.decimals)}{" "}
+                <TokenSymbol symbol={tokenSym} size={13} />
+              </>
+            }
           />
           <Stat
             label="Acceptor stake"
-            value={`${formatToken(acceptorStake, bet.decimals)} ${tokenSym}`}
+            value={
+              <>
+                {formatToken(acceptorStake, bet.decimals)}{" "}
+                <TokenSymbol symbol={tokenSym} size={13} />
+              </>
+            }
           />
-          <Stat label="Total pool" value={`${pool} ${tokenSym}`} />
+          <Stat
+            label="Total pool"
+            value={
+              <>
+                {pool} <TokenSymbol symbol={tokenSym} size={13} />
+              </>
+            }
+          />
           <Stat label="Settler fee" value={`${(bet.feeBps / 100).toFixed(2)}%`} />
         </div>
         {endDateSecs > 0 && (
@@ -115,6 +136,9 @@ export default async function BetDetailPage({
           </div>
         )}
       </div>
+
+      {/* Primary action up top so taking the bet is obvious without scrolling. */}
+      <BetDetailLive id={bet.id} initial={data} />
 
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
         <div className="space-y-6">
@@ -125,7 +149,7 @@ export default async function BetDetailPage({
             </pre>
           </section>
 
-          <BetDetailLive id={bet.id} initial={data} />
+          <Comments basePath={`/api/bets/${bet.id}/comments`} />
         </div>
 
         <aside className="space-y-3">
@@ -151,8 +175,9 @@ export default async function BetDetailPage({
                   href={explorerAddress(bet.chainId, bet.token)}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-mono hover:text-[hsl(var(--accent))]"
+                  className="inline-flex items-center gap-1 font-mono hover:text-[hsl(var(--accent))]"
                 >
+                  <TokenIcon symbol={tokenSym} size={13} />
                   {tokenSym} · {shortAddr(bet.token)}
                 </a>
               }
@@ -213,11 +238,19 @@ export default async function BetDetailPage({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div>
       <div className="label">{label}</div>
-      <div className="mt-1 font-mono text-base">{value}</div>
+      <div className="mt-1 inline-flex items-center font-mono text-base">
+        {value}
+      </div>
     </div>
   );
 }

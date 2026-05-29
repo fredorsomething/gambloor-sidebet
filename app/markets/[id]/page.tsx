@@ -10,13 +10,13 @@ export default function MarketDetailPage({
   const id = Number(params.id);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <Link
-          href="/markets"
+          href="/"
           className="text-xs text-muted-foreground hover:text-foreground"
         >
-          ← All markets
+          ← Back to feed
         </Link>
       </div>
       <MarketDetail id={id} />

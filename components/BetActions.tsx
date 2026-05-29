@@ -10,6 +10,7 @@ import {
 import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
+import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
@@ -199,34 +200,70 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   if (bet.status === "Open" && !isProposer) {
     const theirPick = outcomes[bet.acceptorOutcome];
     return (
-      <div className="card p-5 space-y-3">
-        <LowGasBanner />
-        <div>
-          <h3 className="font-semibold">Take the other side</h3>
-          <p className="text-sm text-muted-foreground">
-            You'll back{" "}
-            <span className="font-semibold text-danger">{theirPick ?? "the other outcome"}</span>{" "}
-            and stake{" "}
-            <span className="font-mono">
-              {formatToken(acceptorStake, decimals)} {tokenSym}
-            </span>{" "}
-            into escrow. If your outcome wins, you take the{" "}
-            {formatToken(pool, decimals)} {tokenSym} pool less the {feePct}% settler fee.
-          </p>
+      <div className="card p-5 space-y-4 ring-1 ring-primary/30">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">Take this bet</h3>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Back{" "}
+              <span className="font-semibold text-danger">
+                {theirPick ?? "the other outcome"}
+              </span>{" "}
+              against the proposer.
+            </p>
+          </div>
+          <Button
+            onClick={onAccept}
+            disabled={acceptBusy}
+            size="lg"
+            className="w-full shrink-0 sm:w-auto sm:px-8"
+          >
+            {acceptStep === "approving" && "Approving…"}
+            {acceptStep === "accepting" && "Accepting…"}
+            {acceptStep === "idle" &&
+              (needsApproval ? "Approve & take bet" : "Take bet")}
+          </Button>
         </div>
+
+        <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-3">
+          <div>
+            <div className="label">You stake</div>
+            <div className="mt-0.5 inline-flex items-center font-mono text-base font-bold">
+              {formatToken(acceptorStake, decimals)}{" "}
+              <TokenSymbol
+                symbol={tokenSym}
+                size={12}
+                className="ml-1 text-xs font-normal text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div>
+            <div className="label">You win</div>
+            <div className="mt-0.5 inline-flex items-center font-mono text-base font-bold text-success">
+              {formatToken(payout, decimals)}{" "}
+              <TokenSymbol
+                symbol={tokenSym}
+                size={12}
+                className="ml-1 text-xs font-normal text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <div className="label">Settler fee</div>
+            <div className="mt-0.5 font-mono text-base">{feePct}%</div>
+          </div>
+        </div>
+
         {live.balance !== undefined && (
           <div className="text-xs text-muted-foreground">
             Your balance:{" "}
-            <span className="font-mono">
-              {formatToken(live.balance, decimals)} {tokenSym}
+            <span className="inline-flex items-center gap-1 font-mono">
+              {formatToken(live.balance, decimals)}
+              <TokenSymbol symbol={tokenSym} size={11} />
             </span>
           </div>
         )}
-        <Button onClick={onAccept} disabled={acceptBusy} size="lg">
-          {acceptStep === "approving" && "Approving…"}
-          {acceptStep === "accepting" && "Accepting…"}
-          {acceptStep === "idle" && (needsApproval ? "Approve & accept" : "Accept bet")}
-        </Button>
+        <LowGasBanner />
       </div>
     );
   }
@@ -245,6 +282,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
           variant="danger"
           onClick={onCancel}
           disabled={cancelTx.isPending || cancelWait.isLoading}
+          className="w-full"
         >
           {cancelWait.isLoading ? "Cancelling…" : "Cancel & refund"}
         </Button>
@@ -303,6 +341,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
           onClick={onSettle}
           disabled={settleTx.isPending || settleWait.isLoading}
           size="lg"
+          className="w-full"
         >
           {settleWait.isLoading ? "Settling…" : "Declare winning outcome"}
         </Button>

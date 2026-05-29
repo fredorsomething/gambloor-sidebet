@@ -61,6 +61,21 @@ model ProfileComment {
   @@index([author])
 }
 
+// Discussion comments attached to a sidebet or a market. `subjectType` selects
+// the parent ("bet" | "market") and `subjectId` is that row's primary key.
+// Anyone signed in can comment; authors can delete their own.
+model ThreadComment {
+  id          Int      @id @default(autoincrement())
+  subjectType String   // "bet" | "market"
+  subjectId   Int
+  author      String   // commenter address (lowercase)
+  body        String
+  createdAt   DateTime @default(now())
+
+  @@index([subjectType, subjectId, createdAt])
+  @@index([author])
+}
+
 // Approved settlers: only these addresses can be chosen to resolve a Sidebet or
 // Market. Each sets their own fee (basis points). Seeded with the default wallet.
 model ApprovedSettler {
