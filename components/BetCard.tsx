@@ -6,14 +6,30 @@ import { StatusBadge } from "@/components/ui/badge";
 import { formatToken } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
 
+/** Yes/No binary bets get the conventional green/red; everything else stays neutral. */
+function outcomePillClass(outcomes: string[], i: number): string {
+  const isYesNo =
+    outcomes.length === 2 &&
+    outcomes[0]?.trim().toLowerCase() === "yes" &&
+    outcomes[1]?.trim().toLowerCase() === "no";
+  if (isYesNo) {
+    return i === 0
+      ? "bg-success/15 text-success"
+      : "bg-danger/15 text-danger";
+  }
+  return "bg-muted text-muted-foreground";
+}
+
 export function BetCard({ bet }: { bet: BetRow }) {
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
   const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
-  const stake = formatToken(proposerStake, bet.decimals);
-  const pool = formatToken(proposerStake + acceptorStake, bet.decimals);
+  const poolWei = proposerStake + acceptorStake;
+  const payoutWei = (poolWei * BigInt(10000 - bet.feeBps)) / 10000n;
+
   const sym = bet.tokenSymbol || "tokens";
   const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
   const proposerPick = outcomes[bet.proposerOutcome];
+  const acceptorPick = outcomes[bet.acceptorOutcome];
 
   return (
     <Link
@@ -44,13 +60,10 @@ export function BetCard({ bet }: { bet: BetRow }) {
           {outcomes.slice(0, 4).map((o, i) => (
             <span
               key={i}
-              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                i === bet.proposerOutcome
-                  ? "bg-success/15 text-success"
-                  : i === bet.acceptorOutcome
-                    ? "bg-danger/15 text-danger"
-                    : "bg-muted text-muted-foreground"
-              }`}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${outcomePillClass(
+                outcomes,
+                i,
+              )}`}
             >
               {o}
             </span>
@@ -63,19 +76,38 @@ export function BetCard({ bet }: { bet: BetRow }) {
         </div>
       )}
 
-      <div className="mt-4 flex items-end justify-between">
-        <div>
-          <div className="label">
-            Proposer backs{proposerPick ? ` ${proposerPick}` : ""}
-          </div>
-          <div className="font-mono text-lg font-bold">
-            {stake} <span className="text-sm text-muted-foreground">{sym}</span>
-          </div>
+      {/* Counterparty view: what the proposer staked, what you'd put up, what you win. */}
+      <div className="mt-4 space-y-3">
+        <div className="text-xs text-muted-foreground">
+          Proposer backs{" "}
+          <span className="font-medium text-foreground">
+            {proposerPick ?? "their side"}
+          </span>{" "}
+          and puts up{" "}
+          <span className="font-mono text-foreground">
+            {formatToken(proposerStake, bet.decimals)} {sym}
+          </span>
         </div>
-        <div className="text-right">
-          <div className="label">Pool</div>
-          <div className="font-mono text-sm font-semibold text-muted-foreground">
-            {pool} {sym}
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3">
+          <div>
+            <div className="label">
+              You stake{acceptorPick ? ` · ${acceptorPick}` : ""}
+            </div>
+            <div className="mt-0.5 font-mono text-base font-bold">
+              {formatToken(acceptorStake, bet.decimals)}{" "}
+              <span className="text-xs font-normal text-muted-foreground">
+                {sym}
+              </span>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="label">You win</div>
+            <div className="mt-0.5 font-mono text-base font-bold text-success">
+              {formatToken(payoutWei, bet.decimals)}{" "}
+              <span className="text-xs font-normal text-muted-foreground">
+                {sym}
+              </span>
+            </div>
           </div>
         </div>
       </div>

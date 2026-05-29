@@ -6,21 +6,20 @@ import { Button } from "@/components/ui/button";
 export default function MarketsPage() {
   return (
     <div className="space-y-8">
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[hsl(265_85%_45%)] to-[hsl(222_89%_45%)] p-8 text-white md:p-10">
-        <div className="relative max-w-2xl">
-          <p className="mb-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
-            CLOB · ERC-1155 shares · Polygon
-          </p>
-          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-            Trade outcome shares on open markets.
-          </h1>
-          <p className="mt-3 text-white/85">
-            Public prediction markets with a signed order book. Buy and sell
-            shares of any outcome; settle on-chain when the market resolves.
-          </p>
-          <div className="mt-6">
-            <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90">
-              <Link href="/markets/new">Create a market</Link>
+      <section className="relative overflow-hidden rounded-xl bg-gradient-to-br from-[hsl(265_85%_45%)] to-[hsl(222_89%_45%)] p-5 text-white md:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="max-w-xl">
+            <h1 className="text-xl font-bold tracking-tight md:text-2xl">
+              Trade outcome shares on open markets.
+            </h1>
+            <p className="mt-1 text-sm text-white/85">
+              Public prediction markets with a signed order book. Buy and sell
+              shares of any outcome; settle on-chain at resolution.
+            </p>
+          </div>
+          <div className="shrink-0">
+            <Button asChild className="bg-white text-primary hover:bg-white/90">
+              <Link href="/create?type=market">Create a market</Link>
             </Button>
           </div>
         </div>

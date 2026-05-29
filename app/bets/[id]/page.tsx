@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
-import { BetActions } from "@/components/BetActions";
 import { BetDetailLive } from "@/components/BetDetailLive";
 import { StatusBadge } from "@/components/ui/badge";
 import { explorerAddress, explorerTx } from "@/lib/chains";
@@ -126,9 +125,7 @@ export default async function BetDetailPage({
             </pre>
           </section>
 
-          <BetDetailLive id={bet.id} initial={data}>
-            {(live) => <BetActions bet={live.bet} />}
-          </BetDetailLive>
+          <BetDetailLive id={bet.id} initial={data} />
         </div>
 
         <aside className="space-y-3">

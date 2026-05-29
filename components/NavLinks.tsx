@@ -11,18 +11,19 @@ const LINKS = [
   { href: "/", label: "Sidebets" },
   { href: "/markets", label: "Markets" },
   { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/users", label: "Directory" },
 ];
 
 const ACTIONS = [
   {
-    href: "/bets/new",
-    label: "Create market",
-    description: "Propose a new bet",
+    href: "/create",
+    label: "Create bet",
+    description: "Sidebet or market",
     icon: Plus,
   },
   {
     href: "/me",
-    label: "Positions",
+    label: "View Positions",
     description: "Bets you're in",
     icon: Box,
   },

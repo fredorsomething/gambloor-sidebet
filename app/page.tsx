@@ -5,32 +5,27 @@ import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
   return (
-    <div className="space-y-10">
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[hsl(222_89%_45%)] p-8 text-primary-foreground md:p-12">
-        <div className="relative max-w-2xl">
-          <p className="mb-4 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
-            non-custodial · Polygon · USDC + pUSD
-          </p>
-          <h1 className="max-w-3xl text-3xl font-bold tracking-tight md:text-5xl">
-            Settle any random argument on-chain.
-          </h1>
-          <p className="mt-3 max-w-2xl text-primary-foreground/85">
-            Sidebets are peer-to-peer 1v1 escrows for the bets too weird for
-            Polymarket. Pick your side, set asymmetric stakes, write your own
-            outcomes, and choose a trusted settler. Want a public order book
-            instead? Try CLOB Markets.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+    <div className="space-y-8">
+      <section className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-[hsl(222_89%_45%)] p-5 text-primary-foreground md:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="max-w-xl">
+            <h1 className="text-xl font-bold tracking-tight md:text-2xl">
+              Settle any argument on-chain.
+            </h1>
+            <p className="mt-1 text-sm text-primary-foreground/85">
+              Peer-to-peer sidebets and public CLOB markets on Polygon. Pick a
+              side, stake, and let a trusted settler call it.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button
               asChild
-              size="lg"
               className="bg-white text-primary hover:bg-white/90"
             >
-              <Link href="/bets/new">Propose a sidebet</Link>
+              <Link href="/create">Create a bet</Link>
             </Button>
             <Button
               asChild
-              size="lg"
               variant="outline"
               className="border-white/40 bg-transparent text-white hover:bg-white/10"
             >
@@ -39,6 +34,18 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">
+        Need POL, pUSD, USDC or USDC.e? Get it easily with our trusted partner,{" "}
+        <a
+          href="https://bigswappa.fun/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-primary underline-offset-2 hover:underline"
+        >
+          BigSwappa
+        </a>
+      </p>
 
       <section id="open" className="space-y-4">
         <div className="flex items-end justify-between">

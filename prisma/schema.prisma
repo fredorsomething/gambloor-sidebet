@@ -48,6 +48,19 @@ model RepVote {
   @@index([target])
 }
 
+// Public profile comments / "wall". Anyone signed in can leave a comment on a
+// user's profile; it persists for everyone to see. Authors can delete their own.
+model ProfileComment {
+  id        Int      @id @default(autoincrement())
+  target    String   // profile owner address (lowercase)
+  author    String   // commenter address (lowercase)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([target, createdAt])
+  @@index([author])
+}
+
 // Approved settlers: only these addresses can be chosen to resolve a Sidebet or
 // Market. Each sets their own fee (basis points). Seeded with the default wallet.
 model ApprovedSettler {

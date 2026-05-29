@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Check, Copy } from "lucide-react";
+import { CalendarDays, Check, Copy } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -10,6 +10,7 @@ import { useAccount } from "wagmi";
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
+import { ProfileComments } from "@/components/profile/ProfileComments";
 import { RepWidget } from "@/components/profile/RepWidget";
 import { TipButton } from "@/components/profile/TipButton";
 import { UserBadges } from "@/components/profile/UserBadges";
@@ -34,6 +35,16 @@ type ProfileBet = {
   status: BetStatusName;
 };
 
+type ProfileMarket = {
+  id: number;
+  title: string;
+  imageUrl: string | null;
+  status: string;
+  tokenSymbol: string | null;
+  feeBps: number;
+  outcomeCount: number;
+};
+
 type ProfileResponse = {
   user: {
     address: string;
@@ -44,6 +55,7 @@ type ProfileResponse = {
   };
   stats: UserStats;
   bets: ProfileBet[];
+  markets: ProfileMarket[];
 };
 
 function usd(n: number) {
@@ -55,6 +67,13 @@ function usd(n: number) {
 
 const eq = (a?: string | null, b?: string | null) =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+function joinedLabel(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
 
 export default function ProfilePage() {
   const params = useParams<{ address: string }>();
@@ -101,6 +120,10 @@ export default function ProfilePage() {
         (eq(b.proposer, address) || eq(b.acceptor, address)),
     ) ?? [];
 
+  // Sidebets this user proposed + CLOB markets they created.
+  const createdBets = data?.bets.filter((b) => eq(b.proposer, address)) ?? [];
+  const createdMarkets = data?.markets ?? [];
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
@@ -123,6 +146,12 @@ export default function ProfilePage() {
               {data?.user.bio && (
                 <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
                   {data.user.bio}
+                </p>
+              )}
+              {joinedLabel(data?.user.joinedAt) && (
+                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  Joined {joinedLabel(data?.user.joinedAt)}
                 </p>
               )}
             </div>
@@ -181,6 +210,7 @@ export default function ProfilePage() {
         </div>
 
         <aside className="space-y-3">
+          <ProfileComments target={address} />
           <section className="card p-5">
             <h3 className="mb-2 text-sm font-semibold">Wallet balance</h3>
             <ProfileBalances address={address} />
@@ -197,10 +227,75 @@ export default function ProfilePage() {
         </aside>
       </div>
 
+      {/* Everything this user created */}
+      <CreatedSection bets={createdBets} markets={createdMarkets} />
+
       {isLoading && (
         <div className="text-center text-sm text-muted-foreground">Loading…</div>
       )}
     </div>
+  );
+}
+
+function CreatedSection({
+  bets,
+  markets,
+}: {
+  bets: ProfileBet[];
+  markets: ProfileMarket[];
+}) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold">
+        Created{" "}
+        <span className="text-sm font-normal text-muted-foreground">
+          ({bets.length + markets.length})
+        </span>
+      </h2>
+
+      {bets.length === 0 && markets.length === 0 ? (
+        <div className="card p-5 text-sm text-muted-foreground">
+          Hasn&apos;t created any bets or markets yet.
+        </div>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {bets.map((b) => (
+            <Link
+              key={`bet-${b.id}`}
+              href={`/bets/${b.id}`}
+              className="card flex items-center gap-3 p-4 transition-colors hover:border-primary/40"
+            >
+              <BetThumbnail imageUrl={b.imageUrl} title={b.title} size="sm" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">
+                  {b.title}
+                </span>
+                <span className="text-xs text-muted-foreground">Sidebet</span>
+              </span>
+              <StatusBadge status={b.status} />
+            </Link>
+          ))}
+          {markets.map((m) => (
+            <Link
+              key={`market-${m.id}`}
+              href={`/markets/${m.id}`}
+              className="card flex items-center gap-3 p-4 transition-colors hover:border-primary/40"
+            >
+              <BetThumbnail imageUrl={m.imageUrl} title={m.title} size="sm" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">
+                  {m.title}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Market · {m.outcomeCount} outcomes
+                </span>
+              </span>
+              <StatusBadge status={m.status as BetStatusName} />
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

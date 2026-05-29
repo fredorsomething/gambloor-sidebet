@@ -49,6 +49,23 @@ export async function GET(
   }));
   const stats = computeUserStats(statBets, address);
 
+  // CLOB markets this user created.
+  const createdMarkets = await prisma.market.findMany({
+    where: { creator: address },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    include: { _count: { select: { outcomes: true } } },
+  });
+  const markets = createdMarkets.map((m) => ({
+    id: m.id,
+    title: m.title,
+    imageUrl: m.imageUrl,
+    status: m.status,
+    tokenSymbol: m.tokenSymbol,
+    feeBps: m.feeBps,
+    outcomeCount: m._count.outcomes,
+  }));
+
   return jsonOk({
     user: {
       address,
@@ -59,6 +76,7 @@ export async function GET(
     },
     stats,
     bets,
+    markets,
   });
 }
 
