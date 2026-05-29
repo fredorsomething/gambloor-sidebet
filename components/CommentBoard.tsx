@@ -9,6 +9,7 @@ import { useAccount } from "wagmi";
 
 import { GifPicker } from "@/components/GifPicker";
 import { Avatar } from "@/components/profile/Identity";
+import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { jsonFetch } from "@/lib/fetcher";
@@ -21,6 +22,7 @@ type Comment = {
   author: string;
   authorUsername: string | null;
   authorAvatarUrl: string | null;
+  authorVerified: boolean;
   body: string;
   gifUrl: string | null;
   parentId: number | null;
@@ -369,7 +371,14 @@ function CommentRow({
             href={`/u/${c.author}`}
             className="font-medium text-foreground hover:text-primary"
           >
-            {c.authorUsername ? `@${c.authorUsername}` : shortAddr(c.author)}
+            <UserNameWithBadge
+              verified={c.authorVerified}
+              name={
+                c.authorUsername
+                  ? `@${c.authorUsername}`
+                  : shortAddr(c.author)
+              }
+            />
           </Link>
           <span>·</span>
           <span>{fromNowUnix(unixOf(c.createdAt))}</span>

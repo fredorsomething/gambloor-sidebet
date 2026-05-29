@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   const users = checksummed.length
     ? await prisma.user.findMany({
         where: { address: { in: checksummed } },
-        select: { address: true, username: true, avatarUrl: true },
+        select: { address: true, username: true, avatarUrl: true, verified: true },
       })
     : [];
   const profileMap = new Map(users.map((u) => [u.address.toLowerCase(), u]));
@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
     ...e,
     username: profileMap.get(e.address.toLowerCase())?.username ?? null,
     avatarUrl: profileMap.get(e.address.toLowerCase())?.avatarUrl ?? null,
+    verified: profileMap.get(e.address.toLowerCase())?.verified ?? false,
   }));
 
   return jsonOk({ items: ranked });

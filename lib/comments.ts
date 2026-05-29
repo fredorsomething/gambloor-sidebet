@@ -6,6 +6,7 @@ export type ProfileCommentRow = {
   author: string;
   authorUsername: string | null;
   authorAvatarUrl: string | null;
+  authorVerified: boolean;
   body: string;
   gifUrl: string | null;
   parentId: number | null;
@@ -29,7 +30,7 @@ export async function listProfileComments(
   const users = authors.length
     ? await prisma.user.findMany({
         where: { address: { in: authors, mode: "insensitive" } },
-        select: { address: true, username: true, avatarUrl: true },
+        select: { address: true, username: true, avatarUrl: true, verified: true },
       })
     : [];
   const byAddr = new Map(
@@ -49,6 +50,7 @@ export async function listProfileComments(
       author: c.author,
       authorUsername: u?.username ?? null,
       authorAvatarUrl: u?.avatarUrl ?? null,
+      authorVerified: u?.verified ?? false,
       body: c.body,
       gifUrl: c.gifUrl ?? null,
       parentId: c.parentId ?? null,

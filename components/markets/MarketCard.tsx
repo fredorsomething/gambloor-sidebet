@@ -4,8 +4,8 @@ import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { ChanceGauge } from "@/components/markets/ChanceGauge";
 import { Identity } from "@/components/profile/Identity";
-import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
+import { MARKET_COLLATERAL_SYMBOL } from "@/lib/chains";
 import type { MarketQuote, MarketRow } from "@/lib/types";
 
 function cents(p: number | null | undefined): string | null {
@@ -14,7 +14,6 @@ function cents(p: number | null | undefined): string | null {
 }
 
 export function MarketCard({ market }: { market: MarketRow }) {
-  const sym = market.tokenSymbol || "USDC";
   const outcomes = market.outcomes ?? [];
   const quotes = market.quotes ?? [];
   const resolved = market.status === "Resolved";
@@ -112,10 +111,13 @@ export function MarketCard({ market }: { market: MarketRow }) {
           )}
         </div>
 
-        <div className="mt-auto flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          <Identity address={market.creator} size={20} link={false} />
-          <span className="inline-flex items-center gap-1">
-            <TokenSymbol symbol={sym} size={12} /> · {(market.feeBps / 100).toFixed(1)}%
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">Created by:</span>
+            <Identity address={market.creator} size={20} link={false} />
+          </span>
+          <span className="shrink-0 font-medium text-muted-foreground">
+            {MARKET_COLLATERAL_SYMBOL} ONLY
           </span>
         </div>
       </div>

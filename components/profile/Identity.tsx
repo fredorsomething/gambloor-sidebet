@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { avatarDataUri } from "@/lib/avatar";
 import { cn, shortAddr } from "@/lib/utils";
@@ -57,12 +58,13 @@ export function Identity({
       )}
       <span
         className={cn(
-          "truncate",
+          "inline-flex min-w-0 max-w-full items-center gap-0.5",
           weight === "medium" && "font-medium",
           weight === "semibold" && "font-semibold",
         )}
       >
-        {label}
+        <span className="truncate">{label}</span>
+        {data?.verified ? <VerifiedBadge size={size >= 28 ? 16 : 14} /> : null}
       </span>
     </span>
   );

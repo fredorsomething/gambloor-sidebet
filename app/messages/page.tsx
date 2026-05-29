@@ -10,6 +10,7 @@ import { useAccount } from "wagmi";
 
 import { GifPicker } from "@/components/GifPicker";
 import { Avatar } from "@/components/profile/Identity";
+import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
@@ -20,6 +21,7 @@ type Conversation = {
   address: string;
   username: string | null;
   avatarUrl: string | null;
+  verified: boolean;
   lastBody: string;
   lastAt: string;
   fromMe: boolean;
@@ -88,6 +90,7 @@ function MessagesInner() {
       address: string;
       username: string | null;
       avatarUrl: string | null;
+      verified: boolean;
     };
     blocked: boolean;
     messages: ThreadMsg[];
@@ -203,9 +206,15 @@ function MessagesInner() {
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium">
-                      {c.username ? `@${c.username}` : shortAddr(c.address)}
-                    </span>
+                    <UserNameWithBadge
+                      verified={c.verified}
+                      name={
+                        c.username
+                          ? `@${c.username}`
+                          : shortAddr(c.address)
+                      }
+                      className="truncate text-sm font-medium"
+                    />
                     <span className="shrink-0 text-[10px] text-muted-foreground">
                       {timeLabel(c.lastAt)}
                     </span>
@@ -254,9 +263,12 @@ function MessagesInner() {
                 />
                 <Link
                   href={`/u/${counterparty?.username ?? selected}`}
-                  className="min-w-0 flex-1 truncate text-sm font-semibold hover:text-primary"
+                  className="min-w-0 flex-1 text-sm font-semibold hover:text-primary"
                 >
-                  {cpLabel}
+                  <UserNameWithBadge
+                    verified={counterparty?.verified}
+                    name={cpLabel}
+                  />
                 </Link>
                 <Button
                   variant="outline"

@@ -9,6 +9,7 @@ import { useAccount } from "wagmi";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
+import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { PnlChart } from "@/components/profile/PnlChart";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
 import { ProfileComments } from "@/components/profile/ProfileComments";
@@ -56,6 +57,7 @@ type ProfileResponse = {
     bio: string | null;
     twitter: string | null;
     discord: string | null;
+    verified: boolean;
     joinedAt: string | null;
     views: number;
   };
@@ -174,9 +176,14 @@ export default function ProfilePage() {
             />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold">
-                {data?.user.username
-                  ? `@${data.user.username}`
-                  : shortAddr(address)}
+                <UserNameWithBadge
+                  verified={data?.user.verified}
+                  name={
+                    data?.user.username
+                      ? `@${data.user.username}`
+                      : shortAddr(address)
+                  }
+                />
               </h1>
               <CopyAddress address={address} />
               {data?.user.bio && (

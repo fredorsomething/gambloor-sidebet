@@ -7,6 +7,7 @@ import { Suspense } from "react";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
+import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { StatusBadge } from "@/components/ui/badge";
 import { jsonFetch } from "@/lib/fetcher";
 import { formatToken, shortAddr } from "@/lib/utils";
@@ -35,6 +36,7 @@ type SearchResults = {
     username: string | null;
     avatarUrl: string | null;
     bio: string | null;
+    verified: boolean;
   }[];
 };
 
@@ -73,9 +75,11 @@ function Results() {
             >
               <Avatar address={u.address} url={u.avatarUrl} size={44} />
               <div className="min-w-0">
-                <div className="truncate font-semibold">
-                  {u.username || shortAddr(u.address)}
-                </div>
+                <UserNameWithBadge
+                  verified={u.verified}
+                  name={u.username || shortAddr(u.address)}
+                  className="truncate font-semibold"
+                />
                 <div className="truncate text-xs text-muted-foreground">
                   {u.bio || shortAddr(u.address)}
                 </div>

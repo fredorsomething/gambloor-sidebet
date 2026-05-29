@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { Avatar } from "@/components/profile/Identity";
+import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { jsonFetch } from "@/lib/fetcher";
 import { shortAddr } from "@/lib/utils";
 
@@ -14,6 +15,7 @@ type DirectoryUser = {
   avatarUrl: string | null;
   bio: string | null;
   joinedAt: string;
+  verified: boolean;
 };
 
 function groupKey(u: DirectoryUser): string {
@@ -110,9 +112,15 @@ export default function UsersDirectoryPage() {
                   >
                     <Avatar address={u.address} url={u.avatarUrl} size={40} />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold">
-                        {u.username ? `@${u.username}` : shortAddr(u.address)}
-                      </div>
+                      <UserNameWithBadge
+                        verified={u.verified}
+                        name={
+                          u.username
+                            ? `@${u.username}`
+                            : shortAddr(u.address)
+                        }
+                        className="truncate text-sm font-semibold"
+                      />
                       {u.bio ? (
                         <div className="truncate text-xs text-muted-foreground">
                           {u.bio}

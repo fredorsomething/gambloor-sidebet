@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 import { Avatar } from "@/components/profile/Identity";
+import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
 import type { UserStats } from "@/lib/stats";
@@ -13,6 +14,7 @@ type Entry = UserStats & {
   address: string;
   username: string | null;
   avatarUrl: string | null;
+  verified: boolean;
 };
 
 type LeaderboardResponse = { items: Entry[] };
@@ -38,7 +40,7 @@ export default function LeaderboardPage() {
       <div className="text-center">
         <h1 className="text-3xl font-bold tracking-tight">Leaderboard</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Top sidebettors ranked by realized profit. Settle some bets for placement!
+          Top sidebettors ranked by realized profit.
         </p>
       </div>
 
@@ -86,9 +88,15 @@ export default function LeaderboardPage() {
                       className="flex items-center gap-2 hover:text-primary"
                     >
                       <Avatar address={e.address} url={e.avatarUrl} size={28} />
-                      <span className="truncate font-medium">
-                        {e.username ? `@${e.username}` : shortAddr(e.address)}
-                      </span>
+                      <UserNameWithBadge
+                        verified={e.verified}
+                        name={
+                          e.username
+                            ? `@${e.username}`
+                            : shortAddr(e.address)
+                        }
+                        className="truncate font-medium"
+                      />
                     </Link>
                   </td>
                   <td

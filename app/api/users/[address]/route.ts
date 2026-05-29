@@ -93,6 +93,7 @@ export async function GET(
       bio: user?.bio ?? null,
       twitter: user?.twitter ?? null,
       discord: user?.discord ?? null,
+      verified: user?.verified ?? false,
       joinedAt: user?.createdAt ?? null,
       views,
     },

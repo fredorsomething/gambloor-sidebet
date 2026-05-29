@@ -8,6 +8,7 @@ export type DirectoryUser = {
   avatarUrl: string | null;
   bio: string | null;
   joinedAt: string | null;
+  verified: boolean;
 };
 
 /** Normalise to a checksummed address, or null if it isn't a valid address. */
@@ -44,6 +45,7 @@ export async function collectDirectoryUsers(): Promise<DirectoryUser[]> {
         username: true,
         avatarUrl: true,
         bio: true,
+        verified: true,
         createdAt: true,
       },
     }),
@@ -108,6 +110,7 @@ export async function collectDirectoryUsers(): Promise<DirectoryUser[]> {
       avatarUrl: profile?.avatarUrl ?? null,
       bio: profile?.bio ?? null,
       joinedAt: profile?.createdAt?.toISOString() ?? null,
+      verified: profile?.verified ?? false,
     });
   }
   return result;

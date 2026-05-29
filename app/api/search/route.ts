@@ -63,7 +63,13 @@ export async function GET(req: NextRequest) {
         ] as Prisma.UserWhereInput["OR"],
       },
       take: 8,
-      select: { address: true, username: true, avatarUrl: true, bio: true },
+      select: {
+        address: true,
+        username: true,
+        avatarUrl: true,
+        bio: true,
+        verified: true,
+      },
     }),
   ]);
 
@@ -83,6 +89,7 @@ export async function GET(req: NextRequest) {
           username: u.username,
           avatarUrl: u.avatarUrl,
           bio: u.bio,
+          verified: u.verified,
         });
       }
     }

@@ -4,12 +4,12 @@ import { headers } from "next/headers";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
+import { Identity } from "@/components/profile/Identity";
 import { BetDetailLive } from "@/components/BetDetailLive";
 import { BetNegotiations } from "@/components/BetNegotiations";
 import { Comments } from "@/components/Comments";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
 import { Resolvers } from "@/components/Resolvers";
-import { Identity } from "@/components/profile/Identity";
 import { StatusBadge } from "@/components/ui/badge";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
@@ -188,15 +188,11 @@ export default async function BetDetailPage({
 
           <section className="card p-5">
             <h3 className="font-semibold mb-3 text-sm">Participants</h3>
-            <Party label="Proposer" addr={bet.proposer} chainId={bet.chainId} />
+            <Party label="Proposer" addr={bet.proposer} />
             {bet.acceptor && (
-              <Party
-                label="Acceptor"
-                addr={bet.acceptor}
-                chainId={bet.chainId}
-              />
+              <Party label="Acceptor" addr={bet.acceptor} />
             )}
-            <Party label="Settler" addr={bet.settler} chainId={bet.chainId} />
+            <Party label="Settler" addr={bet.settler} />
           </section>
 
           <section className="card p-5 text-xs space-y-2">
@@ -347,26 +343,11 @@ function Row({
   );
 }
 
-function Party({
-  label,
-  addr,
-  chainId,
-}: {
-  label: string;
-  addr: string;
-  chainId: number;
-}) {
+function Party({ label, addr }: { label: string; addr: string }) {
   return (
-    <div className="flex items-center justify-between py-1.5">
+    <div className="flex items-center justify-between gap-2 py-1.5">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <a
-        href={explorerAddress(chainId, addr)}
-        target="_blank"
-        rel="noreferrer"
-        className="font-mono text-sm hover:text-[hsl(var(--accent))]"
-      >
-        {shortAddr(addr)}
-      </a>
+      <Identity address={addr} size={22} showAvatar={false} />
     </div>
   );
 }

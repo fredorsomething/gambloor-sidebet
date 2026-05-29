@@ -24,6 +24,7 @@ function pairKey(a: string, b: string): string {
 type PublicProfile = {
   username: string | null;
   avatarUrl: string | null;
+  verified: boolean;
 };
 
 /** Resolve profiles (username + avatar) for wallet addresses. */
@@ -39,7 +40,7 @@ async function profileMap(
         address: { equals: a, mode: "insensitive" as const },
       })),
     },
-    select: { address: true, username: true, avatarUrl: true },
+    select: { address: true, username: true, avatarUrl: true, verified: true },
   });
 
   const map: Record<string, PublicProfile> = {};
@@ -47,6 +48,7 @@ async function profileMap(
     map[u.address.toLowerCase()] = {
       username: u.username,
       avatarUrl: u.avatarUrl,
+      verified: u.verified ?? false,
     };
   }
   return map;
@@ -108,6 +110,7 @@ export async function GET(req: NextRequest) {
         address: other,
         username: profiles[other]?.username ?? null,
         avatarUrl: profiles[other]?.avatarUrl ?? null,
+        verified: profiles[other]?.verified ?? false,
       },
       blocked: !!blocked,
       messages: rows.map((m) => ({
@@ -169,6 +172,7 @@ export async function GET(req: NextRequest) {
       address: c.address,
       username: profiles[c.address]?.username ?? null,
       avatarUrl: profiles[c.address]?.avatarUrl ?? null,
+      verified: profiles[c.address]?.verified ?? false,
       lastBody: c.lastBody,
       lastAt: c.lastAt.toISOString(),
       fromMe: c.fromMe,

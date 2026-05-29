@@ -11,6 +11,7 @@ export type PublicProfile = {
   bio: string | null;
   twitter: string | null;
   discord: string | null;
+  verified: boolean;
 };
 
 export type ResolveResponse = Record<string, PublicProfile>;

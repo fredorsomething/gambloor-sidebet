@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
+import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { StatusBadge } from "@/components/ui/badge";
 import { jsonFetch } from "@/lib/fetcher";
 import { formatToken, shortAddr } from "@/lib/utils";
@@ -34,6 +35,7 @@ type SearchResults = {
     username: string | null;
     avatarUrl: string | null;
     bio: string | null;
+    verified: boolean;
   }[];
 };
 
@@ -133,9 +135,11 @@ export function SearchBar() {
                 >
                   <Avatar address={u.address} url={u.avatarUrl} size={28} />
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {u.username || shortAddr(u.address)}
-                    </div>
+                    <UserNameWithBadge
+                      verified={u.verified}
+                      name={u.username || shortAddr(u.address)}
+                      className="truncate text-sm font-medium"
+                    />
                     {u.username && (
                       <div className="font-mono text-xs text-muted-foreground">
                         {shortAddr(u.address)}

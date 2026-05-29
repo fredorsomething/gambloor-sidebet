@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAddress, isAddress } from "viem";
 
 import { prisma } from "@/lib/db";
+import { publicUserSelect } from "@/lib/publicProfile";
 import { jsonOk } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -22,19 +23,15 @@ export async function GET(req: NextRequest) {
         address: { equals: a, mode: "insensitive" as const },
       })),
     },
-    select: {
-      address: true,
-      username: true,
-      avatarUrl: true,
-      bio: true,
-      twitter: true,
-      discord: true,
-    },
+    select: publicUserSelect,
   });
 
-  const out: Record<string, unknown> = {};
+  const out: Record<string, (typeof users)[number]> = {};
   for (const u of users) {
-    out[u.address.toLowerCase()] = u;
+    out[u.address.toLowerCase()] = {
+      ...u,
+      verified: u.verified ?? false,
+    };
   }
   return jsonOk(out);
 }
