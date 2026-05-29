@@ -74,6 +74,13 @@ export function WalletBalance() {
   });
   const positionsValue = positions?.totalValue ?? 0;
 
+  const { data: polPrice } = useQuery<{ usdPerPol: number }>({
+    queryKey: ["pol-usd"],
+    queryFn: () => jsonFetch("/api/wallet/pol-usd"),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
   if (!ready || !authenticated || !address) return null;
 
   const onPolygon = chainId === polygon.id;
@@ -84,8 +91,9 @@ export function WalletBalance() {
   });
 
   const totalUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
-  const grandTotal = totalUsd + positionsValue;
   const polAmount = pol ? Number(pol.formatted) : 0;
+  const polUsdValue = polAmount * (polPrice?.usdPerPol ?? 0);
+  const grandTotal = totalUsd + positionsValue + polUsdValue;
   const lowGas = polAmount === 0;
 
   const onCopy = () => {
@@ -180,17 +188,28 @@ export function WalletBalance() {
             <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 <TokenIcon symbol="POL" size={14} />
-                POL (gas)
+                POL
               </span>
-              <span
-                className={cn(
-                  "font-mono tabular-nums",
-                  lowGas && "text-warning",
+              <span className="text-right">
+                <span
+                  className={cn(
+                    "block font-mono tabular-nums",
+                    lowGas && "text-warning",
+                  )}
+                >
+                  {polAmount.toLocaleString(undefined, {
+                    maximumFractionDigits: 4,
+                  })}
+                </span>
+                {polUsdValue > 0 && (
+                  <span className="block text-xs tabular-nums text-muted-foreground">
+                    ≈ $
+                    {polUsdValue.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
                 )}
-              >
-                {polAmount.toLocaleString(undefined, {
-                  maximumFractionDigits: 4,
-                })}
               </span>
             </div>
 
