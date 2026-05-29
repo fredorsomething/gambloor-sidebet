@@ -2,9 +2,10 @@
 
 import { ShieldCheck, ShieldAlert, Star, Scale, User as UserIcon } from "lucide-react";
 
+import type { BadgeKind } from "@/lib/badges";
 import { cn } from "@/lib/utils";
 
-export type BadgeKind = "User" | "Admin" | "Staff" | "Trusted" | "Resolver";
+export type { BadgeKind };
 
 const BADGE_META: Record<
   BadgeKind,

@@ -1,10 +1,12 @@
 "use client";
 
-import { Box, ChevronDown, HelpCircle, Mail, Plus } from "lucide-react";
+import { Box, ChevronDown, HelpCircle, Mail, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useAccount } from "wagmi";
 
+import { isAdminAddress } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -42,6 +44,8 @@ const ACTIONS = [
 
 export function NavLinks() {
   const pathname = usePathname();
+  const { address } = useAccount();
+  const isAdmin = isAdminAddress(address);
   const [actionsOpen, setActionsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -77,6 +81,20 @@ export function NavLinks() {
           </Link>
         );
       })}
+
+      {isAdmin && (
+        <Link
+          href="/admin"
+          className={cn(
+            "rounded-lg px-3 py-1.5 font-medium transition-colors",
+            pathname.startsWith("/admin")
+              ? "bg-danger/15 text-danger"
+              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          )}
+        >
+          Admin
+        </Link>
+      )}
 
       <div className="relative" ref={ref}>
         <button

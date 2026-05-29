@@ -12,6 +12,7 @@ export type PublicProfile = {
   twitter: string | null;
   discord: string | null;
   verified: boolean;
+  badges: string[];
 };
 
 export type ResolveResponse = Record<string, PublicProfile>;

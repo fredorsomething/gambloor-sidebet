@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getAddress, isAddress } from "viem";
 
+import { resolveDisplayBadges } from "@/lib/badges";
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isAllowedAvatarUrl } from "@/lib/profile";
@@ -94,6 +95,7 @@ export async function GET(
       twitter: user?.twitter ?? null,
       discord: user?.discord ?? null,
       verified: user?.verified ?? false,
+      badges: resolveDisplayBadges(user?.badges, address),
       joinedAt: user?.createdAt ?? null,
       views,
     },

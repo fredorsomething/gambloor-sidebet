@@ -8,6 +8,7 @@ import {
   listChatMessages,
   touchPresence,
 } from "@/lib/chat";
+import { chatMuteMessage } from "@/lib/chatMute";
 import { isAllowedGifUrl } from "@/lib/commentInteractions";
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -56,6 +57,9 @@ export async function POST(req: NextRequest) {
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
   const author = auth.address.toLowerCase();
+  const muteMsg = await chatMuteMessage(author);
+  if (muteMsg) return jsonErr(muteMsg, 403);
+
   const text = (body ?? "").trim();
   const gif = gifUrl ?? null;
   if (!text && !gif) return jsonErr("message cannot be empty", 400);

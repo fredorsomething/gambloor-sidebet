@@ -7,6 +7,7 @@ import {
   Mail,
   Menu,
   Plus,
+  ShieldCheck,
   Trophy,
   Users,
   X,
@@ -14,8 +15,10 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAccount } from "wagmi";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { isAdminAddress } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -34,6 +37,8 @@ const ACTIONS = [
 /** Hamburger menu + slide-down drawer for small screens. Hidden on lg+. */
 export function MobileNav() {
   const pathname = usePathname();
+  const { address } = useAccount();
+  const isAdmin = isAdminAddress(address);
   const [open, setOpen] = useState(false);
 
   // Close on route change.
@@ -106,6 +111,21 @@ export function MobileNav() {
                 );
               })}
             </nav>
+
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className={cn(
+                  "mt-2 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors",
+                  pathname.startsWith("/admin")
+                    ? "bg-danger/15 text-danger"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                )}
+              >
+                <ShieldCheck className="h-5 w-5" />
+                Admin
+              </Link>
+            )}
 
             <div className="my-4 border-t border-border" />
 

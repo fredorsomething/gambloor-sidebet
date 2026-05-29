@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAddress, isAddress } from "viem";
 
+import { resolveDisplayBadges } from "@/lib/badges";
 import { prisma } from "@/lib/db";
 import { publicUserSelect } from "@/lib/publicProfile";
 import { jsonOk } from "@/lib/serialize";
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
     out[u.address.toLowerCase()] = {
       ...u,
       verified: u.verified ?? false,
+      badges: resolveDisplayBadges(u.badges, u.address),
     };
   }
   return jsonOk(out);

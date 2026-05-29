@@ -29,6 +29,7 @@ type ChatMessage = {
 type ChatResponse = { messages: ChatMessage[]; online: number };
 
 const SEND_COOLDOWN_MS = 3_000;
+const CHAT_WIDTH_PX = 300;
 
 function getClientId(): string {
   if (typeof window === "undefined") return "";
@@ -69,7 +70,7 @@ export function GlobalChat() {
   const { data: myProfile } = useProfile(address);
   const qc = useQueryClient();
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [draft, setDraft] = useState("");
   const [gifUrl, setGifUrl] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
@@ -80,10 +81,10 @@ export function GlobalChat() {
   const me = address?.toLowerCase() ?? null;
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Restore last open/minimized preference.
+  // Restore minimized preference (default: expanded).
   useEffect(() => {
     try {
-      setOpen(localStorage.getItem("sb_chat_open") === "1");
+      if (localStorage.getItem("sb_chat_open") === "0") setOpen(false);
     } catch {
       /* ignore */
     }
@@ -94,6 +95,22 @@ export function GlobalChat() {
     } catch {
       /* ignore */
     }
+  }, [open]);
+
+  // Shift main layout when the desktop sidebar is open.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (open) {
+      root.classList.add("global-chat-open");
+      root.style.setProperty("--global-chat-width", `${CHAT_WIDTH_PX}px`);
+    } else {
+      root.classList.remove("global-chat-open");
+      root.style.removeProperty("--global-chat-width");
+    }
+    return () => {
+      root.classList.remove("global-chat-open");
+      root.style.removeProperty("--global-chat-width");
+    };
   }, [open]);
 
   // Tick for cooldown countdown.
@@ -177,7 +194,13 @@ export function GlobalChat() {
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 z-40 flex h-[min(70vh,560px)] w-[330px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-tr-2xl border border-border bg-card shadow-2xl">
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex w-[300px] flex-col border-r border-border bg-card shadow-xl",
+          "max-md:inset-0 max-md:z-50 max-md:w-full",
+        )}
+        aria-label="Global chat"
+      >
         {/* Header */}
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
           <div className="flex items-center gap-2">
@@ -296,7 +319,7 @@ export function GlobalChat() {
             {(send.error as Error)?.message || "Couldn't send message"}
           </p>
         )}
-      </div>
+      </aside>
 
       {gifOpen && (
         <GifPicker

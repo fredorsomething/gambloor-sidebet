@@ -15,7 +15,9 @@ export type ActivityKind =
   | "bet_lost"
   | "bet_push"
   | "bet_refunded"
-  | "bet_cancelled";
+  | "bet_cancelled"
+  | "deposit"
+  | "withdrawal";
 
 type ActivityItem = {
   id: string;
@@ -43,6 +45,29 @@ const num = (raw: string, decimals: number): number => {
 const eq = (a?: string | null, b?: string | null) =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
+/** Parse amount/token from wallet notification bodies. */
+function parseWalletMeta(
+  body: string | null,
+): { amount: number | null; tokenSymbol: string | null } {
+  if (!body) return { amount: null, tokenSymbol: null };
+  const withdrew = body.match(/withdrew\s+([\d.]+)\s+([A-Za-z0-9.]+)/i);
+  if (withdrew) {
+    return {
+      amount: Number.parseFloat(withdrew[1]),
+      tokenSymbol: withdrew[2],
+    };
+  }
+  const deposit = body.match(/started a\s+(\w+)\s+deposit/i);
+  if (deposit) {
+    const sym = deposit[1];
+    return {
+      amount: null,
+      tokenSymbol: sym === "native-currency" ? "POL" : sym,
+    };
+  }
+  return { amount: null, tokenSymbol: null };
+}
+
 /**
  * GET /api/users/[address]/activity
  * Full trading history: market buys/sells plus sidebet lifecycle events
@@ -57,7 +82,9 @@ export async function GET(
   const address = getAddress(handle);
   const lower = address.toLowerCase();
 
-  const [trades, bets] = await Promise.all([
+  const profileLink = `/u/${address}`;
+
+  const [trades, bets, walletNotes] = await Promise.all([
     prisma.trade.findMany({
       where: {
         OR: [
@@ -88,6 +115,14 @@ export async function GET(
       },
       orderBy: { createdAt: "desc" },
       take: 300,
+    }),
+    prisma.notification.findMany({
+      where: {
+        recipient: lower,
+        type: { in: ["deposit", "withdrawal"] },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
     }),
   ]);
 
@@ -186,6 +221,29 @@ export async function GET(
         detail,
       });
     }
+  }
+
+  // ---- Wallet deposits / withdrawals (from self-notifications) ----
+  for (const n of walletNotes) {
+    const kind = n.type as "deposit" | "withdrawal";
+    const { amount, tokenSymbol } = parseWalletMeta(n.body);
+    const isDeposit = kind === "deposit";
+    items.push({
+      id: `wallet-${n.id}`,
+      kind,
+      at: n.createdAt.toISOString(),
+      title: n.title,
+      link: profileLink,
+      tokenSymbol,
+      amount,
+      delta:
+        amount != null && Number.isFinite(amount)
+          ? isDeposit
+            ? amount
+            : -amount
+          : null,
+      detail: n.body ?? (isDeposit ? "Deposit" : "Withdrawal"),
+    });
   }
 
   items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());

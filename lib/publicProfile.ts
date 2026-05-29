@@ -7,6 +7,7 @@ export const publicUserSelect = {
   twitter: true,
   discord: true,
   verified: true,
+  badges: true,
 } as const;
 
 export type PublicProfile = {
@@ -17,4 +18,5 @@ export type PublicProfile = {
   twitter: string | null;
   discord: string | null;
   verified: boolean;
+  badges: string[];
 };

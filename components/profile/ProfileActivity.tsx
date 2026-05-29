@@ -3,6 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownLeft,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   ArrowUpRight,
   ChevronDown,
   History,
@@ -26,7 +28,9 @@ type ActivityKind =
   | "bet_lost"
   | "bet_push"
   | "bet_refunded"
-  | "bet_cancelled";
+  | "bet_cancelled"
+  | "deposit"
+  | "withdrawal";
 
 type ActivityItem = {
   id: string;
@@ -44,15 +48,14 @@ const FILTERS: { id: string; label: string; kinds: ActivityKind[] }[] = [
   { id: "all", label: "All", kinds: [] },
   { id: "buys", label: "Buys", kinds: ["market_buy"] },
   { id: "sells", label: "Sells", kinds: ["market_sell"] },
+  { id: "deposits", label: "Deposits", kinds: ["deposit"] },
+  { id: "withdraws", label: "Withdraws", kinds: ["withdrawal"] },
   { id: "created", label: "Created", kinds: ["bet_created"] },
   { id: "joined", label: "Joined", kinds: ["bet_joined"] },
   { id: "won", label: "Won", kinds: ["bet_won"] },
   { id: "lost", label: "Lost", kinds: ["bet_lost"] },
-  {
-    id: "closed",
-    label: "Refunded / Cancelled",
-    kinds: ["bet_refunded", "bet_cancelled", "bet_push"],
-  },
+  { id: "refunded", label: "Refunded", kinds: ["bet_refunded", "bet_push"] },
+  { id: "cancelled", label: "Cancelled", kinds: ["bet_cancelled"] },
 ];
 
 const KIND_META: Record<
@@ -75,6 +78,16 @@ const KIND_META: Record<
     label: "Cancelled",
     icon: XCircle,
     tone: "text-muted-foreground",
+  },
+  deposit: {
+    label: "Deposit",
+    icon: ArrowDownToLine,
+    tone: "text-success",
+  },
+  withdrawal: {
+    label: "Withdraw",
+    icon: ArrowUpFromLine,
+    tone: "text-danger",
   },
 };
 
@@ -142,14 +155,14 @@ export function ProfileActivity({ address }: { address: string }) {
 
       {open && (
         <div className="border-t border-border">
-          <div className="flex flex-wrap gap-1.5 p-3">
+          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-3 pb-1 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {FILTERS.map((f) => (
               <button
                 key={f.id}
                 type="button"
                 onClick={() => setFilter(f.id)}
                 className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                   filter === f.id
                     ? "border-primary bg-primary/10 text-primary"
                     : "border-border text-muted-foreground hover:bg-muted",
@@ -192,6 +205,7 @@ function ActivityRow({ item }: { item: ActivityItem }) {
   const meta = KIND_META[item.kind];
   const Icon = meta.icon;
   const isTrade = item.kind === "market_buy" || item.kind === "market_sell";
+  const isWallet = item.kind === "deposit" || item.kind === "withdrawal";
 
   return (
     <li>
@@ -212,12 +226,19 @@ function ActivityRow({ item }: { item: ActivityItem }) {
           <span className="block truncate text-sm font-medium">
             {item.title}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="line-clamp-1 text-xs text-muted-foreground">
             {item.detail ?? meta.label} · {timeLabel(item.at)}
           </span>
         </span>
 
         <span className="shrink-0 text-right">
+          {isWallet && item.amount == null && item.tokenSymbol && (
+            <TokenSymbol
+              symbol={item.tokenSymbol}
+              size={14}
+              className="text-muted-foreground"
+            />
+          )}
           {item.amount != null && (
             <span className="flex items-center justify-end gap-1 text-sm font-medium tabular-nums">
               {amountLabel(item.amount)}

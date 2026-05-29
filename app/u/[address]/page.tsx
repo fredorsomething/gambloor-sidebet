@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { jsonFetch } from "@/lib/fetcher";
 import { isAdminUser } from "@/lib/admin";
 import { cn, formatToken, shortAddr } from "@/lib/utils";
+import type { BadgeKind } from "@/lib/badges";
 import type { UserStats } from "@/lib/stats";
 import type { BetStatusName } from "@/lib/abi";
 
@@ -60,6 +61,7 @@ type ProfileResponse = {
     twitter: string | null;
     discord: string | null;
     verified: boolean;
+    badges: string[];
     joinedAt: string | null;
     views: number;
   };
@@ -215,7 +217,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Badges */}
-          <UserBadges badges={isAdmin ? ["Admin"] : ["User"]} />
+          <UserBadges badges={(data?.user.badges ?? ["User"]) as BadgeKind[]} />
 
           {/* Reputation + actions */}
           <div className="flex flex-col items-center gap-3 lg:items-end">

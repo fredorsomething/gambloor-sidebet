@@ -32,6 +32,9 @@ model User {
   // Staff / trusted traders — shows verified.png after their display name.
   verified   Boolean  @default(false)
 
+  // Profile badge chips (Admin is derived from wallet, not stored here).
+  badges     String[] @default(["User"])
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -430,6 +433,17 @@ model ChatMessage {
 
   @@index([createdAt])
   @@index([author, createdAt])
+}
+
+// Global chat mute — blocked from posting until mutedUntil (null = permanent).
+model ChatMute {
+  address    String    @id // lowercased wallet
+  mutedUntil DateTime?
+  reason     String?
+  mutedBy    String    // lowercased admin wallet
+  createdAt  DateTime  @default(now())
+
+  @@index([mutedUntil])
 }
 
 // Lightweight presence for the "users online" counter. One row per browser

@@ -19,8 +19,17 @@ async function main() {
 
   await prisma.user.upsert({
     where: { address },
-    update: { username: ADMIN_USERNAME },
-    create: { address, username: ADMIN_USERNAME },
+    update: {
+      username: ADMIN_USERNAME,
+      verified: true,
+      badges: ["User", "Staff"],
+    },
+    create: {
+      address,
+      username: ADMIN_USERNAME,
+      verified: true,
+      badges: ["User", "Staff"],
+    },
   });
   console.log(`Seeded admin user @${ADMIN_USERNAME} at ${address}.`);
 }

@@ -164,7 +164,13 @@ const ListQuerySchema = z.object({
   skip: z.coerce.number().int().min(0).default(0),
 });
 
-const VALID_STATUSES = ["Pending", "Open", "Resolved", "Rejected"] as const;
+const VALID_STATUSES = [
+  "Pending",
+  "Open",
+  "Resolved",
+  "Rejected",
+  "Removed",
+] as const;
 
 export async function GET(req: NextRequest) {
   const params = Object.fromEntries(req.nextUrl.searchParams.entries());
@@ -189,6 +195,8 @@ export async function GET(req: NextRequest) {
     }
     where.status =
       statuses.length === 1 ? statuses[0] : { in: statuses };
+  } else {
+    where.status = { not: "Removed" };
   }
   if (q.who && isAddress(q.who)) {
     const addr = getAddress(q.who);

@@ -43,7 +43,7 @@ export default function RootLayout({
       </head>
       <body className="font-sans">
         <Providers>
-          <div className="flex min-h-screen flex-col">
+          <div id="app-shell" className="flex min-h-screen flex-col">
             <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
               <div className="container flex items-center gap-2 py-3 sm:gap-3 sm:py-4">
                 <MobileNav />
