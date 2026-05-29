@@ -1,0 +1,68 @@
+// Prisma schema for the off-chain metadata index.
+// The escrow contract is the on-chain source of truth for funds + status; this
+// database only stores human-readable bet content (title, description, terms)
+// and a denormalized snapshot to make listing/search fast.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  // Wallet address is the identity. Stored checksummed.
+  address    String   @id
+  username   String?  @unique
+  avatarUrl  String?
+  bio        String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([username])
+}
+
+model Bet {
+  id              Int      @id @default(autoincrement())
+
+  // On-chain references
+  chainId         Int
+  escrowAddress   String
+  onchainId       String   // uint256 from the escrow, stored as decimal string
+  txHash          String?
+
+  // Roles + token snapshot (kept in sync with chain on read)
+  proposer        String
+  acceptor        String?
+  settler         String
+  token           String
+  tokenSymbol     String?
+  decimals        Int      @default(6)
+  amount          String   // wei-units, decimal string
+
+  // Off-chain content
+  title           String
+  description     String
+  terms           String
+  termsHash       String   // 0x-prefixed keccak256 hex
+  nonce           String
+
+  // Lifecycle
+  status          String   @default("Open") // Open | Matched | Settled | Cancelled | Refunded
+  winner          String?
+  feeBps          Int      @default(0)
+  acceptDeadline  BigInt?
+  settleDeadline  BigInt?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([chainId, escrowAddress, onchainId])
+  @@index([chainId, status])
+  @@index([proposer])
+  @@index([acceptor])
+  @@index([settler])
+}

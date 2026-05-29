@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Polymarket-style clean light theme */
+    --background: 210 33% 98%;
+    --foreground: 222 33% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 33% 12%;
+    --muted: 214 28% 95%;
+    --muted-foreground: 215 16% 47%;
+    --primary: 222 89% 55%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 222 89% 55%;
+    --accent-foreground: 0 0% 100%;
+    --border: 214 20% 90%;
+    --input: 214 20% 88%;
+    --ring: 222 89% 55%;
+    --success: 152 58% 40%;
+    --warning: 36 92% 48%;
+    --danger: 0 72% 51%;
+    --gold: 43 96% 50%;
+    --silver: 214 9% 62%;
+    --bronze: 26 60% 48%;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 30% 96%;
+    --card: 222 40% 11%;
+    --card-foreground: 210 30% 96%;
+    --muted: 217 30% 17%;
+    --muted-foreground: 215 18% 62%;
+    --primary: 222 89% 62%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 222 89% 62%;
+    --accent-foreground: 0 0% 100%;
+    --border: 217 24% 20%;
+    --input: 217 24% 22%;
+    --ring: 222 89% 62%;
+    --success: 152 60% 48%;
+    --warning: 36 92% 56%;
+    --danger: 0 72% 60%;
+    --gold: 43 96% 56%;
+    --silver: 214 12% 70%;
+    --bronze: 26 62% 56%;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-border bg-card shadow-sm;
+  }
+  .input,
+  .textarea,
+  .select {
+    @apply w-full rounded-xl border border-input bg-card px-3.5 py-2.5 text-sm
+      placeholder:text-muted-foreground/70
+      focus:outline-none focus:ring-2 focus:ring-ring/40 focus:border-ring/60
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .label {
+    @apply text-xs font-medium uppercase tracking-wide text-muted-foreground;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full border border-border bg-muted
+      px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground;
+  }
+  .badge-success {
+    @apply text-[hsl(var(--success))] border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10;
+  }
+  .badge-warning {
+    @apply text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10;
+  }
+  .badge-danger {
+    @apply text-[hsl(var(--danger))] border-[hsl(var(--danger))]/30 bg-[hsl(var(--danger))]/10;
+  }
+  .badge-accent {
+    @apply text-[hsl(var(--accent))] border-[hsl(var(--accent))]/30 bg-[hsl(var(--accent))]/10;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:border-foreground/20;
+  }
+  .pill-active {
+    @apply border-foreground bg-foreground text-background hover:text-background;
+  }
+}

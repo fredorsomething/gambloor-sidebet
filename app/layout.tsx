@@ -1,0 +1,77 @@
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import Link from "next/link";
+
+import { Providers } from "./providers";
+import { ConnectButton } from "@/components/wallet/ConnectButton";
+import { SearchBar } from "@/components/SearchBar";
+import { NavLinks } from "@/components/NavLinks";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import "./globals.css";
+
+// Applies the saved theme before paint (defaults to dark) to avoid FOUC.
+const themeBootScript = `(function(){try{var t=localStorage.getItem('theme');if(t==='light'){document.documentElement.classList.remove('dark')}else{document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}})()`;
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  title: "Sidebet — P2P bets on Polygon",
+  description:
+    "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon. Funds escrowed on-chain, resolved by a trusted settler.",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
+      <body className="font-sans">
+        <Providers>
+          <div className="flex min-h-screen flex-col">
+            <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
+              <div className="container flex items-center gap-3 py-3">
+                <ThemeToggle />
+                <Link href="/" className="flex shrink-0 items-center gap-2">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-black text-primary-foreground">
+                    S
+                  </span>
+                  <span className="hidden text-lg font-bold tracking-tight sm:block">
+                    sidebet
+                  </span>
+                </Link>
+
+                <div className="flex flex-1 justify-center px-2">
+                  <SearchBar />
+                </div>
+
+                <NavLinks />
+                <ConnectButton />
+              </div>
+            </header>
+
+            <main className="container flex-1 py-8">{children}</main>
+
+            <footer className="border-t border-border py-6 text-xs text-muted-foreground">
+              <div className="container flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  Sidebet is non-custodial. Funds sit in an on-chain escrow until
+                  the settler resolves the market.
+                </div>
+                <div>Polygon · USDC · pUSD</div>
+              </div>
+            </footer>
+          </div>
+        </Providers>
+      </body>
+    </html>
+  );
+}
