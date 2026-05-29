@@ -1,7 +1,7 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { ArrowDownUp, RefreshCw } from "lucide-react";
+import { ArrowDownUp, ChevronDown, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   formatUnits,
@@ -21,7 +21,9 @@ import {
 import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
+import { TokenIcon } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
+import { cn } from "@/lib/utils";
 import { ERC20_ABI } from "@/lib/abi";
 import { explorerTx } from "@/lib/chains";
 import { jsonFetch } from "@/lib/fetcher";
@@ -281,117 +283,98 @@ export function SwapPanel() {
   else actionLabel = `Swap ${sellSymbol}`;
 
   return (
-    <div className="card mx-auto max-w-md p-6 space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Swap</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Exchange USDC.e, pUSD, USDC, and POL on Polygon. USDC.e ↔ pUSD wraps
-          1:1 via Polymarket; other pairs route through 0x.
+    <div className="card mx-auto max-w-md overflow-hidden p-0">
+      <div className="border-b border-border px-5 py-4">
+        <h1 className="text-lg font-semibold">Swap</h1>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          USDC.e, pUSD, USDC &amp; POL on Polygon
         </p>
       </div>
 
-      {/* Sell */}
-      <div className="rounded-xl border border-border bg-muted/20 p-4">
-        <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>You pay</span>
+      <div className="space-y-1 p-4">
+        <div className="rounded-xl bg-muted/30 p-3">
+          <div className="mb-2 flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">You pay</span>
+            <button
+              type="button"
+              className="font-medium text-primary hover:underline"
+              onClick={() =>
+                setAmount(formatUnits(balance, sellAsset.decimals))
+              }
+            >
+              Max · {formatToken(balance, sellAsset.decimals, 4)}
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              className="min-w-0 flex-1 bg-transparent font-mono text-2xl font-semibold outline-none placeholder:text-muted-foreground/50"
+              inputMode="decimal"
+              placeholder="0"
+              value={amount}
+              onChange={(e) =>
+                setAmount(e.target.value.replace(/[^0-9.]/g, ""))
+              }
+            />
+            <AssetSelect
+              value={sellSymbol}
+              onChange={(s) => {
+                setSellSymbol(s);
+                setPrice(null);
+              }}
+              exclude={buySymbol}
+            />
+          </div>
+        </div>
+
+        <div className="relative z-10 -my-3 flex justify-center">
           <button
             type="button"
-            className="hover:text-foreground"
-            onClick={() =>
-              setAmount(formatUnits(balance, sellAsset.decimals))
-            }
+            onClick={flip}
+            className="rounded-full border border-border bg-card p-2.5 shadow-sm transition-colors hover:bg-muted"
+            aria-label="Flip tokens"
           >
-            Balance: {formatToken(balance, sellAsset.decimals, 4)}{" "}
-            {sellSymbol}
+            <ArrowDownUp className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex gap-2">
-          <input
-            className="input min-w-0 flex-1 font-mono text-lg"
-            inputMode="decimal"
-            placeholder="0"
-            value={amount}
-            onChange={(e) =>
-              setAmount(e.target.value.replace(/[^0-9.]/g, ""))
-            }
-          />
-          <AssetSelect
-            value={sellSymbol}
-            onChange={(s) => {
-              setSellSymbol(s);
-              setPrice(null);
-            }}
-            exclude={buySymbol}
-          />
-        </div>
-      </div>
 
-      <div className="flex justify-center">
-        <button
-          type="button"
-          onClick={flip}
-          className="rounded-full border border-border bg-card p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Flip tokens"
-        >
-          <ArrowDownUp className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Buy */}
-      <div className="rounded-xl border border-border bg-muted/20 p-4">
-        <div className="mb-2 text-xs text-muted-foreground">You receive</div>
-        <div className="flex gap-2">
-          <div className="min-w-0 flex-1 font-mono text-lg text-foreground">
-            {priceLoading && !wrapMode ? (
-              <span className="text-muted-foreground">…</span>
-            ) : buyDisplay ? (
-              Number(buyDisplay).toLocaleString(undefined, {
-                maximumFractionDigits: 6,
-              })
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
+        <div className="rounded-xl bg-muted/30 p-3">
+          <div className="mb-2 text-xs text-muted-foreground">You receive</div>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1 font-mono text-2xl font-semibold">
+              {priceLoading && !wrapMode ? (
+                <span className="text-muted-foreground">…</span>
+              ) : buyDisplay ? (
+                Number(buyDisplay).toLocaleString(undefined, {
+                  maximumFractionDigits: 6,
+                })
+              ) : (
+                <span className="text-muted-foreground">0</span>
+              )}
+            </div>
+            <AssetSelect
+              value={buySymbol}
+              onChange={(s) => {
+                setBuySymbol(s);
+                setPrice(null);
+              }}
+              exclude={sellSymbol}
+            />
           </div>
-          <AssetSelect
-            value={buySymbol}
-            onChange={(s) => {
-              setBuySymbol(s);
-              setPrice(null);
-            }}
-            exclude={sellSymbol}
-          />
+          {wrapMode && (
+            <p className="mt-2 text-[11px] text-success">1:1 · no slippage</p>
+          )}
+          {!wrapMode && price?.minBuyAmount && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Min{" "}
+              {formatToken(BigInt(price.minBuyAmount), buyAsset.decimals, 4)}{" "}
+              {buySymbol}
+            </p>
+          )}
         </div>
-        {wrapMode && (
-          <p className="mt-2 text-xs text-success">
-            1:1 wrap — no slippage (Polymarket onramp)
-          </p>
-        )}
-        {!wrapMode && price?.minBuyAmount && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Min received:{" "}
-            {formatToken(
-              BigInt(price.minBuyAmount),
-              buyAsset.decimals,
-              4,
-            )}{" "}
-            {buySymbol}
-          </p>
-        )}
-      </div>
 
-      <div className="flex gap-2">
         <Button
-          variant="outline"
-          className="shrink-0"
-          disabled={priceLoading || wrapMode}
-          onClick={() => void fetchPrice()}
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${priceLoading ? "animate-spin" : ""}`}
-          />
-        </Button>
-        <Button
-          className="flex-1"
+          className="mt-3 w-full"
+          size="lg"
           disabled={
             pending ||
             sellAmountWei <= 0n ||
@@ -400,7 +383,16 @@ export function SwapPanel() {
           }
           onClick={onSubmit}
         >
-          {pending ? "Working…" : authenticated ? actionLabel : "Sign in to swap"}
+          {pending ? (
+            "Working…"
+          ) : (
+            <span className="inline-flex items-center gap-2">
+              {!wrapMode && priceLoading && (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              )}
+              {authenticated ? actionLabel : "Sign in to swap"}
+            </span>
+          )}
         </Button>
       </div>
 
@@ -409,7 +401,7 @@ export function SwapPanel() {
           href={explorerTx(polygon.id, txHash)}
           target="_blank"
           rel="noreferrer"
-          className="block text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
+          className="block border-t border-border py-3 text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
         >
           View transaction
         </a>
@@ -427,18 +419,30 @@ function AssetSelect({
   onChange: (s: SwapAssetSymbol) => void;
   exclude: SwapAssetSymbol;
 }) {
+  const options = SWAP_ASSETS.filter((a) => a.symbol !== exclude);
   return (
-    <select
-      className="select w-[7.5rem] shrink-0 py-2.5 text-sm font-medium"
-      value={value}
-      onChange={(e) => onChange(e.target.value as SwapAssetSymbol)}
-    >
-      {SWAP_ASSETS.filter((a) => a.symbol !== exclude).map((a) => (
-        <option key={a.symbol} value={a.symbol}>
-          {a.symbol}
-        </option>
-      ))}
-    </select>
+    <div className="relative shrink-0">
+      <div className="pointer-events-none flex items-center gap-2 rounded-xl border border-border bg-card py-2 pl-2.5 pr-8">
+        <TokenIcon symbol={value} size={24} />
+        <span className="text-sm font-semibold">{value}</span>
+      </div>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <select
+        className={cn(
+          "absolute inset-0 cursor-pointer opacity-0",
+          "w-full appearance-none",
+        )}
+        value={value}
+        onChange={(e) => onChange(e.target.value as SwapAssetSymbol)}
+        aria-label={`Select token, current ${value}`}
+      >
+        {options.map((a) => (
+          <option key={a.symbol} value={a.symbol}>
+            {a.symbol}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 

@@ -7,7 +7,6 @@ import {
   ArrowUpRight,
   Check,
   Copy,
-  Fuel,
   PieChart,
   Plus,
   Wallet,
@@ -31,7 +30,7 @@ export function WalletBalance() {
   const { ready, authenticated } = usePrivy();
   const { address } = useAccount();
   const chainId = useChainId();
-  const { openFund, openWithdraw, fundGas } = useWalletFunds();
+  const { openFund, openWithdraw } = useWalletFunds();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -99,11 +98,11 @@ export function WalletBalance() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setMenuOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium shadow-sm transition-colors hover:bg-muted/50"
+        className="flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 shadow-sm transition-colors hover:bg-muted/50"
         title="Wallet balance"
       >
-        <Wallet className="h-4 w-4 text-muted-foreground" />
-        <span className="tabular-nums">
+        <Wallet className="h-4 w-4 text-success/80" />
+        <span className="text-base font-bold tabular-nums text-success">
           $
           {grandTotal.toLocaleString(undefined, {
             minimumFractionDigits: 2,
@@ -223,19 +222,6 @@ export function WalletBalance() {
               <ArrowUpRight className="h-4 w-4" />
               Withdraw
             </button>
-            <button
-              onClick={() => {
-                void fundGas();
-                setMenuOpen(false);
-              }}
-              className={cn(
-                "col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
-                lowGas && "border-warning/40 text-warning hover:bg-warning/10",
-              )}
-            >
-              <Fuel className="h-4 w-4" />
-              Top up gas (POL)
-            </button>
             <Link
               href="/swap"
               onClick={() => setMenuOpen(false)}
@@ -253,11 +239,6 @@ export function WalletBalance() {
               Portfolio
             </Link>
           </div>
-
-          <p className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
-            Deposits use Privy (card, exchange, or wallet). Withdrawals send
-            on-chain from your connected wallet.
-          </p>
         </div>
       )}
     </div>
