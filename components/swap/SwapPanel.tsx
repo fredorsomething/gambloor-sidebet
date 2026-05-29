@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { ArrowDownUp, ChevronDown, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  encodeFunctionData,
   formatUnits,
   maxUint256,
   parseUnits,
@@ -14,9 +15,7 @@ import {
   useAccount,
   useBalance,
   useReadContract,
-  useSendTransaction,
   useWaitForTransactionReceipt,
-  useWriteContract,
 } from "wagmi";
 import { polygon } from "wagmi/chains";
 
@@ -28,6 +27,7 @@ import { ERC20_ABI } from "@/lib/abi";
 import { explorerTx } from "@/lib/chains";
 import { jsonFetch } from "@/lib/fetcher";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import {
   COLLATERAL_OFFRAMP,
   COLLATERAL_ONRAMP,
@@ -50,6 +50,7 @@ const SLIPPAGE_BPS = 100;
 export function SwapPanel() {
   const { authenticated, login } = usePrivy();
   const { address } = useAccount();
+  const { sendTx: sendRawTx } = useTxSender();
   const { push } = useToast();
   const ensurePolygon = useEnsurePolygon();
 
@@ -77,9 +78,6 @@ export function SwapPanel() {
   }, [amount, sellAsset.decimals]);
 
   const balance = useTokenBalance(address, sellAsset);
-  const sendTx = useSendTransaction();
-  const approveTx = useWriteContract();
-  const wrapTx = useWriteContract();
   const waitTx = useWaitForTransactionReceipt({ hash: txHash });
 
   const flip = () => {
@@ -154,12 +152,13 @@ export function SwapPanel() {
     if (!address) return;
     const allowance = await readAllowance(token, spender, address);
     if (allowance >= needed) return;
-    const hash = await approveTx.writeContractAsync({
-      chainId: polygon.id,
-      address: token,
-      abi: ERC20_ABI,
-      functionName: "approve",
-      args: [spender, maxUint256],
+    const hash = await sendRawTx({
+      to: token,
+      data: encodeFunctionData({
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [spender, maxUint256],
+      }),
     });
     // Embedded (managed) wallets auto-sign without a prompt, so the approval and
     // the swap fire back-to-back. We must wait for the approval to be mined —
@@ -174,22 +173,24 @@ export function SwapPanel() {
     const usdce = usdceAddress();
     if (wrapping) {
       await ensureApproval(usdce, COLLATERAL_ONRAMP, sellAmountWei);
-      const hash = await wrapTx.writeContractAsync({
-        chainId: polygon.id,
-        address: COLLATERAL_ONRAMP,
-        abi: WRAP_ABI,
-        functionName: "wrap",
-        args: [usdce, address, sellAmountWei],
+      const hash = await sendRawTx({
+        to: COLLATERAL_ONRAMP,
+        data: encodeFunctionData({
+          abi: WRAP_ABI,
+          functionName: "wrap",
+          args: [usdce, address, sellAmountWei],
+        }),
       });
       setTxHash(hash);
     } else {
       await ensureApproval(sellAsset.address!, COLLATERAL_OFFRAMP, sellAmountWei);
-      const hash = await wrapTx.writeContractAsync({
-        chainId: polygon.id,
-        address: COLLATERAL_OFFRAMP,
-        abi: WRAP_ABI,
-        functionName: "unwrap",
-        args: [usdce, address, sellAmountWei],
+      const hash = await sendRawTx({
+        to: COLLATERAL_OFFRAMP,
+        data: encodeFunctionData({
+          abi: WRAP_ABI,
+          functionName: "unwrap",
+          args: [usdce, address, sellAmountWei],
+        }),
       });
       setTxHash(hash);
     }
@@ -222,8 +223,7 @@ export function SwapPanel() {
       await ensureApproval(sellAsset.address, spender, sellAmountWei);
     }
 
-    const hash = await sendTx.sendTransactionAsync({
-      chainId: polygon.id,
+    const hash = await sendRawTx({
       to: quote.transaction.to as Address,
       data: quote.transaction.data as Hex,
       value: BigInt(quote.transaction.value || "0"),
@@ -278,12 +278,7 @@ export function SwapPanel() {
       ? formatUnits(BigInt(price.buyAmount), buyAsset.decimals)
       : null;
 
-  const pending =
-    submitting ||
-    sendTx.isPending ||
-    approveTx.isPending ||
-    wrapTx.isPending ||
-    waitTx.isLoading;
+  const pending = submitting || waitTx.isLoading;
 
   let actionLabel = "Swap";
   if (wrapMode) actionLabel = wrapping ? "Wrap to pUSD" : "Unwrap to USDC.e";

@@ -34,7 +34,6 @@ type ChatMessage = {
 
 type ChatResponse = { messages: ChatMessage[]; online: number };
 
-const SEND_COOLDOWN_MS = 3_000;
 const CHAT_WIDTH_PX = 320;
 
 function getClientId(): string {
@@ -79,12 +78,11 @@ export function GlobalChat() {
   const [draft, setDraft] = useState("");
   const [gifUrl, setGifUrl] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
-  const [cooldownUntil, setCooldownUntil] = useState(0);
-  const [now, setNow] = useState(Date.now());
 
   const cid = useMemo(() => getClientId(), []);
   const me = address?.toLowerCase() ?? null;
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Restore minimized preference (default: expanded).
   useEffect(() => {
@@ -102,13 +100,6 @@ export function GlobalChat() {
     }
   }, [open]);
 
-  // Tick for cooldown countdown.
-  useEffect(() => {
-    if (cooldownUntil <= Date.now()) return;
-    const t = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(t);
-  }, [cooldownUntil]);
-
   const chatQ = useQuery<ChatResponse>({
     queryKey: ["global-chat"],
     queryFn: () =>
@@ -123,9 +114,21 @@ export function GlobalChat() {
   const messages = chatQ.data?.messages ?? [];
   const online = chatQ.data?.online ?? 0;
 
+  // Auto-scroll to the newest message, but only if the user is already near the
+  // bottom — so scrolling up to read history isn't interrupted by new messages.
   useEffect(() => {
-    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!open) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, open]);
+
+  // Always jump to the bottom when the panel is (re)opened.
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView();
+  }, [open]);
 
   const send = useMutation({
     mutationFn: async (payload: { body: string; gifUrl: string | null }) => {
@@ -144,17 +147,13 @@ export function GlobalChat() {
     onSuccess: () => {
       setDraft("");
       setGifUrl(null);
-      setCooldownUntil(Date.now() + SEND_COOLDOWN_MS);
       qc.invalidateQueries({ queryKey: ["global-chat"] });
     },
   });
 
-  const cooldownLeft = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
-  const onCooldown = cooldownUntil > now;
-
   function submit() {
     const body = draft.trim();
-    if ((!body && !gifUrl) || send.isPending || onCooldown) return;
+    if ((!body && !gifUrl) || send.isPending) return;
     if (!authenticated) {
       void login();
       return;
@@ -205,7 +204,7 @@ export function GlobalChat() {
         aria-label="Global chat"
       >
         <aside
-          className="flex max-w-full flex-col border-r border-border bg-card/95 shadow-2xl backdrop-blur-sm max-md:w-full"
+          className="flex h-screen max-h-screen max-w-full flex-col border-r border-border bg-card/95 shadow-2xl backdrop-blur-sm max-md:h-full max-md:w-full"
           style={{ width: CHAT_WIDTH_PX }}
         >
         {/* Header */}
@@ -224,8 +223,12 @@ export function GlobalChat() {
           </span>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+        {/* Messages — flex-1 + min-h-0 keeps this the only growable region, so
+            the panel never exceeds the viewport no matter how many messages. */}
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
+        >
           {chatQ.isLoading && (
             <p className="py-8 text-center text-xs text-muted-foreground">
               Loading chat…
@@ -284,7 +287,7 @@ export function GlobalChat() {
               className="input min-h-[38px] max-h-24 flex-1 resize-none py-2 text-sm"
               rows={1}
               maxLength={500}
-              placeholder={onCooldown ? `Wait ${cooldownLeft}s…` : "Message…"}
+              placeholder="Message…"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -297,17 +300,11 @@ export function GlobalChat() {
             <button
               type="button"
               onClick={submit}
-              disabled={
-                (!draft.trim() && !gifUrl) || send.isPending || onCooldown
-              }
+              disabled={(!draft.trim() && !gifUrl) || send.isPending}
               className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               aria-label="Send"
             >
-              {onCooldown ? (
-                <span className="text-xs font-semibold">{cooldownLeft}</span>
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
+              <Send className="h-4 w-4" />
             </button>
           </div>
         )}

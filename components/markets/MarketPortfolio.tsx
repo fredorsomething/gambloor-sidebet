@@ -4,13 +4,12 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { formatUnits, type Address } from "viem";
-import { useWriteContract } from "wagmi";
-import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { EXCHANGE_ABI } from "@/lib/abi";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
 
@@ -84,7 +83,7 @@ export function MarketPortfolio({
 }) {
   const { getAccessToken } = usePrivy();
   const { push } = useToast();
-  const cancelTx = useWriteContract();
+  const { writeContract } = useTxSender();
   const ensurePolygon = useEnsurePolygon();
   const [tab, setTab] = useState<Tab>("positions");
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -113,8 +112,7 @@ export function MarketPortfolio({
     try {
       await ensurePolygon();
       // Cancel on-chain so the resting signature can't be filled anymore.
-      await cancelTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: exchange,
         abi: EXCHANGE_ABI,
         functionName: "cancelOrder",

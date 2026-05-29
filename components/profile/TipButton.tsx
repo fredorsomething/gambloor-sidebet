@@ -3,15 +3,13 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { Gift, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { parseUnits, type Address } from "viem";
+import { encodeFunctionData, parseUnits, type Address, type Hex } from "viem";
 import {
   useAccount,
   useBalance,
   useChainId,
-  useSendTransaction,
   useSwitchChain,
   useWaitForTransactionReceipt,
-  useWriteContract,
 } from "wagmi";
 import { polygon } from "wagmi/chains";
 
@@ -20,6 +18,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI } from "@/lib/abi";
 import { getTokens, explorerTx } from "@/lib/chains";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import { formatToken, shortAddr } from "@/lib/utils";
 
 const QUICK = [1, 5, 25];
@@ -86,9 +85,9 @@ function TipModal({
   const balance = isPol ? native.data?.value ?? 0n : info.balance ?? 0n;
   const decimals = asset?.decimals ?? 6;
 
-  const tip = useWriteContract();
-  const sendPol = useSendTransaction();
-  const txHash = tip.data ?? sendPol.data;
+  const { sendTx } = useTxSender();
+  const [txHash, setTxHash] = useState<Hex>();
+  const [sending, setSending] = useState(false);
   const wait = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
@@ -114,8 +113,7 @@ function TipModal({
     amountWei > 0n &&
     !overBalance &&
     !parseError &&
-    !tip.isPending &&
-    !sendPol.isPending &&
+    !sending &&
     !wait.isLoading;
 
   useEffect(() => {
@@ -132,22 +130,22 @@ function TipModal({
       return;
     }
     if (!asset || !from) return;
+    setSending(true);
     try {
+      let hash: Hex;
       if (isPol) {
-        await sendPol.sendTransactionAsync({
-          chainId: polygon.id,
-          to: to as Address,
-          value: amountWei,
-        });
+        hash = await sendTx({ to: to as Address, value: amountWei });
       } else {
-        await tip.writeContractAsync({
-          chainId: polygon.id,
-          address: asset.address as Address,
-          abi: ERC20_ABI,
-          functionName: "transfer",
-          args: [to as Address, amountWei],
+        hash = await sendTx({
+          to: asset.address as Address,
+          data: encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "transfer",
+            args: [to as Address, amountWei],
+          }),
         });
       }
+      setTxHash(hash);
       push({ title: "Tip submitted", description: "Waiting for confirmation…" });
     } catch (err) {
       const msg = (err as Error)?.message || "Transaction failed";
@@ -157,10 +155,12 @@ function TipModal({
           : "Tip failed",
         variant: "danger",
       });
+    } finally {
+      setSending(false);
     }
   }
 
-  const pending = tip.isPending || sendPol.isPending || wait.isLoading;
+  const pending = sending || wait.isLoading;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

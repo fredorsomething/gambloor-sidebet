@@ -10,13 +10,11 @@ import {
   useMemo,
   useState,
 } from "react";
-import { isAddress, parseUnits, type Address } from "viem";
+import { encodeFunctionData, isAddress, parseUnits, type Address, type Hex } from "viem";
 import {
   useAccount,
   useBalance,
-  useSendTransaction,
   useWaitForTransactionReceipt,
-  useWriteContract,
 } from "wagmi";
 import { polygon } from "wagmi/chains";
 
@@ -26,6 +24,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI } from "@/lib/abi";
 import { explorerTx, getTokens } from "@/lib/chains";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import { logWalletNotification } from "@/lib/hooks/useNotifications";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { cn, formatToken, shortAddr } from "@/lib/utils";
@@ -301,9 +300,9 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const balance = isPol ? native.data?.value ?? 0n : info.balance ?? 0n;
   const decimals = asset?.decimals ?? 6;
 
-  const transfer = useWriteContract();
-  const sendPol = useSendTransaction();
-  const txHash = transfer.data ?? sendPol.data;
+  const { sendTx } = useTxSender();
+  const [txHash, setTxHash] = useState<Hex>();
+  const [sending, setSending] = useState(false);
   const wait = useWaitForTransactionReceipt({ hash: txHash });
 
   const toValid = isAddress(to.trim());
@@ -322,8 +321,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
     amountWei > 0n &&
     !overBalance &&
     !parseError &&
-    !transfer.isPending &&
-    !sendPol.isPending &&
+    !sending &&
     !wait.isLoading;
 
   useEffect(() => {
@@ -361,25 +359,25 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   async function onSend() {
     if (!asset || !from || !toValid) return;
     const dest = to.trim() as Address;
+    setSending(true);
     try {
       // Make sure the (embedded) wallet is on Polygon before sending, otherwise
       // the transfer targets the wrong network and silently fails.
       await ensurePolygon();
+      let hash: Hex;
       if (isPol) {
-        await sendPol.sendTransactionAsync({
-          chainId: polygon.id,
-          to: dest,
-          value: amountWei,
-        });
+        hash = await sendTx({ to: dest, value: amountWei });
       } else {
-        await transfer.writeContractAsync({
-          chainId: polygon.id,
-          address: asset.address as Address,
-          abi: ERC20_ABI,
-          functionName: "transfer",
-          args: [dest, amountWei],
+        hash = await sendTx({
+          to: asset.address as Address,
+          data: encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "transfer",
+            args: [dest, amountWei],
+          }),
         });
       }
+      setTxHash(hash);
       push({ title: "Withdrawal submitted", description: "Waiting for confirmation…" });
     } catch (err) {
       const msg = (err as Error)?.message || "Transaction failed";
@@ -390,10 +388,12 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
         description: msg.length < 160 ? msg : undefined,
         variant: "danger",
       });
+    } finally {
+      setSending(false);
     }
   }
 
-  const pending = transfer.isPending || sendPol.isPending || wait.isLoading;
+  const pending = sending || wait.isLoading;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

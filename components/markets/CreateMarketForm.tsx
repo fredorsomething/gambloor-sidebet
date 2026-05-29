@@ -11,8 +11,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { useAccount, useChainId, usePublicClient, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { useAccount, useChainId, usePublicClient, useWaitForTransactionReceipt } from "wagmi";
 
 import { BetImageField } from "@/components/bets/BetImageField";
 import { SettlerSelect } from "@/components/SettlerSelect";
@@ -21,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { CONDITIONAL_TOKENS_ABI } from "@/lib/abi";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import { getMarketCollateralToken } from "@/lib/chains";
 import { useMarketContracts } from "@/lib/hooks/useEscrow";
 import {
@@ -82,8 +82,9 @@ export function CreateMarketForm() {
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const prepareTx = useWriteContract();
-  const prepareWait = useWaitForTransactionReceipt({ hash: prepareTx.data });
+  const { writeContract } = useTxSender();
+  const [prepareHash, setPrepareHash] = useState<Hex>();
+  const prepareWait = useWaitForTransactionReceipt({ hash: prepareHash });
   const isBusy = step !== "idle" && step !== "done";
 
   const outcomes = useMemo(
@@ -171,13 +172,13 @@ export function CreateMarketForm() {
         description: "Confirm the transaction in your wallet.",
       });
       await ensurePolygon();
-      await prepareTx.writeContractAsync({
-        chainId: polygon.id,
+      const hash = await writeContract({
         address: ctf as Address,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "prepareCondition",
         args: [settlerAddr, tokenAddress as Address, questionId, numOutcomes],
       });
+      setPrepareHash(hash);
 
       // Stash the derived ids for the indexing effect.
       setPending({
@@ -262,7 +263,7 @@ export function CreateMarketForm() {
             ctfAddress: ctf,
             conditionId: pending.conditionId,
             questionId: pending.questionId,
-            txHash: prepareTx.data,
+            txHash: prepareHash,
             creator: account,
             settler: pending.settler,
             token: tokenAddress,

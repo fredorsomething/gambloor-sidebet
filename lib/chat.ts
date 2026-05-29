@@ -13,9 +13,6 @@ export type ChatMessageRow = {
   createdAt: string;
 };
 
-/** One message per author per this window (anti-spam). */
-export const CHAT_RATE_LIMIT_MS = 3_000;
-
 /**
  * Most recent chat messages (oldest→newest) enriched with each author's public
  * profile (username, avatar, verified) and realized PnL.
@@ -77,19 +74,6 @@ export async function listChatMessages(limit = 60): Promise<ChatMessageRow[]> {
       createdAt: m.createdAt.toISOString(),
     };
   });
-}
-
-/** Seconds the author must wait before posting again, or 0 if clear. */
-export async function chatRetryAfter(author: string): Promise<number> {
-  const last = await prisma.chatMessage.findFirst({
-    where: { author: author.toLowerCase() },
-    orderBy: { createdAt: "desc" },
-    select: { createdAt: true },
-  });
-  if (!last) return 0;
-  const elapsed = Date.now() - last.createdAt.getTime();
-  if (elapsed >= CHAT_RATE_LIMIT_MS) return 0;
-  return Math.ceil((CHAT_RATE_LIMIT_MS - elapsed) / 1000);
 }
 
 const PRESENCE_WINDOW_MS = 25_000;

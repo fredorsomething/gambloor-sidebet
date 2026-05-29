@@ -15,9 +15,7 @@ import {
   useChainId,
   usePublicClient,
   useWaitForTransactionReceipt,
-  useWriteContract,
 } from "wagmi";
-import { polygon } from "wagmi/chains";
 import { usePrivy } from "@privy-io/react-auth";
 
 import { BetImageField } from "@/components/bets/BetImageField";
@@ -27,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useEscrow } from "@/lib/hooks/useEscrow";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { jsonFetch } from "@/lib/fetcher";
@@ -184,10 +183,11 @@ export function CreateBetForm() {
 
   const needsApproval = yourStake > 0n && (live.allowance ?? 0n) < yourStake;
 
-  const approveTx = useWriteContract();
-  const createTx = useWriteContract();
-  const approveWait = useWaitForTransactionReceipt({ hash: approveTx.data });
-  const createWait = useWaitForTransactionReceipt({ hash: createTx.data });
+  const { writeContract } = useTxSender();
+  const [approveHash, setApproveHash] = useState<Hex>();
+  const [createHash, setCreateHash] = useState<Hex>();
+  const approveWait = useWaitForTransactionReceipt({ hash: approveHash });
+  const createWait = useWaitForTransactionReceipt({ hash: createHash });
 
   const isBusy = step !== "idle" && step !== "done";
 
@@ -274,8 +274,7 @@ export function CreateBetForm() {
       description: "Confirm the create transaction in your wallet.",
     });
     await ensurePolygon();
-    await createTx.writeContractAsync({
-      chainId: polygon.id,
+    const hash = await writeContract({
       address: escrow as Address,
       abi: SIDEBET_ESCROW_V2_ABI,
       functionName: "createBet",
@@ -292,6 +291,7 @@ export function CreateBetForm() {
         pc.termsHash,
       ],
     });
+    setCreateHash(hash);
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -340,13 +340,13 @@ export function CreateBetForm() {
           description: "Confirm the approval in your wallet.",
         });
         await ensurePolygon();
-        await approveTx.writeContractAsync({
-          chainId: polygon.id,
+        const hash = await writeContract({
           address: tokenAddress as Address,
           abi: ERC20_ABI,
           functionName: "approve",
           args: [escrow as Address, maxUint256],
         });
+        setApproveHash(hash);
       } else {
         await runCreate(pc);
       }
@@ -382,14 +382,14 @@ export function CreateBetForm() {
   useEffect(() => {
     if (step !== "creating") return;
     if (!createWait.isSuccess) return;
-    if (!createTx.data) return;
+    if (!createHash) return;
     if (!pendingCreate || !account || !escrow || !tokenAddress) return;
     void (async () => {
       setStep("indexing");
       try {
         const receipt =
           createWait.data ??
-          (await publicClient!.waitForTransactionReceipt({ hash: createTx.data! }));
+          (await publicClient!.waitForTransactionReceipt({ hash: createHash }));
 
         let onchainId: bigint | null = null;
         for (const log of receipt.logs) {
@@ -449,7 +449,7 @@ export function CreateBetForm() {
             chainId,
             escrowAddress: escrow,
             onchainId: onchainId.toString(),
-            txHash: createTx.data,
+            txHash: createHash,
             proposer: account,
             settler: getAddress(settler),
             token: tokenAddress,

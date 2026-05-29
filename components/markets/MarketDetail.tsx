@@ -2,9 +2,9 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ImagePlus } from "lucide-react";
+import { Check, ImagePlus, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   formatUnits,
   maxUint256,
@@ -15,7 +15,6 @@ import {
   useAccount,
   useReadContracts,
   useSignTypedData,
-  useWriteContract,
 } from "wagmi";
 import { polygon } from "wagmi/chains";
 
@@ -37,6 +36,7 @@ import {
 } from "@/lib/abi";
 import { exchangeDomain, ORDER_EIP712_TYPES, randomSalt } from "@/lib/clob";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import { jsonFetch } from "@/lib/fetcher";
 import { shortAddr } from "@/lib/utils";
 import type { MarketDetailResponse, OrderRow } from "@/lib/types";
@@ -88,16 +88,15 @@ export function MarketDetail({ id }: { id: number }) {
   const data = query.data;
   const market = data?.market;
 
-  // Write hooks (declared before any early return to keep hook order stable).
-  const approveTx = useWriteContract();
-  const ctfApproveTx = useWriteContract();
-  const setApprovalTx = useWriteContract();
-  const splitTx = useWriteContract();
-  const mergeTx = useWriteContract();
-  const redeemTx = useWriteContract();
-  const fillTx = useWriteContract();
+  // Unified sender works for both Privy-managed (embedded) and external wallets.
+  const { writeContract } = useTxSender();
   const { signTypedDataAsync } = useSignTypedData();
   const ensurePolygon = useEnsurePolygon();
+
+  // Pending flags for the approval popup actions.
+  const [approvingCollateral, setApprovingCollateral] = useState(false);
+  const [approvingShares, setApprovingShares] = useState(false);
+  const [approvalsDismissed, setApprovalsDismissed] = useState(false);
 
   // On-chain approval state for the checklist.
   const tokenAddr = market?.token as Address | undefined;
@@ -239,17 +238,16 @@ export function MarketDetail({ id }: { id: number }) {
   // ---- on-chain actions -------------------------------------------------
 
   async function approveCollateral() {
+    setApprovingCollateral(true);
     try {
       await ensurePolygon();
-      await approveTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: token,
         abi: ERC20_ABI,
         functionName: "approve",
         args: [exchange, maxUint256],
       });
-      await ctfApproveTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: token,
         abi: ERC20_ABI,
         functionName: "approve",
@@ -263,14 +261,16 @@ export function MarketDetail({ id }: { id: number }) {
         description: (err as Error).message,
         variant: "danger",
       });
+    } finally {
+      setApprovingCollateral(false);
     }
   }
 
   async function approveShares() {
+    setApprovingShares(true);
     try {
       await ensurePolygon();
-      await setApprovalTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "setApprovalForAll",
@@ -284,6 +284,8 @@ export function MarketDetail({ id }: { id: number }) {
         description: (err as Error).message,
         variant: "danger",
       });
+    } finally {
+      setApprovingShares(false);
     }
   }
 
@@ -292,8 +294,7 @@ export function MarketDetail({ id }: { id: number }) {
       const amt = parseUnits(amountStr || "0", decimals);
       if (amt <= 0n) return;
       await ensurePolygon();
-      await splitTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "splitPosition",
@@ -320,8 +321,7 @@ export function MarketDetail({ id }: { id: number }) {
       const amt = parseUnits(amountStr || "0", decimals);
       if (amt <= 0n) return;
       await ensurePolygon();
-      await mergeTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "mergePositions",
@@ -342,8 +342,7 @@ export function MarketDetail({ id }: { id: number }) {
   async function doRedeem() {
     try {
       await ensurePolygon();
-      await redeemTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "redeemPositions",
@@ -370,8 +369,7 @@ export function MarketDetail({ id }: { id: number }) {
     const sharesMoved = isSellOrder ? makerGives : takerFill;
     const cost = isSellOrder ? takerFill : makerGives;
 
-    await fillTx.writeContractAsync({
-      chainId: polygon.id,
+    const txHash = await writeContract({
       address: exchange,
       abi: EXCHANGE_ABI,
       functionName: "fillOrder",
@@ -398,7 +396,7 @@ export function MarketDetail({ id }: { id: number }) {
         shares: sharesMoved.toString(),
         cost: cost.toString(),
         takerFillAmount: takerFill.toString(),
-        txHash: fillTx.data,
+        txHash,
       }),
     });
   }
@@ -435,8 +433,7 @@ export function MarketDetail({ id }: { id: number }) {
     if (order.side === "BUY") {
       // Opposing BUY == ask here. Buy `selected` by minting a full set and
       // selling the opposing shares into this order.
-      await splitTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "splitPosition",
@@ -451,8 +448,7 @@ export function MarketDetail({ id }: { id: number }) {
         ? remainingTaker
         : (takerAmount * sharesTake) / (makerAmount || 1n);
       await fillOrderRaw(order, takerFill);
-      await mergeTx.writeContractAsync({
-        chainId: polygon.id,
+      await writeContract({
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "mergePositions",
@@ -695,8 +691,30 @@ export function MarketDetail({ id }: { id: number }) {
     }
   }
 
+  // Approvals are surfaced as an unavoidable popup rather than a permanent
+  // panel: it appears when the market is tradeable and approvals are missing,
+  // and disappears automatically once both approvals are satisfied.
+  const tradeable = market.status === "Open" && !resolved;
+  const approvalsReady = collateralApproved && sharesApproved;
+  const needsApprovals = tradeable && !approvalsReady;
+  const showApprovalModal =
+    !!account && needsApprovals && !approvalsDismissed;
+
   return (
     <div className="space-y-6">
+      {showApprovalModal && (
+        <ApprovalsModal
+          sym={sym}
+          collateralApproved={collateralApproved}
+          sharesApproved={sharesApproved}
+          loading={approvalReads.isLoading}
+          onApproveCollateral={approveCollateral}
+          onApproveShares={approveShares}
+          collateralPending={approvingCollateral}
+          sharesPending={approvingShares}
+          onClose={() => setApprovalsDismissed(true)}
+        />
+      )}
       {/* Header */}
       <div className="card p-6 space-y-3">
         <TypeTag kind="market" />
@@ -818,17 +836,6 @@ export function MarketDetail({ id }: { id: number }) {
             <>
               <LowGasBanner />
 
-              <ApprovalsChecklist
-                sym={sym}
-                collateralApproved={collateralApproved}
-                sharesApproved={sharesApproved}
-                loading={approvalReads.isLoading}
-                onApproveCollateral={approveCollateral}
-                onApproveShares={approveShares}
-                collateralPending={approveTx.isPending || ctfApproveTx.isPending}
-                sharesPending={setApprovalTx.isPending}
-              />
-
               <TradePanel
                 outcomes={outcomes}
                 selectedIdx={selected.index}
@@ -857,6 +864,7 @@ export function MarketDetail({ id }: { id: number }) {
                 submitting={submitting}
                 onSubmit={onSubmit}
                 onRedeemWinnings={doRedeem}
+                onApprovalNeeded={() => setApprovalsDismissed(false)}
               />
 
               <section className="card p-4 text-xs text-muted-foreground space-y-1">
@@ -887,10 +895,10 @@ export function MarketDetail({ id }: { id: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Approvals checklist
+// Approvals popup
 // ---------------------------------------------------------------------------
 
-function ApprovalsChecklist({
+function ApprovalsModal({
   sym,
   collateralApproved,
   sharesApproved,
@@ -899,6 +907,7 @@ function ApprovalsChecklist({
   onApproveShares,
   collateralPending,
   sharesPending,
+  onClose,
 }: {
   sym: string;
   collateralApproved: boolean;
@@ -908,56 +917,79 @@ function ApprovalsChecklist({
   onApproveShares: () => void;
   collateralPending: boolean;
   sharesPending: boolean;
+  onClose: () => void;
 }) {
-  const allDone = collateralApproved && sharesApproved;
+  // Lock background scroll while the popup is up.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
 
   return (
-    <section
-      className={`card p-5 ${
-        allDone ? "" : "ring-1 ring-[hsl(var(--warning))]/40"
-      }`}
-    >
-      <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Before you trade</h3>
-        {allDone ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
-            <Check className="h-3.5 w-3.5" /> Ready
-          </span>
-        ) : (
-          <span className="text-xs font-medium text-[hsl(var(--warning))]">
-            Action required
-          </span>
-        )}
-      </div>
-      <p className="mb-3 text-xs text-muted-foreground">
-        One-time on-chain approvals are required to trade this market.
-      </p>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-2xl">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
 
-      <ul className="space-y-2">
-        <ChecklistRow
-          done={collateralApproved}
-          loading={loading}
-          title={
-            <span className="inline-flex items-center gap-1">
-              Approve <TokenSymbol symbol={sym} size={13} />
-            </span>
-          }
-          hint="Needed to buy shares and mint sets"
-          actionLabel={collateralPending ? "Approving…" : "Approve"}
-          onAction={onApproveCollateral}
-          pending={collateralPending}
-        />
-        <ChecklistRow
-          done={sharesApproved}
-          loading={loading}
-          title="Approve shares"
-          hint="Needed to sell or merge shares"
-          actionLabel={sharesPending ? "Approving…" : "Approve"}
-          onAction={onApproveShares}
-          pending={sharesPending}
-        />
-      </ul>
-    </section>
+        <div className="mb-1 flex items-center gap-2">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[hsl(var(--warning))] opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[hsl(var(--warning))]" />
+          </span>
+          <h3 className="text-lg font-semibold">Approve to trade</h3>
+        </div>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Two one-time on-chain approvals let this wallet trade the market.
+          You&apos;ll only do this once.
+        </p>
+
+        <ul className="space-y-2.5">
+          <ChecklistRow
+            done={collateralApproved}
+            loading={loading}
+            title={
+              <span className="inline-flex items-center gap-1">
+                Approve <TokenSymbol symbol={sym} size={13} />
+              </span>
+            }
+            hint="Needed to buy shares and mint sets"
+            actionLabel={collateralPending ? "Approving…" : "Approve"}
+            onAction={onApproveCollateral}
+            pending={collateralPending}
+          />
+          <ChecklistRow
+            done={sharesApproved}
+            loading={loading}
+            title="Approve shares"
+            hint="Needed to sell or merge shares"
+            actionLabel={sharesPending ? "Approving…" : "Approve"}
+            onAction={onApproveShares}
+            pending={sharesPending}
+          />
+        </ul>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-4 w-full text-center text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Maybe later
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1346,6 +1378,7 @@ function TradePanel(props: {
   submitting: boolean;
   onSubmit: () => void;
   onRedeemWinnings: () => void;
+  onApprovalNeeded: () => void;
 }) {
   const {
     outcomes,
@@ -1370,6 +1403,7 @@ function TradePanel(props: {
     submitting,
     onSubmit,
     onRedeemWinnings,
+    onApprovalNeeded,
   } = props;
 
   const isOrder = orderType === "limit" || orderType === "market";
@@ -1591,7 +1625,7 @@ function TradePanel(props: {
         <Button
           className="w-full"
           variant="secondary"
-          disabled
+          onClick={onApprovalNeeded}
           title={blockedReason}
         >
           {blockedReason}

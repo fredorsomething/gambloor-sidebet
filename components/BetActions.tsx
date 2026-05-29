@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { maxUint256, type Address } from "viem";
+import { maxUint256, type Address, type Hex } from "viem";
 import {
   useAccount,
   useWaitForTransactionReceipt,
-  useWriteContract,
 } from "wagmi";
-import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
@@ -15,6 +13,7 @@ import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { formatToken, shortAddr } from "@/lib/utils";
 import type { BetRow, GetBetResponse } from "@/lib/types";
@@ -78,14 +77,17 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
     !isAcceptor &&
     (live.allowance ?? 0n) < acceptorStake;
 
-  const approveTx = useWriteContract();
-  const approveWait = useWaitForTransactionReceipt({ hash: approveTx.data });
-  const acceptTx = useWriteContract();
-  const acceptWait = useWaitForTransactionReceipt({ hash: acceptTx.data });
-  const cancelTx = useWriteContract();
-  const cancelWait = useWaitForTransactionReceipt({ hash: cancelTx.data });
-  const settleTx = useWriteContract();
-  const settleWait = useWaitForTransactionReceipt({ hash: settleTx.data });
+  const { writeContract } = useTxSender();
+  const [approveHash, setApproveHash] = useState<Hex>();
+  const [acceptHash, setAcceptHash] = useState<Hex>();
+  const [cancelHash, setCancelHash] = useState<Hex>();
+  const [settleHash, setSettleHash] = useState<Hex>();
+  const approveWait = useWaitForTransactionReceipt({ hash: approveHash });
+  const acceptWait = useWaitForTransactionReceipt({ hash: acceptHash });
+  const cancelWait = useWaitForTransactionReceipt({ hash: cancelHash });
+  const settleWait = useWaitForTransactionReceipt({ hash: settleHash });
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [settleBusy, setSettleBusy] = useState(false);
 
   const [acceptStep, setAcceptStep] = useState<"idle" | "approving" | "accepting">(
     "idle",
@@ -99,23 +101,23 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
       if (needsApproval) {
         setAcceptStep("approving");
         push({ title: "Approving token" });
-        await approveTx.writeContractAsync({
-          chainId: polygon.id,
+        const hash = await writeContract({
           address: token,
           abi: ERC20_ABI,
           functionName: "approve",
           args: [escrow, maxUint256],
         });
+        setApproveHash(hash);
       } else {
         setAcceptStep("accepting");
         push({ title: "Accepting bet" });
-        await acceptTx.writeContractAsync({
-          chainId: polygon.id,
+        const hash = await writeContract({
           address: escrow,
           abi: SIDEBET_ESCROW_V2_ABI,
           functionName: "acceptBet",
           args: [BigInt(bet.onchainId)],
         });
+        setAcceptHash(hash);
       }
     } catch (err) {
       setAcceptStep("idle");
@@ -131,13 +133,13 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
       try {
         setAcceptStep("accepting");
         push({ title: "Accepting bet" });
-        await acceptTx.writeContractAsync({
-          chainId: polygon.id,
+        const hash = await writeContract({
           address: escrow,
           abi: SIDEBET_ESCROW_V2_ABI,
           functionName: "acceptBet",
           args: [BigInt(bet.onchainId)],
         });
+        setAcceptHash(hash);
       } catch (err) {
         setAcceptStep("idle");
         const msg = (err as Error)?.message || "Cancelled";
@@ -161,19 +163,22 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
   }, [acceptStep, acceptWait.isSuccess]);
 
   async function onCancel() {
+    setCancelBusy(true);
     try {
       await ensurePolygon();
-      await cancelTx.writeContractAsync({
-        chainId: polygon.id,
+      const hash = await writeContract({
         address: escrow,
         abi: SIDEBET_ESCROW_V2_ABI,
         functionName: "cancelBet",
         args: [BigInt(bet.onchainId)],
       });
+      setCancelHash(hash);
       push({ title: "Cancel submitted" });
     } catch (err) {
       const msg = (err as Error)?.message || "Cancel rejected";
       push({ title: "Cancel failed", description: msg, variant: "danger" });
+    } finally {
+      setCancelBusy(false);
     }
   }
   useEffect(() => {
@@ -189,19 +194,22 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
     bet.proposerOutcome ?? 0,
   );
   async function onSettle() {
+    setSettleBusy(true);
     try {
       await ensurePolygon();
-      await settleTx.writeContractAsync({
-        chainId: polygon.id,
+      const hash = await writeContract({
         address: escrow,
         abi: SIDEBET_ESCROW_V2_ABI,
         functionName: "settleBet",
         args: [BigInt(bet.onchainId), winningOutcome],
       });
+      setSettleHash(hash);
       push({ title: "Settle submitted" });
     } catch (err) {
       const msg = (err as Error)?.message || "Settle rejected";
       push({ title: "Settle failed", description: msg, variant: "danger" });
+    } finally {
+      setSettleBusy(false);
     }
   }
   useEffect(() => {
@@ -237,7 +245,7 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
           <Button
             variant="danger"
             onClick={onCancel}
-            disabled={cancelTx.isPending || cancelWait.isLoading}
+            disabled={cancelBusy || cancelWait.isLoading}
             className="w-full"
           >
             {cancelWait.isLoading ? "Reclaiming…" : "Reclaim my stake"}
@@ -341,7 +349,7 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
         <Button
           variant="danger"
           onClick={onCancel}
-          disabled={cancelTx.isPending || cancelWait.isLoading}
+          disabled={cancelBusy || cancelWait.isLoading}
           className="w-full"
         >
           {cancelWait.isLoading ? "Cancelling…" : "Cancel & refund"}
@@ -399,7 +407,7 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
         </div>
         <Button
           onClick={onSettle}
-          disabled={settleTx.isPending || settleWait.isLoading}
+          disabled={settleBusy || settleWait.isLoading}
           size="lg"
           className="w-full"
         >

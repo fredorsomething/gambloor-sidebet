@@ -3,11 +3,7 @@ import { isAddress } from "viem";
 import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
-import {
-  chatRetryAfter,
-  listChatMessages,
-  touchPresence,
-} from "@/lib/chat";
+import { listChatMessages, touchPresence } from "@/lib/chat";
 import { chatMuteMessage } from "@/lib/chatMute";
 import { isAllowedGifUrl } from "@/lib/commentInteractions";
 import { prisma } from "@/lib/db";
@@ -26,7 +22,7 @@ export async function GET(req: NextRequest) {
   const me = meParam && isAddress(meParam) ? meParam : null;
 
   const [messages, online] = await Promise.all([
-    listChatMessages(60),
+    listChatMessages(200),
     touchPresence(cid, me),
   ]);
 
@@ -39,7 +35,7 @@ const PostSchema = z.object({
   gifUrl: z.string().url().max(600).nullable().optional(),
 });
 
-/** POST /api/chat — send a global chat message (auth + 3s rate limit). */
+/** POST /api/chat — send a global chat message (auth required). */
 export async function POST(req: NextRequest) {
   let json: unknown;
   try {
@@ -64,11 +60,6 @@ export async function POST(req: NextRequest) {
   const gif = gifUrl ?? null;
   if (!text && !gif) return jsonErr("message cannot be empty", 400);
   if (gif && !isAllowedGifUrl(gif)) return jsonErr("invalid gif url", 400);
-
-  const retryAfter = await chatRetryAfter(author);
-  if (retryAfter > 0) {
-    return jsonErr(`Slow down — wait ${retryAfter}s before posting again`, 429);
-  }
 
   await prisma.chatMessage.create({
     data: { author, body: text, gifUrl: gif },
