@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
+import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { BetDetailLive } from "@/components/BetDetailLive";
 import { BetNegotiations } from "@/components/BetNegotiations";
 import { Comments } from "@/components/Comments";
@@ -71,18 +72,24 @@ export default async function BetDetailPage({
             #{bet.onchainId} on chain {bet.chainId}
           </span>
         </div>
-        {bet.imageUrl && (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <BetThumbnail
             imageUrl={bet.imageUrl}
             title={bet.title}
             size="lg"
-            className="mb-4 w-full max-w-none"
+            fallback
           />
-        )}
-        <h1 className="text-2xl md:text-3xl font-semibold leading-tight">
-          {bet.title}
-        </h1>
-        <p className="text-muted-foreground">{bet.description}</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
+              {bet.title}
+            </h1>
+            <CollapsibleBlurb
+              text={bet.description}
+              maxLines={3}
+              className="mt-2"
+            />
+          </div>
+        </div>
 
         {outcomes.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
@@ -160,10 +167,12 @@ export default async function BetDetailPage({
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
         <div className="space-y-6">
           <section className="card p-6">
-            <h2 className="font-semibold mb-2">Terms</h2>
-            <pre className="text-sm text-foreground/90 whitespace-pre-wrap break-words font-sans leading-relaxed">
-              {bet.terms}
-            </pre>
+            <h2 className="mb-2 font-semibold">Terms</h2>
+            <CollapsibleBlurb
+              text={bet.terms}
+              maxLines={4}
+              className="text-foreground/90"
+            />
           </section>
 
           <Comments basePath={`/api/bets/${bet.id}/comments`} />

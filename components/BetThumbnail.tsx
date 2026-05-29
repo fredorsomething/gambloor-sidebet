@@ -9,13 +9,13 @@ type Props = {
   fallback?: boolean;
 };
 
+/** Square thumbnails for cards, lists, and detail headers. */
 const sizes = {
-  sm: "h-10 w-14",
-  md: "h-16 w-24",
-  lg: "h-40 w-full max-w-md",
+  sm: "h-12 w-12",
+  md: "h-20 w-20",
+  lg: "h-44 w-44 sm:h-52 sm:w-52",
 };
 
-/** Deterministic gradient from the title so empty covers still look intentional. */
 function gradientFor(title: string): string {
   let hash = 0;
   for (let i = 0; i < title.length; i++) {
@@ -26,7 +26,6 @@ function gradientFor(title: string): string {
   return `linear-gradient(135deg, hsl(${a} 70% 52%), hsl(${b} 75% 42%))`;
 }
 
-/** Market cover thumbnail for cards, search, and detail headers. */
 export function BetThumbnail({
   imageUrl,
   title,
@@ -37,9 +36,8 @@ export function BetThumbnail({
   if (!imageUrl && !fallback) return null;
 
   const wrapperClass = cn(
-    "shrink-0 overflow-hidden rounded-lg bg-muted ring-1 ring-border",
+    "aspect-square shrink-0 overflow-hidden rounded-xl bg-muted ring-1 ring-border",
     sizes[size],
-    size === "lg" && "aspect-[16/10]",
     className,
   );
 
@@ -51,7 +49,7 @@ export function BetThumbnail({
         style={{ backgroundImage: gradientFor(title) }}
       >
         <div className="flex h-full w-full items-center justify-center font-bold text-white/90">
-          <span className={size === "lg" ? "text-4xl" : "text-lg"}>
+          <span className={size === "lg" ? "text-3xl" : size === "md" ? "text-lg" : "text-sm"}>
             {initials}
           </span>
         </div>

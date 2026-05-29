@@ -65,7 +65,7 @@ export function Feed() {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="card h-56 animate-pulse border-border/40 bg-muted/30"
+              className="card min-h-[280px] animate-pulse border-border/40 bg-muted/30"
             />
           ))}
         </div>

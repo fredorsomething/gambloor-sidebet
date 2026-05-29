@@ -20,6 +20,7 @@ import {
 import { polygon } from "wagmi/chains";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
+import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { Comments } from "@/components/Comments";
 import { MarketPortfolio } from "@/components/markets/MarketPortfolio";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
@@ -699,7 +700,7 @@ export function MarketDetail({ id }: { id: number }) {
       {/* Header */}
       <div className="card p-6 space-y-3">
         <TypeTag kind="market" />
-        <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <CoverEditor
             marketId={market.id}
             chainId={market.chainId}
@@ -713,11 +714,15 @@ export function MarketDetail({ id }: { id: number }) {
             account={account}
             onDone={() => query.refetch()}
           />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold md:text-3xl">
               {market.title}
             </h1>
-            <p className="mt-1 text-muted-foreground">{market.description}</p>
+            <CollapsibleBlurb
+              text={market.description}
+              maxLines={3}
+              className="mt-2"
+            />
           </div>
         </div>
         {market.status === "Pending" && (
@@ -1297,9 +1302,11 @@ function RulesPanel({
           </button>
         ))}
       </div>
-      <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/90">
-        {tab === "rules" ? terms : description}
-      </pre>
+      <CollapsibleBlurb
+        text={tab === "rules" ? terms : description}
+        maxLines={4}
+        className="text-foreground/90"
+      />
     </section>
   );
 }
@@ -1668,8 +1675,9 @@ function CoverEditor({
 
   // Non-creators just see the cover (with fallback) — no controls.
   if (!isCreator) {
-    if (!imageUrl) return null;
-    return <BetThumbnail imageUrl={imageUrl} title={title} size="md" />;
+    return (
+      <BetThumbnail imageUrl={imageUrl} title={title} size="lg" fallback />
+    );
   }
 
   async function upload(file: File) {
@@ -1719,7 +1727,7 @@ function CoverEditor({
 
   return (
     <div className="group/cover relative shrink-0">
-      <BetThumbnail imageUrl={imageUrl} title={title} size="md" fallback />
+      <BetThumbnail imageUrl={imageUrl} title={title} size="lg" fallback />
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
