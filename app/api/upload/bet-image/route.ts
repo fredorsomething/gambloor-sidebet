@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { getAddress, isAddress } from "viem";
 
 import { BET_COVER_MAX_BYTES, resolveAvatarContentType } from "@/lib/avatarFile";
-import { verifyProfileAuth } from "@/lib/auth";
+import { verifyWalletAuth } from "@/lib/auth";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -27,17 +27,12 @@ export async function POST(req: NextRequest) {
   }
 
   const addressRaw = String(form.get("address") ?? "");
-  const message = String(form.get("message") ?? "");
-  const signature = String(form.get("signature") ?? "");
   const chainIdRaw = String(form.get("chainId") ?? "");
   const escrowRaw = String(form.get("escrowAddress") ?? "");
   const onchainId = String(form.get("onchainId") ?? "");
   const file = form.get("file");
 
   if (!isAddress(addressRaw)) return jsonErr("bad address", 400);
-  if (!message || !signature.startsWith("0x")) {
-    return jsonErr("missing auth", 401);
-  }
   const chainId = Number(chainIdRaw);
   if (!Number.isFinite(chainId) || chainId <= 0) {
     return jsonErr("bad chainId", 400);
@@ -45,11 +40,7 @@ export async function POST(req: NextRequest) {
   if (!isAddress(escrowRaw)) return jsonErr("bad escrow address", 400);
   if (!DECIMAL.test(onchainId)) return jsonErr("bad onchainId", 400);
 
-  const auth = await verifyProfileAuth({
-    address: addressRaw,
-    message,
-    signature,
-  });
+  const auth = await verifyWalletAuth({ req, address: addressRaw });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
   if (!(file instanceof File)) return jsonErr("missing file", 400);

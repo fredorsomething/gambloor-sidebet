@@ -1,5 +1,6 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { polygon } from "wagmi/chains";
 
@@ -7,19 +8,20 @@ import { Button } from "@/components/ui/button";
 import { ConnectButton } from "@/components/ConnectButton";
 import { getEscrowAddress } from "@/lib/chains";
 
-/** Requires Polygon mainnet wallet + deployed escrow address. */
+/** Requires a signed-in Privy account on Polygon mainnet + deployed escrow. */
 export function ChainGuard({ children }: { children: React.ReactNode }) {
-  const { isConnected } = useAccount();
+  const { ready, authenticated } = usePrivy();
+  const { address } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
 
-  if (!isConnected) {
+  if (!ready || !authenticated || !address) {
     return (
       <div className="card p-8 text-center space-y-4">
-        <h2 className="text-lg font-semibold">Connect a wallet to continue</h2>
+        <h2 className="text-lg font-semibold">Sign in to continue</h2>
         <p className="text-sm text-muted-foreground">
-          Sidebet runs on Polygon mainnet. Connect any EVM wallet (MetaMask,
-          Coinbase, etc.) and switch to Polygon.
+          Sidebet runs on Polygon mainnet. Sign in with email, phone, Google, or
+          a wallet — we&apos;ll set up a wallet for you automatically.
         </p>
         <div className="flex justify-center">
           <ConnectButton />

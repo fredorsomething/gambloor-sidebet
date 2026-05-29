@@ -4,17 +4,20 @@ Peer-to-peer escrowed side bets on Polygon. Two parties stake an ERC-20
 collateral (USDC or pUSD) into an on-chain escrow, and a trusted third-party
 "settler" resolves the market once the outcome is known.
 
-- **Wallet connect** via Wagmi connectors (injected/MetaMask, Coinbase Wallet,
-  and optional WalletConnect) with a custom in-app modal
+- **Auth via Privy** — sign in with email, SMS, Google, or an external wallet.
+  Users without a wallet get a self-custodial embedded wallet automatically;
+  power users can connect MetaMask/Coinbase/etc. wagmi + viem run on top of
+  Privy via `@privy-io/wagmi`.
 - **Chain**: Polygon mainnet only (chain id 137)
 - **Collateral**: USDC, pUSD (Polymarket USD), USDC.e, or any ERC-20
 - **Settlement**: a per-bet `settler` address declares the winner (or a push)
 - **Off-chain**: title / description / terms in Prisma + Postgres (Neon), committed
   on-chain as a `keccak256` `termsHash` so the displayed terms can be proven
   against what the proposer signed up for.
-- **Profiles**: wallet-based identity with editable username / avatar / bio,
-  gated by an off-chain signature (no gas). Each profile has a page showing
-  bets won/lost, realized PnL, win rate, volume, and on-chain balances.
+- **Profiles**: wallet-address identity linked to a Privy account, with editable
+  username / avatar / bio. Profile + upload writes are authorized by verifying
+  the Privy access token server-side (no gas, no signatures). Each profile has a
+  page showing bets won/lost, realized PnL, win rate, volume, and balances.
 - **Leaderboard**: gamified ranking by realized PnL with gold/silver/bronze
   podium for the top three.
 - **Search**: header search across markets and users with a live dropdown.
@@ -64,7 +67,9 @@ Key vars:
 | `NEXT_PUBLIC_DEFAULT_CHAIN_ID` | `137` (Polygon mainnet) |
 | `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` | Deployed `SidebetEscrow` on Polygon |
 | `NEXT_PUBLIC_DEFAULT_SETTLER` | Your wallet address as default settler |
-| `NEXT_PUBLIC_WC_PROJECT_ID` | Optional WalletConnect project id. Injected + Coinbase work without it |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | Privy app id (from the Privy dashboard) |
+| `PRIVY_APP_SECRET` | Privy app secret (server-only; verifies access tokens) |
+| `NEXT_PUBLIC_PRIVY_CLIENT_ID` | Optional Privy client id |
 | `DEPLOYER_PRIVATE_KEY` | Funded deployer key (server-only) |
 | `POLYGONSCAN_API_KEY` | Optional, enables auto-verification |
 
@@ -95,8 +100,10 @@ Open <http://localhost:3000>.
 
 ## User flow
 
-1. **Connect wallet** — Sidebet uses wagmi connectors, so MetaMask, WalletConnect
-   v2, Coinbase Wallet, Rainbow, Ledger, etc. all work out of the box.
+1. **Sign in** — click *Sign in* and authenticate with email, SMS, Google, or an
+   external wallet via Privy. New users get an embedded wallet automatically.
+   Because gas is paid in **POL**, use *Fund wallet* to deposit POL before
+   transacting (a low-gas banner appears on tx screens when your balance is 0).
 2. **Propose a bet** at `/bets/new` — fill in title, description, terms,
    token, stake, settler, and deadlines. Sign two transactions: an ERC-20
    approve (if needed) and `createBet`.

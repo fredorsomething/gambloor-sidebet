@@ -1,5 +1,6 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 
@@ -8,15 +9,16 @@ import { Button } from "@/components/ui/button";
 import { ConnectButton } from "@/components/ConnectButton";
 
 export default function MyBetsPage() {
-  const { address, isConnected } = useAccount();
+  const { ready, authenticated } = usePrivy();
+  const { address } = useAccount();
 
-  if (!isConnected || !address) {
+  if (!ready || !authenticated || !address) {
     return (
       <div className="card p-8 text-center space-y-4">
         <h1 className="text-xl font-semibold">My bets</h1>
         <p className="text-sm text-muted-foreground">
-          Connect your wallet to see bets you proposed, accepted, or were named
-          as settler for.
+          Sign in to see bets you proposed, accepted, or were named as settler
+          for.
         </p>
         <div className="flex justify-center">
           <ConnectButton />

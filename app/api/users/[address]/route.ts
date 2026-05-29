@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getAddress, isAddress } from "viem";
 
-import { verifyProfileAuth } from "@/lib/auth";
+import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isAllowedAvatarUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -53,8 +53,6 @@ export async function GET(
 }
 
 const PutSchema = z.object({
-  message: z.string().min(1),
-  signature: z.string().regex(/^0x[0-9a-fA-F]+$/),
   username: z
     .string()
     .regex(/^[a-zA-Z0-9_]{3,20}$/)
@@ -89,11 +87,7 @@ export async function PUT(
   }
   const d = parsed.data;
 
-  const auth = await verifyProfileAuth({
-    address,
-    message: d.message,
-    signature: d.signature,
-  });
+  const auth = await verifyWalletAuth({ req, address });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
   // Enforce unique username (case-insensitive-ish: stored as provided).
@@ -109,12 +103,16 @@ export async function PUT(
   const user = await prisma.user.upsert({
     where: { address },
     update: {
+      privyId: auth.userId,
+      email: auth.email,
       username: d.username ?? null,
       avatarUrl: d.avatarUrl ?? null,
       bio: d.bio ?? null,
     },
     create: {
       address,
+      privyId: auth.userId,
+      email: auth.email,
       username: d.username ?? null,
       avatarUrl: d.avatarUrl ?? null,
       bio: d.bio ?? null,

@@ -9,6 +9,7 @@ import {
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_ABI } from "@/lib/abi";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
@@ -227,7 +228,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   if (!account) {
     return (
       <div className="card p-4 text-sm text-muted-foreground">
-        Connect a wallet to take action on this bet.
+        Sign in to take action on this bet.
       </div>
     );
   }
@@ -236,6 +237,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   if (bet.status === "Open" && !isProposer) {
     return (
       <div className="card p-5 space-y-3">
+        <LowGasBanner />
         <div>
           <h3 className="font-semibold">Take the other side</h3>
           <p className="text-sm text-muted-foreground">
@@ -269,6 +271,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   if (bet.status === "Open" && isProposer) {
     return (
       <div className="card p-5 space-y-3">
+        <LowGasBanner />
         <h3 className="font-semibold">Your open offer</h3>
         <p className="text-sm text-muted-foreground">
           No taker yet. You can cancel to pull your stake back.
@@ -288,6 +291,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   if (bet.status === "Matched" && isSettler) {
     return (
       <div className="card p-5 space-y-4">
+        <LowGasBanner />
         <div>
           <h3 className="font-semibold">Settle market</h3>
           <p className="text-sm text-muted-foreground">
@@ -346,6 +350,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   if (bet.status === "Matched" && canRefund) {
     return (
       <div className="card p-5 space-y-3">
+        <LowGasBanner />
         <h3 className="font-semibold">Settle deadline passed</h3>
         <p className="text-sm text-muted-foreground">
           The settler did not resolve before the deadline. Either party (or

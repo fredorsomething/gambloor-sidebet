@@ -4,14 +4,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAccount, useSignMessage } from "wagmi";
+import { useAccount } from "wagmi";
 
 import { WalletGuard } from "@/components/WalletGuard";
 import { AvatarUploadZone } from "@/components/profile/AvatarUploadZone";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
-import { buildProfileMessage } from "@/lib/auth";
 import { jsonFetch } from "@/lib/fetcher";
 import type { PublicProfile } from "@/lib/hooks/useProfile";
 import { validateBio, validateUsername } from "@/lib/profile";
@@ -24,8 +24,8 @@ type ProfilePayload = {
 export default function EditProfilePage() {
   return (
     <WalletGuard
-      title="Connect to edit your profile"
-      description="Use the wallet that owns this profile. Saving uses a free signature, not a paid transaction."
+      title="Sign in to edit your profile"
+      description="Sign in to your account to update your username, photo, and bio. Saving is free — no gas required."
     >
       <EditProfileForm />
     </WalletGuard>
@@ -35,7 +35,7 @@ export default function EditProfilePage() {
 function EditProfileForm() {
   const router = useRouter();
   const { address } = useAccount();
-  const { signMessageAsync } = useSignMessage();
+  const { getAccessToken } = usePrivy();
   const { push } = useToast();
   const qc = useQueryClient();
 
@@ -123,9 +123,9 @@ function EditProfileForm() {
     setSaving(true);
 
     try {
-      const issuedAt = new Date().toISOString();
-      const message = buildProfileMessage(address, issuedAt);
-      const signature = await signMessageAsync({ message });
+      const token = await getAccessToken();
+      if (!token) throw new Error("Your session expired. Please sign in again.");
+      const authHeader = { Authorization: `Bearer ${token}` };
 
       let avatarUrl: string | null = initial?.avatarUrl ?? null;
 
@@ -135,11 +135,10 @@ function EditProfileForm() {
         const fd = new FormData();
         fd.append("file", avatarFile);
         fd.append("address", address);
-        fd.append("message", message);
-        fd.append("signature", signature);
 
         const uploadRes = await fetch("/api/upload/avatar", {
           method: "POST",
+          headers: authHeader,
           body: fd,
         });
         if (!uploadRes.ok) {
@@ -158,9 +157,8 @@ function EditProfileForm() {
 
       await jsonFetch(`/api/users/${address}`, {
         method: "PUT",
+        headers: authHeader,
         body: JSON.stringify({
-          message,
-          signature,
           username: username.trim() || null,
           avatarUrl,
           bio: bio.trim() || null,
@@ -205,9 +203,9 @@ function EditProfileForm() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Edit profile</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Your profile is tied to your wallet address. When you save, your
-          wallet signs a free message (not a transaction) so only you can change
-          your username, photo, and bio — no password or gas fee.
+          Your profile is tied to your wallet address. Changes are saved
+          securely to your signed-in account — no password, signature, or gas
+          fee required.
         </p>
       </div>
 

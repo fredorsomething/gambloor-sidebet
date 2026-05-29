@@ -14,8 +14,15 @@ datasource db {
 }
 
 model User {
-  // Wallet address is the identity. Stored checksummed.
+  // Wallet address is the identity. Stored checksummed. With Privy this is the
+  // embedded or external EVM wallet linked to the authenticated Privy account.
   address    String   @id
+
+  // Privy account linkage (a Privy user can link multiple wallets; we key the
+  // profile by the active wallet address but record who owns it).
+  privyId    String?  @unique
+  email      String?
+
   username   String?  @unique
   avatarUrl  String?
   bio        String?
@@ -24,6 +31,7 @@ model User {
   updatedAt  DateTime @updatedAt
 
   @@index([username])
+  @@index([privyId])
 }
 
 model Bet {

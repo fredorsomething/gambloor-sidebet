@@ -1,19 +1,21 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 
 import { BetList } from "@/components/BetList";
 import { ConnectButton } from "@/components/ConnectButton";
 
 export default function SettleDashboardPage() {
-  const { address, isConnected } = useAccount();
+  const { ready, authenticated } = usePrivy();
+  const { address } = useAccount();
 
-  if (!isConnected || !address) {
+  if (!ready || !authenticated || !address) {
     return (
       <div className="card p-8 text-center space-y-4">
         <h1 className="text-xl font-semibold">Settler dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Connect the wallet that was named as the settler on a market to
+          Sign in with the wallet that was named as the settler on a market to
           resolve it.
         </p>
         <div className="flex justify-center">

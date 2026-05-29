@@ -14,16 +14,16 @@ import {
   useAccount,
   useChainId,
   usePublicClient,
-  useSignMessage,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
+import { usePrivy } from "@privy-io/react-auth";
 
 import { BetImageField } from "@/components/bets/BetImageField";
+import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_ABI } from "@/lib/abi";
-import { buildProfileMessage } from "@/lib/auth";
 import { DEFAULT_SETTLER } from "@/lib/chains";
 import { useEscrow } from "@/lib/hooks/useEscrow";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
@@ -41,7 +41,7 @@ export function CreateBetForm() {
   const router = useRouter();
   const { push } = useToast();
   const { address: account } = useAccount();
-  const { signMessageAsync } = useSignMessage();
+  const { getAccessToken } = usePrivy();
   const chainId = useChainId();
   const { escrow, tokens } = useEscrow();
   const publicClient = usePublicClient();
@@ -312,20 +312,20 @@ export function CreateBetForm() {
 
         let imageUrl: string | null = null;
         if (coverFile) {
-          const issuedAt = new Date().toISOString();
-          const message = buildProfileMessage(account, issuedAt);
-          const signature = await signMessageAsync({ message });
+          const token = await getAccessToken();
+          if (!token) {
+            throw new Error("Your session expired. Please sign in again.");
+          }
           const fd = new FormData();
           fd.append("file", coverFile);
           fd.append("address", account);
-          fd.append("message", message);
-          fd.append("signature", signature);
           fd.append("chainId", String(chainId));
           fd.append("escrowAddress", escrow);
           fd.append("onchainId", onchainId.toString());
 
           const uploadRes = await fetch("/api/upload/bet-image", {
             method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
             body: fd,
           });
           if (!uploadRes.ok) {
@@ -386,6 +386,7 @@ export function CreateBetForm() {
 
   return (
     <form onSubmit={onSubmit} className="card p-6 space-y-5">
+      <LowGasBanner />
       <div className="grid grid-cols-1 gap-5">
         <Field label="Title" hint="Short headline shown in market listings.">
           <input
@@ -528,8 +529,8 @@ export function CreateBetForm() {
         </div>
         {coverFile && (
           <div>
-            With a cover image, you&apos;ll also sign a free message after the
-            on-chain create (no extra gas) to upload it.
+            Your cover image is uploaded to your account after the on-chain
+            create (no extra gas).
           </div>
         )}
       </div>

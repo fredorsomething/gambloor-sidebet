@@ -1,21 +1,22 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useAccount, useChainId, useDisconnect, useSwitchChain } from "wagmi";
+import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { polygon } from "wagmi/chains";
 
 import { Avatar } from "@/components/profile/Identity";
-import { useWalletModal } from "@/components/wallet/WalletModal";
+import { useFundWallet } from "@/components/wallet/FundWalletModal";
 import { useProfile } from "@/lib/hooks/useProfile";
-import { cn, shortAddr } from "@/lib/utils";
+import { shortAddr } from "@/lib/utils";
 
 export function ConnectButton() {
-  const { address, isConnected } = useAccount();
-  const { disconnect } = useDisconnect();
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { address } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
-  const { open } = useWalletModal();
+  const { open: openFund } = useFundWallet();
   const { data: profile } = useProfile(address);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -31,13 +32,19 @@ export function ConnectButton() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  if (!isConnected || !address) {
+  if (!ready) {
+    return (
+      <div className="h-9 w-24 animate-pulse rounded-full bg-muted" aria-hidden />
+    );
+  }
+
+  if (!authenticated || !address) {
     return (
       <button
-        onClick={open}
+        onClick={login}
         className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
       >
-        Connect
+        Sign in
       </button>
     );
   }
@@ -97,6 +104,15 @@ export function ConnectButton() {
             </Link>
             <button
               onClick={() => {
+                openFund();
+                setMenuOpen(false);
+              }}
+              className="block w-full rounded-lg px-3 py-2 text-left hover:bg-muted"
+            >
+              Fund wallet
+            </button>
+            <button
+              onClick={() => {
                 navigator.clipboard?.writeText(address);
                 setMenuOpen(false);
               }}
@@ -118,12 +134,12 @@ export function ConnectButton() {
             <div className="my-1 border-t border-border" />
             <button
               onClick={() => {
-                disconnect();
+                void logout();
                 setMenuOpen(false);
               }}
               className="block w-full rounded-lg px-3 py-2 text-left text-danger hover:bg-danger/10"
             >
-              Disconnect
+              Sign out
             </button>
           </nav>
         </div>
