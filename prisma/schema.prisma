@@ -191,6 +191,25 @@ model ResolutionProposal {
   @@index([subjectType, subjectId])
 }
 
+// A user request to add an additional resolver/settler to a bet or market, sent
+// to admins for review. The on-chain settler is fixed at creation, so an
+// approved request lets a neutral admin/verifier act as an extra resolver.
+model ResolverRequest {
+  id          Int      @id @default(autoincrement())
+  subjectType String   // "bet" | "market"
+  subjectId   Int
+  requestedBy String   // lowercase address of the requester
+  suggested   String?  // optional suggested resolver address (lowercase)
+  reason      String?
+  status      String   @default("Pending") // Pending | Approved | Rejected
+  reviewedBy  String?  // lowercase admin address
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([subjectType, subjectId])
+  @@index([status, createdAt])
+}
+
 // Approved settlers: only these addresses can be chosen to resolve a Sidebet or
 // Market. Each sets their own fee (basis points). Seeded with the default wallet.
 model ApprovedSettler {
@@ -377,4 +396,21 @@ model Trade {
   @@index([marketId])
   @@index([taker])
   @@index([maker])
+}
+
+// Private 1:1 direct messages between two wallets. `sender`/`recipient` are
+// lowercased addresses. `pair` is the deterministic conversation key
+// (`min(addr)|max(addr)`) so a thread is easy to query regardless of direction.
+model DirectMessage {
+  id        Int       @id @default(autoincrement())
+  pair      String
+  sender    String
+  recipient String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([pair, createdAt])
+  @@index([recipient, readAt])
+  @@index([sender, createdAt])
 }

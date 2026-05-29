@@ -40,7 +40,7 @@ export default function PortfolioPage() {
     queryKey: ["portfolio", address?.toLowerCase()],
     enabled: !!address,
     queryFn: () => jsonFetch(`/api/users/${address}/positions`),
-    refetchInterval: 20_000,
+    refetchInterval: 8_000,
   });
 
   if (!ready || !authenticated || !address) {

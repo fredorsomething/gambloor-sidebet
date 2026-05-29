@@ -31,7 +31,8 @@ export function PnlChart({ address }: { address: string }) {
   const { data, isLoading } = useQuery<PnlResponse>({
     queryKey: ["pnl", address.toLowerCase()],
     queryFn: () => jsonFetch(`/api/users/${address}/pnl`),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
   });
 
   const range = RANGES.find((r) => r.key === rangeKey)!;

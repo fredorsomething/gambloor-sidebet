@@ -94,7 +94,7 @@ export function MarketPortfolio({
     enabled: !!account,
     queryFn: () =>
       jsonFetch(`/api/markets/${marketId}/portfolio?address=${account}`),
-    refetchInterval: 15_000,
+    refetchInterval: 6_000,
   });
 
   if (!account) return null;

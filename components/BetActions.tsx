@@ -40,12 +40,16 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
   const isSettler = me === bet.settler.toLowerCase();
 
   // Prefer on-chain truth over the indexed snapshot (which can lag behind).
-  const status = onchain?.status ?? bet.status;
+  const rawStatus = onchain?.status ?? bet.status;
   const acceptorAddr =
     onchain?.acceptor && onchain.acceptor !== ZERO
       ? onchain.acceptor
       : bet.acceptor;
-  const isAcceptor = !!me && !!acceptorAddr && me === acceptorAddr.toLowerCase();
+  const hasAcceptor = !!acceptorAddr && acceptorAddr.toLowerCase() !== ZERO;
+  // Once a taker exists the bet is matched — never allow cancel/take again, even
+  // if the indexed status hasn't caught up to the chain yet.
+  const status = rawStatus === "Open" && hasAcceptor ? "Matched" : rawStatus;
+  const isAcceptor = !!me && hasAcceptor && me === acceptorAddr!.toLowerCase();
 
   // A still-open offer with no taker is "expired" once its accept window passes.
   // New bets carry a 1-week acceptDeadline; older ones fall back to created+1wk.

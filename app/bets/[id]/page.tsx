@@ -7,6 +7,7 @@ import { BetDetailLive } from "@/components/BetDetailLive";
 import { BetNegotiations } from "@/components/BetNegotiations";
 import { Comments } from "@/components/Comments";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
+import { Resolvers } from "@/components/Resolvers";
 import { Identity } from "@/components/profile/Identity";
 import { StatusBadge } from "@/components/ui/badge";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
@@ -169,6 +170,13 @@ export default async function BetDetailPage({
         </div>
 
         <aside className="space-y-3">
+          <Resolvers
+            subjectType="bet"
+            subjectId={bet.id}
+            settler={bet.settler}
+            feeBps={bet.feeBps}
+          />
+
           <section className="card p-5">
             <h3 className="font-semibold mb-3 text-sm">Participants</h3>
             <Party label="Proposer" addr={bet.proposer} chainId={bet.chainId} />

@@ -18,7 +18,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
-        defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+        defaultOptions: {
+          queries: {
+            retry: 1,
+            // Pull fresh data the moment a user returns to the tab so markets,
+            // positions and PnL don't look stale after switching away.
+            refetchOnWindowFocus: true,
+            refetchOnReconnect: true,
+            staleTime: 3_000,
+          },
+        },
       }),
   );
 

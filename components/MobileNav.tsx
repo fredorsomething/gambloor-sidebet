@@ -4,6 +4,7 @@ import {
   Box,
   HelpCircle,
   LayoutGrid,
+  Mail,
   Menu,
   Plus,
   Trophy,
@@ -26,6 +27,7 @@ const LINKS = [
 const ACTIONS = [
   { href: "/create", label: "Create", description: "Sidebet or market", icon: Plus },
   { href: "/me", label: "My positions", description: "Bets you're in", icon: Box },
+  { href: "/messages", label: "Messages", description: "Your direct messages", icon: Mail },
   { href: "/how-it-works", label: "How it works", description: "Rules & settlement", icon: HelpCircle },
 ];
 

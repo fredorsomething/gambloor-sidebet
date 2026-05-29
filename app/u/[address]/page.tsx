@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, Check, Copy, Eye } from "lucide-react";
+import { CalendarDays, Check, Copy, Eye, Mail } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -217,7 +217,15 @@ export default function ProfilePage() {
                   <Link href="/profile/edit">Edit profile</Link>
                 </Button>
               ) : (
-                <TipButton to={address} username={data?.user.username} />
+                <>
+                  <Button variant="outline" asChild title="Send a message">
+                    <Link href={`/messages?with=${address}`}>
+                      <Mail className="mr-1.5 h-4 w-4" />
+                      Message
+                    </Link>
+                  </Button>
+                  <TipButton to={address} username={data?.user.username} />
+                </>
               )}
             </div>
           </div>

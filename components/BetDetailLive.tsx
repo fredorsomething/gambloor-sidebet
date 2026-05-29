@@ -24,7 +24,7 @@ export function BetDetailLive({
     queryKey: ["bet", id],
     queryFn: () => jsonFetch(`/api/bets/${id}`),
     initialData: initial,
-    refetchInterval: 10_000,
+    refetchInterval: 5_000,
   });
 
   const data = q.data ?? initial;

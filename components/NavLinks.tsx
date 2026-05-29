@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, ChevronDown, HelpCircle, Plus } from "lucide-react";
+import { Box, ChevronDown, HelpCircle, Mail, Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -25,6 +25,12 @@ const ACTIONS = [
     label: "View Positions",
     description: "Bets you're in",
     icon: Box,
+  },
+  {
+    href: "/messages",
+    label: "Messages",
+    description: "Your direct messages",
+    icon: Mail,
   },
   {
     href: "/how-it-works",

@@ -70,7 +70,7 @@ export function WalletBalance() {
     queryKey: ["walletPositions", address?.toLowerCase()],
     enabled: !!address,
     queryFn: () => jsonFetch(`/api/users/${address}/positions`),
-    refetchInterval: 20_000,
+    refetchInterval: 10_000,
   });
   const positionsValue = positions?.totalValue ?? 0;
 

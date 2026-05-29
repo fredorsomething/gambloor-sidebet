@@ -23,6 +23,7 @@ import { BetThumbnail } from "@/components/BetThumbnail";
 import { Comments } from "@/components/Comments";
 import { MarketPortfolio } from "@/components/markets/MarketPortfolio";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
+import { Resolvers } from "@/components/Resolvers";
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
@@ -77,7 +78,10 @@ export function MarketDetail({ id }: { id: number }) {
   const query = useQuery<MarketDetailResponse>({
     queryKey: ["market", id, account],
     queryFn: () => jsonFetch(`/api/markets/${id}${viewerQ}`),
-    refetchInterval: 12_000,
+    // Poll briskly so the book/positions stay live without manual refreshes;
+    // pause polling while the tab is hidden to avoid wasted requests.
+    refetchInterval: 4_000,
+    refetchIntervalInBackground: false,
   });
 
   const data = query.data;
@@ -528,7 +532,61 @@ export function MarketDetail({ id }: { id: number }) {
     }
   }
 
-  /** Post a signed limit order to the book. */
+  /** Sign + post one resting limit order for `sharesRaw` shares at `price`. */
+  async function postRestingOrder(a: {
+    outcomeIndex: number;
+    positionId: string;
+    side: Side;
+    price: number;
+    sharesRaw: bigint;
+  }) {
+    const collateralRaw = BigInt(Math.round(Number(a.sharesRaw) * a.price));
+    if (collateralRaw <= 0n || a.sharesRaw <= 0n) return;
+
+    const sideNum = a.side === "BUY" ? 0 : 1;
+    const makerAmount = a.side === "BUY" ? collateralRaw : a.sharesRaw;
+    const takerAmount = a.side === "BUY" ? a.sharesRaw : collateralRaw;
+    const salt = randomSalt();
+    const expiration = 0n;
+
+    const signature = await signTypedDataAsync({
+      domain: exchangeDomain(market!.chainId, exchange),
+      types: ORDER_EIP712_TYPES,
+      primaryType: "Order",
+      message: {
+        salt,
+        maker: account as Address,
+        tokenId: BigInt(a.positionId),
+        makerAmount,
+        takerAmount,
+        expiration,
+        side: sideNum,
+      },
+    } as Parameters<typeof signTypedDataAsync>[0]);
+
+    await jsonFetch(`/api/markets/${id}/orders`, {
+      method: "POST",
+      body: JSON.stringify({
+        outcomeIndex: a.outcomeIndex,
+        side: a.side,
+        salt: salt.toString(),
+        maker: account,
+        tokenId: a.positionId,
+        makerAmount: makerAmount.toString(),
+        takerAmount: takerAmount.toString(),
+        expiration: expiration.toString(),
+        signature,
+      }),
+    });
+  }
+
+  /**
+   * Place a limit order. First it crosses any marketable resting liquidity (a
+   * BUY at/above the best asks, or a SELL at/below the best bids) and fills it
+   * on-chain, then rests the unfilled remainder on the book. This is why a limit
+   * order priced into the spread now fills instead of just sitting at a 0¢
+   * spread against an existing order.
+   */
   async function placeLimit(args: {
     outcomeIndex: number;
     positionId: string;
@@ -546,50 +604,58 @@ export function MarketDetail({ id }: { id: number }) {
       push({ title: "Enter a share amount", variant: "danger" });
       return;
     }
-    const collateralRaw = BigInt(Math.round(Number(sharesRaw) * args.price));
-    if (collateralRaw <= 0n) return;
 
-    const sideNum = args.side === "BUY" ? 0 : 1;
-    const makerAmount = args.side === "BUY" ? collateralRaw : sharesRaw;
-    const takerAmount = args.side === "BUY" ? sharesRaw : collateralRaw;
-    const salt = randomSalt();
-    const expiration = 0n;
+    // Marketable side: a BUY crosses asks priced <= limit; a SELL crosses bids
+    // priced >= limit. Use a tiny epsilon so an exact-price match still fills.
+    const EPS = 1e-9;
+    const opposing = args.side === "BUY" ? unifiedSells : unifiedBuys;
+    const crossable = opposing.filter(
+      (o) =>
+        o.maker.toLowerCase() !== account.toLowerCase() &&
+        sharesRemainingRaw(o) > 0n &&
+        (args.side === "BUY"
+          ? Number(o.price) <= args.price + EPS
+          : Number(o.price) >= args.price - EPS),
+    );
 
-    const message = {
-      salt,
-      maker: account as Address,
-      tokenId: BigInt(args.positionId),
-      makerAmount,
-      takerAmount,
-      expiration,
-      side: sideNum,
-    };
+    let remaining = sharesRaw;
+    let fills = 0;
+    if (crossable.length > 0) await ensurePolygon();
+    for (const o of crossable) {
+      if (remaining <= 0n || fills >= 12) break;
+      const avail = sharesRemainingRaw(o);
+      if (avail <= 0n) continue;
+      const take = remaining >= avail ? avail : remaining;
+      await fillUnifiedShares(o, take);
+      remaining -= take;
+      fills += 1;
+    }
 
-    const signature = await signTypedDataAsync({
-      domain: exchangeDomain(market!.chainId, exchange),
-      types: ORDER_EIP712_TYPES,
-      primaryType: "Order",
-      message,
-    } as Parameters<typeof signTypedDataAsync>[0]);
-
-    await jsonFetch(`/api/markets/${id}/orders`, {
-      method: "POST",
-      body: JSON.stringify({
+    // Rest whatever didn't immediately fill.
+    if (remaining > 0n) {
+      await postRestingOrder({
         outcomeIndex: args.outcomeIndex,
+        positionId: args.positionId,
         side: args.side,
-        salt: salt.toString(),
-        maker: account,
-        tokenId: args.positionId,
-        makerAmount: makerAmount.toString(),
-        takerAmount: takerAmount.toString(),
-        expiration: expiration.toString(),
-        signature,
-      }),
-    });
+        price: args.price,
+        sharesRaw: remaining,
+      });
+    }
 
+    const filledAll = remaining <= 0n;
     push({
-      title: "Order posted",
-      description: "Your signed order is resting on the book.",
+      title:
+        fills > 0
+          ? filledAll
+            ? "Order filled"
+            : "Partially filled — rest posted"
+          : "Order posted",
+      description:
+        fills > 0
+          ? `${fills} order${fills === 1 ? "" : "s"} taken${
+              filledAll ? "" : "; remainder resting on the book"
+            }.`
+          : "Your signed order is resting on the book.",
       variant: "success",
     });
     setShares("");
@@ -692,11 +758,16 @@ export function MarketDetail({ id }: { id: number }) {
             account={account}
             resolved={resolved}
             unified={isBinary}
+            selectedLabel={selected.label}
             otherLabel={otherOutcome?.label ?? null}
             onTake={takeOrder}
-            onPickPrice={(p) => {
+            onPickOrder={(o, tone) => {
               setOrderType("limit");
-              setLimitCents((p * 100).toFixed(1));
+              setSide(tone === "ask" ? "BUY" : "SELL");
+              setLimitCents((Number(o.price) * 100).toFixed(1));
+              setShares(
+                formatUnits(sharesRemainingRaw(o), decimals),
+              );
             }}
           />
 
@@ -711,6 +782,13 @@ export function MarketDetail({ id }: { id: number }) {
           )}
 
           <RulesPanel terms={market.terms} description={market.description} />
+
+          <Resolvers
+            subjectType="market"
+            subjectId={market.id}
+            settler={market.settler}
+            feeBps={market.feeBps}
+          />
 
           {market.status === "Open" && (
             <ProposeResolutionButton
@@ -947,9 +1025,10 @@ function OrderBookPanel({
   account,
   resolved,
   unified,
+  selectedLabel,
   otherLabel,
   onTake,
-  onPickPrice,
+  onPickOrder,
 }: {
   outcomes: { index: number; label: string; positionId: string }[];
   selectedIdx: number;
@@ -965,9 +1044,10 @@ function OrderBookPanel({
   account?: string;
   resolved: boolean;
   unified?: boolean;
+  selectedLabel: string;
   otherLabel?: string | null;
   onTake: (o: UnifiedOrder) => void;
-  onPickPrice: (price: number) => void;
+  onPickOrder: (o: UnifiedOrder, tone: "ask" | "bid") => void;
 }) {
   // Asks: worst (highest) at top, best (lowest) just above the spread line.
   const asks = [...sells].slice(0, 8).reverse();
@@ -990,16 +1070,11 @@ function OrderBookPanel({
   return (
     <section className="card p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-semibold">Order book</h3>
-        {unified ? (
-          <span className="badge badge-accent">Unified</span>
-        ) : (
-          outcomes.length > 2 && (
-            <span className="text-xs text-muted-foreground">
-              {outcomes.find((o) => o.index === selectedIdx)?.label}
-            </span>
-          )
-        )}
+        <h3 className="font-semibold">
+          Order book{" "}
+          <span className="text-muted-foreground">· {selectedLabel}</span>
+        </h3>
+        {unified && <span className="badge badge-accent">Unified</span>}
       </div>
 
       {/* Outcome selector tabs */}
@@ -1034,6 +1109,9 @@ function OrderBookPanel({
       </div>
 
       {/* Asks */}
+      <div className="mb-1 px-2 text-[11px] font-medium text-[hsl(var(--danger))]">
+        Asks · buy {selectedLabel} here
+      </div>
       <div className="space-y-px">
         {asks.length === 0 && (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -1047,11 +1125,12 @@ function OrderBookPanel({
             decimals={decimals}
             total={askTotals[i]}
             tone="ask"
+            selectedLabel={selectedLabel}
             mine={!!account && o.maker.toLowerCase() === account.toLowerCase()}
             canTake={!resolved && !!account}
             otherLabel={otherLabel}
             onTake={onTake}
-            onPickPrice={onPickPrice}
+            onPickOrder={onPickOrder}
           />
         ))}
       </div>
@@ -1073,6 +1152,9 @@ function OrderBookPanel({
       </div>
 
       {/* Bids */}
+      <div className="mb-1 px-2 text-[11px] font-medium text-[hsl(var(--success))]">
+        Bids · sell {selectedLabel} here
+      </div>
       <div className="space-y-px">
         {bids.length === 0 && (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -1086,14 +1168,18 @@ function OrderBookPanel({
             decimals={decimals}
             total={bidTotals[i]}
             tone="bid"
+            selectedLabel={selectedLabel}
             mine={!!account && o.maker.toLowerCase() === account.toLowerCase()}
             canTake={!resolved && !!account}
             otherLabel={otherLabel}
             onTake={onTake}
-            onPickPrice={onPickPrice}
+            onPickOrder={onPickOrder}
           />
         ))}
       </div>
+      <p className="mt-3 text-center text-[11px] text-muted-foreground">
+        Tap any row to load its price &amp; size into the ticket.
+      </p>
     </section>
   );
 }
@@ -1103,52 +1189,57 @@ function BookRow({
   decimals,
   total,
   tone,
+  selectedLabel,
   mine,
   canTake,
   otherLabel,
   onTake,
-  onPickPrice,
+  onPickOrder,
 }: {
   order: UnifiedOrder;
   decimals: number;
   total: number;
   tone: "ask" | "bid";
+  selectedLabel: string;
   mine: boolean;
   canTake: boolean;
   otherLabel?: string | null;
   onTake: (o: UnifiedOrder) => void;
-  onPickPrice: (price: number) => void;
+  onPickOrder: (o: UnifiedOrder, tone: "ask" | "bid") => void;
 }) {
   const price = Number(order.price);
   const sharesNum = Number(formatUnits(sharesRemainingRaw(order), decimals));
   const isAsk = tone === "ask";
   const complementary = !!order._complementary;
+  const tint = isAsk ? "hsl(var(--danger))" : "hsl(var(--success))";
 
   return (
-    <div
-      className="group relative grid grid-cols-[1fr_1fr_1fr] items-center gap-2 rounded-md px-2 py-1 text-xs"
+    <button
+      type="button"
+      onClick={() => onPickOrder(order, tone)}
+      title={`Load ${cents(price)} × ${sharesNum.toLocaleString(undefined, {
+        maximumFractionDigits: 2,
+      })} ${selectedLabel} into the ticket`}
+      className="group relative grid w-full grid-cols-[1fr_1fr_1fr] items-center gap-2 rounded-md px-2 py-1 text-xs hover:ring-1 hover:ring-border"
       style={{
-        background: `linear-gradient(to left, ${
-          isAsk ? "hsl(var(--danger))" : "hsl(var(--success))"
-        }0F ${Math.min(100, total)}%, transparent 0)`,
+        background: `linear-gradient(to left, ${tint}0F ${Math.min(
+          100,
+          total,
+        )}%, transparent 0)`,
       }}
     >
-      <button
-        type="button"
-        onClick={() => onPickPrice(price)}
-        className={`text-left font-mono font-medium ${
-          isAsk ? "text-[hsl(var(--danger))]" : "text-[hsl(var(--success))]"
-        }`}
-        title="Use this price"
+      <span
+        className="text-left font-mono font-medium"
+        style={{ color: tint }}
       >
         {cents(price)}
-      </button>
+      </span>
       <span className="text-right font-mono text-foreground">
         {sharesNum.toLocaleString(undefined, { maximumFractionDigits: 2 })}
         {complementary && otherLabel && (
           <span
             className="ml-1 text-[9px] uppercase text-muted-foreground"
-            title={`Liquidity from the ${otherLabel} book`}
+            title={`Liquidity routed from the ${otherLabel} book`}
           >
             ·{otherLabel.slice(0, 4)}
           </span>
@@ -1157,17 +1248,23 @@ function BookRow({
       <span className="flex items-center justify-end gap-2">
         <span className="font-mono text-muted-foreground">{money(total)}</span>
         {canTake && !mine && (
-          <button
-            type="button"
-            onClick={() => onTake(order)}
-            className="hidden rounded bg-primary px-2 py-0.5 font-medium text-primary-foreground group-hover:inline-block"
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTake(order);
+            }}
+            className={`hidden rounded px-2 py-0.5 font-medium text-white group-hover:inline-block ${
+              isAsk ? "bg-[hsl(var(--success))]" : "bg-[hsl(var(--danger))]"
+            }`}
           >
             {isAsk ? "Buy" : "Sell"}
-          </button>
+          </span>
         )}
         {mine && <span className="text-[10px] text-muted-foreground">you</span>}
       </span>
-    </div>
+    </button>
   );
 }
 
