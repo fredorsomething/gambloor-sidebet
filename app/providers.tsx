@@ -51,6 +51,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
           ethereum: {
             createOnLogin: "users-without-wallets",
           },
+          // Skip Privy's per-action confirmation modal for embedded wallets.
+          // The user already authenticated into the app, so signing CLOB limit
+          // orders and sending trades doesn't pop a prompt every time. External
+          // wallets (MetaMask etc.) still confirm in their own UI — that's
+          // controlled by the wallet, not us.
+          showWalletUIs: false,
         },
         defaultChain: polygon,
         supportedChains: [polygon],

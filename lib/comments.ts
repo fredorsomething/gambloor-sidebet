@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { likeInfo } from "@/lib/commentInteractions";
 
 export type ProfileCommentRow = {
   id: number;
@@ -6,17 +7,22 @@ export type ProfileCommentRow = {
   authorUsername: string | null;
   authorAvatarUrl: string | null;
   body: string;
+  gifUrl: string | null;
+  parentId: number | null;
+  likes: number;
+  likedByMe: boolean;
   createdAt: string;
 };
 
-/** List comments on a profile, newest first, joined with author profile info. */
+/** List comments on a profile, joined with author profile info and like info. */
 export async function listProfileComments(
   target: string,
+  viewer?: string | null,
 ): Promise<ProfileCommentRow[]> {
   const comments = await prisma.profileComment.findMany({
     where: { target: target.toLowerCase() },
     orderBy: { createdAt: "desc" },
-    take: 200,
+    take: 300,
   });
 
   const authors = Array.from(new Set(comments.map((c) => c.author)));
@@ -30,6 +36,12 @@ export async function listProfileComments(
     users.map((u) => [u.address.toLowerCase(), u] as const),
   );
 
+  const { counts, likedByViewer } = await likeInfo(
+    "profile",
+    comments.map((c) => c.id),
+    viewer,
+  );
+
   return comments.map((c) => {
     const u = byAddr.get(c.author.toLowerCase());
     return {
@@ -38,6 +50,10 @@ export async function listProfileComments(
       authorUsername: u?.username ?? null,
       authorAvatarUrl: u?.avatarUrl ?? null,
       body: c.body,
+      gifUrl: c.gifUrl ?? null,
+      parentId: c.parentId ?? null,
+      likes: counts.get(c.id) ?? 0,
+      likedByMe: likedByViewer.has(c.id),
       createdAt: c.createdAt.toISOString(),
     };
   });

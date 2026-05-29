@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   decodeEventLog,
   getAddress,
@@ -89,6 +89,65 @@ export function CreateBetForm() {
       setTokenAddress(tokens[0].address as Address);
     }
   }, [chainId, tokens, tokenAddress]);
+
+  // Pre-fill from an accepted sidebet negotiation ("relaunch with these terms").
+  // The negotiation UI stashes the agreed terms in sessionStorage before routing
+  // here; we read it once on mount so the proposer can re-create with one click.
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current) return;
+    prefilled.current = true;
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem("sidebet:relaunch");
+      if (raw) sessionStorage.removeItem("sidebet:relaunch");
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const p = JSON.parse(raw) as {
+        title?: string;
+        description?: string;
+        terms?: string;
+        token?: string;
+        settler?: string;
+        feeBps?: number;
+        endDate?: string;
+        outcomes?: string[];
+        proposerOutcome?: number;
+        acceptorOutcome?: number;
+        yourStakeStr?: string;
+        theirStakeStr?: string;
+      };
+      if (p.title) setTitle(p.title);
+      if (p.description) setDescription(p.description);
+      if (p.terms) setTerms(p.terms);
+      if (p.token && isAddress(p.token)) setTokenAddress(getAddress(p.token) as Address);
+      if (p.settler && isAddress(p.settler)) setSettler(getAddress(p.settler));
+      if (typeof p.feeBps === "number") setSettlerFeeBps(p.feeBps);
+      if (p.endDate) setEndDate(p.endDate);
+      if (p.yourStakeStr) setYourStakeStr(p.yourStakeStr);
+      if (p.theirStakeStr) setTheirStakeStr(p.theirStakeStr);
+
+      const outs = p.outcomes ?? [];
+      const pOut = p.proposerOutcome ?? 0;
+      const aOut = p.acceptorOutcome ?? 1;
+      const isBinaryYesNo =
+        outs.length === 2 && outs[0] === "Yes" && outs[1] === "No";
+      if (isBinaryYesNo) {
+        setMode("binary");
+        setStance(pOut === 0 ? "yes" : "no");
+      } else if (outs.length >= 2) {
+        setMode("custom");
+        setCustomOutcomes(outs);
+        setProposerOutcome(pOut);
+        setAcceptorOutcome(aOut);
+      }
+    } catch {
+      /* ignore malformed prefill */
+    }
+  }, []);
 
   const decimals = tokenMeta?.decimals ?? 6;
   const live = useTokenInfo({
@@ -202,6 +261,7 @@ export function CreateBetForm() {
     nonce: string;
     termsHash: Hex;
     estimatedEndDate: number;
+    acceptDeadline: number;
     outcomes: string[];
     proposerOutcome: number;
     acceptorOutcome: number;
@@ -227,7 +287,7 @@ export function CreateBetForm() {
         pc.proposerOutcome,
         pc.acceptorOutcome,
         pc.outcomes.length,
-        0n, // acceptDeadline: none
+        BigInt(pc.acceptDeadline), // unfilled offers auto-expire after 1 week
         BigInt(pc.estimatedEndDate),
         pc.termsHash,
       ],
@@ -257,11 +317,15 @@ export function CreateBetForm() {
     const estimatedEndDate = endDate
       ? Math.floor(new Date(`${endDate}T00:00:00Z`).getTime() / 1000)
       : 0;
+    // Offers must be taken within a week, otherwise they expire and the
+    // proposer can reclaim their stake.
+    const acceptDeadline = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
 
     const pc = {
       nonce,
       termsHash,
       estimatedEndDate,
+      acceptDeadline,
       outcomes: trimmedOutcomes,
       proposerOutcome: myOutcome,
       acceptorOutcome: theirOutcome,
@@ -403,6 +467,7 @@ export function CreateBetForm() {
             termsHash: pendingCreate.termsHash,
             nonce: pendingCreate.nonce,
             feeBps: settlerFeeBps,
+            acceptDeadline: pendingCreate.acceptDeadline,
             estimatedEndDate: pendingCreate.estimatedEndDate || 0,
           }),
         });

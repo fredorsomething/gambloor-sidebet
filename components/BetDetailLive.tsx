@@ -28,5 +28,11 @@ export function BetDetailLive({
   });
 
   const data = q.data ?? initial;
-  return <BetActions bet={data.bet} onTxConfirmed={() => void q.refetch()} />;
+  return (
+    <BetActions
+      bet={data.bet}
+      onchain={data.onchain}
+      onTxConfirmed={() => void q.refetch()}
+    />
+  );
 }

@@ -7,8 +7,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  return handleListComments("market", params.id);
+export function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  return handleListComments(req, "market", params.id);
 }
 
 export function POST(req: NextRequest, { params }: { params: { id: string } }) {

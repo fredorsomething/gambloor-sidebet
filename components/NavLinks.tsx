@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, ChevronDown, Plus } from "lucide-react";
+import { Box, ChevronDown, HelpCircle, Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -25,6 +25,12 @@ const ACTIONS = [
     label: "View Positions",
     description: "Bets you're in",
     icon: Box,
+  },
+  {
+    href: "/how-it-works",
+    label: "How it works",
+    description: "Rules & settlement",
+    icon: HelpCircle,
   },
 ];
 

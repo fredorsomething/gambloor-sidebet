@@ -31,8 +31,12 @@ export async function DELETE(
     return jsonErr("you can only delete your own comments", 403);
   }
 
-  await prisma.profileComment.delete({ where: { id } });
+  await prisma.$transaction([
+    prisma.commentLike.deleteMany({ where: { scope: "profile", commentId: id } }),
+    prisma.profileComment.deleteMany({ where: { parentId: id } }),
+    prisma.profileComment.delete({ where: { id } }),
+  ]);
 
-  const comments = await listProfileComments(target);
+  const comments = await listProfileComments(target, caller);
   return jsonOk({ comments });
 }

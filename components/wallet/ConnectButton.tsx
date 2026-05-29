@@ -67,7 +67,7 @@ export function ConnectButton() {
         className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-3 text-sm font-medium shadow-sm transition-colors hover:bg-muted/50"
       >
         <Avatar address={address} url={profile?.avatarUrl} size={28} />
-        <span className="max-w-[120px] truncate">{label}</span>
+        <span className="hidden max-w-[120px] truncate sm:inline">{label}</span>
       </button>
 
       {menuOpen && (

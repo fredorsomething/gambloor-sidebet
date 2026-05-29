@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { likeInfo } from "@/lib/commentInteractions";
 
 export type SubjectType = "bet" | "market";
 
@@ -8,21 +9,27 @@ export type ThreadCommentRow = {
   authorUsername: string | null;
   authorAvatarUrl: string | null;
   body: string;
+  gifUrl: string | null;
+  parentId: number | null;
+  likes: number;
+  likedByMe: boolean;
   createdAt: string;
 };
 
 /**
- * List comments on a sidebet or market thread, newest first, joined with the
- * author's profile (username + avatar) for display.
+ * List comments on a sidebet or market thread, joined with the author's profile
+ * (username + avatar) and like info. Returns a flat list; the client nests
+ * replies by `parentId`. `viewer` (optional) marks which comments the viewer liked.
  */
 export async function listThreadComments(
   subjectType: SubjectType,
   subjectId: number,
+  viewer?: string | null,
 ): Promise<ThreadCommentRow[]> {
   const comments = await prisma.threadComment.findMany({
     where: { subjectType, subjectId },
     orderBy: { createdAt: "desc" },
-    take: 300,
+    take: 400,
   });
 
   const authors = Array.from(new Set(comments.map((c) => c.author)));
@@ -36,6 +43,12 @@ export async function listThreadComments(
     users.map((u) => [u.address.toLowerCase(), u] as const),
   );
 
+  const { counts, likedByViewer } = await likeInfo(
+    "thread",
+    comments.map((c) => c.id),
+    viewer,
+  );
+
   return comments.map((c) => {
     const u = byAddr.get(c.author.toLowerCase());
     return {
@@ -44,6 +57,10 @@ export async function listThreadComments(
       authorUsername: u?.username ?? null,
       authorAvatarUrl: u?.avatarUrl ?? null,
       body: c.body,
+      gifUrl: c.gifUrl ?? null,
+      parentId: c.parentId ?? null,
+      likes: counts.get(c.id) ?? 0,
+      likedByMe: likedByViewer.has(c.id),
       createdAt: c.createdAt.toISOString(),
     };
   });

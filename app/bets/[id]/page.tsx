@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { BetDetailLive } from "@/components/BetDetailLive";
+import { BetNegotiations } from "@/components/BetNegotiations";
 import { Comments } from "@/components/Comments";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
 import { Identity } from "@/components/profile/Identity";
@@ -141,6 +142,8 @@ export default async function BetDetailPage({
 
       {/* Primary action up top so taking the bet is obvious without scrolling. */}
       <BetDetailLive id={bet.id} initial={data} />
+
+      <BetNegotiations bet={bet} />
 
       {bet.status !== "Cancelled" && bet.status !== "Refunded" && (
         <ProposeResolutionButton

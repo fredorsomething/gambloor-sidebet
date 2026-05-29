@@ -25,6 +25,7 @@ import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI } from "@/lib/abi";
 import { explorerTx, getTokens } from "@/lib/chains";
+import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { logWalletNotification } from "@/lib/hooks/useNotifications";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { cn, formatToken, shortAddr } from "@/lib/utils";
@@ -155,8 +156,15 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
       onClose();
     } catch (err) {
       const msg = (err as Error)?.message ?? "Funding was cancelled";
-      if (!msg.toLowerCase().includes("closed") && !msg.toLowerCase().includes("cancel")) {
-        push({ title: msg, variant: "danger" });
+      const lc = msg.toLowerCase();
+      const userClosed = lc.includes("closed") || lc.includes("cancel") || lc.includes("exited");
+      if (!userClosed) {
+        console.error("Privy fundWallet failed", err);
+        push({
+          title: "Couldn't start funding",
+          description: msg,
+          variant: "danger",
+        });
       }
     } finally {
       setPending(null);
@@ -272,6 +280,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const { address: from } = useAccount();
   const { push } = useToast();
   const { getAccessToken } = usePrivy();
+  const ensurePolygon = useEnsurePolygon();
   const options = useMemo(() => WITHDRAW_ASSETS(), []);
 
   const [symbol, setSymbol] = useState(options[0]?.symbol ?? "USDC");
@@ -353,10 +362,18 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
     if (!asset || !from || !toValid) return;
     const dest = to.trim() as Address;
     try {
+      // Make sure the (embedded) wallet is on Polygon before sending, otherwise
+      // the transfer targets the wrong network and silently fails.
+      await ensurePolygon();
       if (isPol) {
-        await sendPol.sendTransactionAsync({ to: dest, value: amountWei });
+        await sendPol.sendTransactionAsync({
+          chainId: polygon.id,
+          to: dest,
+          value: amountWei,
+        });
       } else {
         await transfer.writeContractAsync({
+          chainId: polygon.id,
           address: asset.address as Address,
           abi: ERC20_ABI,
           functionName: "transfer",
@@ -370,6 +387,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
         title: msg.toLowerCase().includes("reject")
           ? "Transaction rejected"
           : "Withdrawal failed",
+        description: msg.length < 160 ? msg : undefined,
         variant: "danger",
       });
     }

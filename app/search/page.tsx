@@ -13,7 +13,7 @@ import { formatToken, shortAddr } from "@/lib/utils";
 import type { BetStatusName } from "@/lib/abi";
 
 type SearchResults = {
-  markets: {
+  bets: {
     id: number;
     title: string;
     imageUrl: string | null;
@@ -21,6 +21,14 @@ type SearchResults = {
     amount: string;
     decimals: number;
     tokenSymbol: string | null;
+  }[];
+  markets: {
+    id: number;
+    title: string;
+    imageUrl: string | null;
+    status: string;
+    tokenSymbol: string | null;
+    outcomeCount: number;
   }[];
   users: {
     address: string;
@@ -85,7 +93,34 @@ function Results() {
         <div className="space-y-2">
           {data?.markets.map((m) => (
             <Link
-              key={m.id}
+              key={`m-${m.id}`}
+              href={`/markets/${m.id}`}
+              className="card flex items-center gap-3 p-4 transition-colors hover:border-primary/40"
+            >
+              <BetThumbnail imageUrl={m.imageUrl} title={m.title} size="sm" />
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {m.title}
+              </span>
+              <span className="flex shrink-0 items-center gap-3">
+                <span className="text-sm text-muted-foreground">
+                  {m.outcomeCount} outcomes
+                </span>
+                <StatusBadge status={m.status as BetStatusName} />
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Sidebets</h2>
+        {data && data.bets.length === 0 && (
+          <p className="text-sm text-muted-foreground">No sidebets found.</p>
+        )}
+        <div className="space-y-2">
+          {data?.bets.map((m) => (
+            <Link
+              key={`b-${m.id}`}
               href={`/bets/${m.id}`}
               className="card flex items-center gap-3 p-4 transition-colors hover:border-primary/40"
             >

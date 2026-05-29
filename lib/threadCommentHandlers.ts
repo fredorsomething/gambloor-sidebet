@@ -3,6 +3,10 @@ import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
+import {
+  checkCommentRateLimit,
+  isAllowedGifUrl,
+} from "@/lib/commentInteractions";
 import { prisma } from "@/lib/db";
 import { notifyMany } from "@/lib/notifications";
 import { loadSubject } from "@/lib/resolutionSubject";
@@ -10,14 +14,20 @@ import { jsonErr, jsonOk } from "@/lib/serialize";
 import { listThreadComments, type SubjectType } from "@/lib/threadComments";
 import { shortAddr } from "@/lib/utils";
 
-const PostSchema = z.object({
-  author: z.string().refine(isAddress, "bad author"),
-  body: z
-    .string()
-    .trim()
-    .min(1, "comment is empty")
-    .max(2000, "comment too long"),
-});
+const PostSchema = z
+  .object({
+    author: z.string().refine(isAddress, "bad author"),
+    body: z.string().trim().max(2000, "comment too long").optional().default(""),
+    gifUrl: z
+      .string()
+      .refine((u) => isAllowedGifUrl(u), "invalid gif url")
+      .nullable()
+      .optional(),
+    parentId: z.number().int().positive().nullable().optional(),
+  })
+  .refine((d) => d.body.trim().length > 0 || !!d.gifUrl, {
+    message: "comment is empty",
+  });
 
 function parseId(idStr: string): number | null {
   const id = Number(idStr);
@@ -36,12 +46,14 @@ async function subjectExists(
 
 /** GET — public list of thread comments. */
 export async function handleListComments(
+  req: NextRequest,
   subjectType: SubjectType,
   idStr: string,
 ) {
   const id = parseId(idStr);
   if (id === null) return jsonErr("bad id", 400);
-  const comments = await listThreadComments(subjectType, id);
+  const viewer = req.nextUrl.searchParams.get("viewer");
+  const comments = await listThreadComments(subjectType, id, viewer);
   return jsonOk({ comments });
 }
 
@@ -73,12 +85,38 @@ export async function handlePostComment(
   const auth = await verifyWalletAuth({ req, address: author });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
+  // Validate reply parent belongs to this thread.
+  let parentId: number | null = null;
+  if (parsed.data.parentId) {
+    const parent = await prisma.threadComment.findUnique({
+      where: { id: parsed.data.parentId },
+      select: { subjectType: true, subjectId: true },
+    });
+    if (!parent || parent.subjectType !== subjectType || parent.subjectId !== id) {
+      return jsonErr("reply target not found", 400);
+    }
+    parentId = parsed.data.parentId;
+  }
+
+  // Global rate limit: one comment per author per 10 minutes.
+  const rate = await checkCommentRateLimit(author);
+  if (!rate.ok) {
+    return jsonErr(
+      `You're commenting too fast. Try again in ${Math.ceil(
+        rate.retryAfterSec / 60,
+      )} min.`,
+      429,
+    );
+  }
+
   await prisma.threadComment.create({
     data: {
       subjectType,
       subjectId: id,
       author: author.toLowerCase(),
-      body: parsed.data.body,
+      body: parsed.data.body.trim(),
+      gifUrl: parsed.data.gifUrl ?? null,
+      parentId,
     },
   });
 
@@ -94,14 +132,17 @@ export async function handlePostComment(
     ...priorAuthors.map((c) => c.author),
   ].filter((a) => a.toLowerCase() !== author.toLowerCase());
 
+  const preview = parsed.data.body.trim()
+    ? parsed.data.body.trim().slice(0, 100)
+    : "[GIF]";
   await notifyMany(recipients, {
-    type: "comment",
+    type: parentId ? "reply" : "comment",
     title: subject ? `New comment on ${subject.title}` : "New comment",
-    body: `${shortAddr(author)}: ${parsed.data.body.slice(0, 100)}`,
+    body: `${shortAddr(author)}: ${preview}`,
     link: subject?.link ?? null,
   });
 
-  const comments = await listThreadComments(subjectType, id);
+  const comments = await listThreadComments(subjectType, id, author);
   return jsonOk({ comments });
 }
 
@@ -133,8 +174,15 @@ export async function handleDeleteComment(
     return jsonErr("you can only delete your own comments", 403);
   }
 
-  await prisma.threadComment.delete({ where: { id: commentId } });
+  // Remove the comment, its likes, and re-parent/delete direct replies.
+  await prisma.$transaction([
+    prisma.commentLike.deleteMany({
+      where: { scope: "thread", commentId },
+    }),
+    prisma.threadComment.deleteMany({ where: { parentId: commentId } }),
+    prisma.threadComment.delete({ where: { id: commentId } }),
+  ]);
 
-  const comments = await listThreadComments(subjectType, id);
+  const comments = await listThreadComments(subjectType, id, caller);
   return jsonOk({ comments });
 }

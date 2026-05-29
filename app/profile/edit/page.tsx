@@ -270,7 +270,7 @@ function EditProfileForm() {
                 )}
               >
                 {usernameError ??
-                  "Letters, numbers, and underscores. Leave blank to show your address."}
+                  "Renaming is safe — your views, PnL, comments, and rep stay tied to your wallet. Old links keep working too."}
               </span>
               <span className="text-muted-foreground">{username.length}/20</span>
             </div>

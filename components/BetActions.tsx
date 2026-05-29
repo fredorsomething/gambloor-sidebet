@@ -17,14 +17,20 @@ import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { formatToken, shortAddr } from "@/lib/utils";
-import type { BetRow } from "@/lib/types";
+import type { BetRow, GetBetResponse } from "@/lib/types";
+
+const ZERO = "0x0000000000000000000000000000000000000000";
+const WEEK_SECONDS = 7 * 24 * 60 * 60;
 
 type Props = {
   bet: BetRow;
+  /** Live on-chain snapshot from the bet endpoint; the source of truth for
+   *  status/acceptor so stale off-chain data never shows the wrong action. */
+  onchain?: GetBetResponse["onchain"];
   onTxConfirmed?: () => void;
 };
 
-export function BetActions({ bet, onTxConfirmed }: Props) {
+export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
   const { address: account } = useAccount();
   const { push } = useToast();
   const ensurePolygon = useEnsurePolygon();
@@ -32,6 +38,22 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   const me = account?.toLowerCase();
   const isProposer = me === bet.proposer.toLowerCase();
   const isSettler = me === bet.settler.toLowerCase();
+
+  // Prefer on-chain truth over the indexed snapshot (which can lag behind).
+  const status = onchain?.status ?? bet.status;
+  const acceptorAddr =
+    onchain?.acceptor && onchain.acceptor !== ZERO
+      ? onchain.acceptor
+      : bet.acceptor;
+  const isAcceptor = !!me && !!acceptorAddr && me === acceptorAddr.toLowerCase();
+
+  // A still-open offer with no taker is "expired" once its accept window passes.
+  // New bets carry a 1-week acceptDeadline; older ones fall back to created+1wk.
+  const createdSec = Math.floor(new Date(bet.createdAt).getTime() / 1000);
+  const deadlineSec = bet.acceptDeadline
+    ? Number(bet.acceptDeadline)
+    : createdSec + WEEK_SECONDS;
+  const expired = status === "Open" && Math.floor(Date.now() / 1000) > deadlineSec;
 
   const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
@@ -47,8 +69,9 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   // Acceptor must stake the acceptorStake amount.
   const needsApproval =
     !!account &&
-    bet.status === "Open" &&
+    status === "Open" &&
     !isProposer &&
+    !isAcceptor &&
     (live.allowance ?? 0n) < acceptorStake;
 
   const approveTx = useWriteContract();
@@ -196,8 +219,41 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
     );
   }
 
+  // Expired open offer (no taker within the accept window).
+  if (status === "Open" && expired) {
+    if (isProposer) {
+      return (
+        <div className="card p-5 space-y-3 ring-1 ring-warning/30">
+          <LowGasBanner />
+          <h3 className="font-semibold">Offer expired</h3>
+          <p className="text-sm text-muted-foreground">
+            No one took this bet within a week, so it&apos;s closed to new takers.
+            Reclaim your {formatToken(proposerStake, decimals)} {tokenSym} stake.
+          </p>
+          <Button
+            variant="danger"
+            onClick={onCancel}
+            disabled={cancelTx.isPending || cancelWait.isLoading}
+            className="w-full"
+          >
+            {cancelWait.isLoading ? "Reclaiming…" : "Reclaim my stake"}
+          </Button>
+        </div>
+      );
+    }
+    return (
+      <div className="card p-5 text-sm">
+        <h3 className="font-semibold">Offer expired</h3>
+        <p className="mt-1 text-muted-foreground">
+          This offer wasn&apos;t taken within a week and is no longer available.
+          The proposer can reclaim their stake.
+        </p>
+      </div>
+    );
+  }
+
   // Open + I'm not the proposer => can accept.
-  if (bet.status === "Open" && !isProposer) {
+  if (status === "Open" && !isProposer && !isAcceptor) {
     const theirPick = outcomes[bet.acceptorOutcome];
     return (
       <div className="card p-5 space-y-4 ring-1 ring-primary/30">
@@ -269,7 +325,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   }
 
   // Open + I'm the proposer => can cancel.
-  if (bet.status === "Open" && isProposer) {
+  if (status === "Open" && isProposer) {
     return (
       <div className="card p-5 space-y-3">
         <LowGasBanner />
@@ -291,7 +347,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   }
 
   // Matched + I'm the settler => can settle by picking the winning outcome.
-  if (bet.status === "Matched" && isSettler) {
+  if (status === "Matched" && isSettler) {
     return (
       <div className="card p-5 space-y-4">
         <LowGasBanner />
@@ -350,7 +406,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   }
 
   // Matched + waiting on settler.
-  if (bet.status === "Matched") {
+  if (status === "Matched") {
     return (
       <div className="card p-5 text-sm">
         <h3 className="font-semibold">Awaiting settlement</h3>
@@ -364,7 +420,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   }
 
   // Settled.
-  if (bet.status === "Settled") {
+  if (status === "Settled") {
     const win = bet.winningOutcome;
     const winLabel = win != null ? outcomes[win] : undefined;
     const refunded =
@@ -392,7 +448,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
     );
   }
 
-  if (bet.status === "Cancelled") {
+  if (status === "Cancelled") {
     return (
       <div className="card p-5">
         <h3 className="font-semibold">Cancelled</h3>
@@ -403,7 +459,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
     );
   }
 
-  if (bet.status === "Refunded") {
+  if (status === "Refunded") {
     return (
       <div className="card p-5">
         <h3 className="font-semibold">Refunded</h3>

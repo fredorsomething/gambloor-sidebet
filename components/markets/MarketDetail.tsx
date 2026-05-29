@@ -21,6 +21,7 @@ import { polygon } from "wagmi/chains";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Comments } from "@/components/Comments";
+import { MarketPortfolio } from "@/components/markets/MarketPortfolio";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
@@ -40,6 +41,10 @@ import type { MarketDetailResponse, OrderRow } from "@/lib/types";
 
 type Side = "BUY" | "SELL";
 type OrderType = "limit" | "market" | "mint" | "redeem";
+
+/** A book level in the unified view. `_complementary` rows come from the
+ * opposing outcome and are filled by minting/merging a full set. */
+type UnifiedOrder = OrderRow & { _complementary?: boolean };
 
 /** Cents string for a 0–1 probability price, e.g. 0.154 -> "15.4¢". */
 function cents(price: number): string {
@@ -168,19 +173,62 @@ export function MarketDetail({ id }: { id: number }) {
   const selected = outcomes[selectedIdx] ?? outcomes[0];
   const book = data?.orderBook?.[selected.index] ?? { buys: [], sells: [] };
 
-  // Best prices for the selected outcome (API pre-sorts: buys high→low, sells low→high).
-  const bestAsk = book.sells[0] ? Number(book.sells[0].price) : null;
-  const bestBid = book.buys[0] ? Number(book.buys[0].price) : null;
+  // ---- Unified (combined Yes/No) order book ----------------------------
+  // For binary markets the two outcomes are complementary (price sums to 1),
+  // so we fold the *other* outcome's liquidity into a single book denominated
+  // in the selected outcome. A resting BUY on the other side is, economically,
+  // an ASK on this side at (1 - price); a resting SELL on the other side is a
+  // BID here at (1 - price). Complementary rows are still fillable peer-to-peer
+  // by minting (split) or merging a full set around the native fill.
+  const isBinary = outcomes.length === 2;
+  const otherOutcome = isBinary
+    ? outcomes.find((o) => o.index !== selected.index) ?? null
+    : null;
+  const otherBook =
+    otherOutcome != null
+      ? data?.orderBook?.[otherOutcome.index] ?? { buys: [], sells: [] }
+      : { buys: [], sells: [] };
+
+  const compl = (o: OrderRow): UnifiedOrder => ({
+    ...o,
+    price: String(1 - Number(o.price)),
+    _complementary: true,
+  });
+
+  const unifiedSells: UnifiedOrder[] = isBinary
+    ? [...book.sells, ...otherBook.buys.map(compl)].sort(
+        (a, b) => Number(a.price) - Number(b.price),
+      )
+    : (book.sells as UnifiedOrder[]);
+  const unifiedBuys: UnifiedOrder[] = isBinary
+    ? [...book.buys, ...otherBook.sells.map(compl)].sort(
+        (a, b) => Number(b.price) - Number(a.price),
+      )
+    : (book.buys as UnifiedOrder[]);
+
+  // Best prices reflect combined liquidity across both outcomes.
+  const bestAsk = unifiedSells[0] ? Number(unifiedSells[0].price) : null;
+  const bestBid = unifiedBuys[0] ? Number(unifiedBuys[0].price) : null;
   const spread = bestAsk != null && bestBid != null ? bestAsk - bestBid : null;
   const mid =
     bestAsk != null && bestBid != null
       ? (bestAsk + bestBid) / 2
       : (bestAsk ?? bestBid);
 
-  // Best ask per outcome (cost to buy) for the outcome selector chips.
+  // Best ask per outcome (cost to buy), combining native asks with the
+  // complementary bids from the opposing outcome.
   function outcomeBuyPrice(idx: number): number | null {
     const b = data?.orderBook?.[idx];
-    return b?.sells[0] ? Number(b.sells[0].price) : null;
+    let best = b?.sells[0] ? Number(b.sells[0].price) : null;
+    if (isBinary) {
+      const other = outcomes.find((o) => o.index !== idx);
+      const ob = other ? data?.orderBook?.[other.index] : undefined;
+      if (ob?.buys[0]) {
+        const p = 1 - Number(ob.buys[0].price);
+        best = best == null ? p : Math.min(best, p);
+      }
+    }
+    return best;
   }
 
   // ---- on-chain actions -------------------------------------------------
@@ -350,14 +398,72 @@ export function MarketDetail({ id }: { id: number }) {
     });
   }
 
+  /**
+   * Fill `sharesTake` (selected-outcome share units) of a resting order. Handles
+   * both native orders and complementary orders (from the opposing outcome) by
+   * minting/merging a full set around the native fill.
+   */
+  async function fillUnifiedShares(order: UnifiedOrder, sharesTake: bigint) {
+    if (sharesTake <= 0n) return;
+    const makerAmount = BigInt(order.makerAmount);
+    const takerAmount = BigInt(order.takerAmount);
+    const remainingTaker = takerAmount - BigInt(order.filled);
+    const availShares = sharesRemainingRaw(order);
+    const whole = sharesTake >= availShares;
+
+    if (!order._complementary) {
+      if (order.side === "SELL") {
+        // Native ask — buy `selected`: taker pays collateral.
+        const takerFill = whole
+          ? remainingTaker
+          : (takerAmount * sharesTake) / (makerAmount || 1n);
+        await fillOrderRaw(order, takerFill);
+      } else {
+        // Native bid — sell `selected`: taker provides shares.
+        const takerFill = whole ? remainingTaker : sharesTake;
+        await fillOrderRaw(order, takerFill);
+      }
+      return;
+    }
+
+    // Complementary fills: order belongs to the opposing outcome.
+    if (order.side === "BUY") {
+      // Opposing BUY == ask here. Buy `selected` by minting a full set and
+      // selling the opposing shares into this order.
+      await splitTx.writeContractAsync({
+        chainId: polygon.id,
+        address: ctf,
+        abi: CONDITIONAL_TOKENS_ABI,
+        functionName: "splitPosition",
+        args: [conditionId, sharesTake],
+      });
+      const takerFill = whole ? remainingTaker : sharesTake; // BUY taker units = shares
+      await fillOrderRaw(order, takerFill);
+    } else {
+      // Opposing SELL == bid here. Sell `selected` by buying the opposing
+      // shares, then merging a full set (requires holding `selected` shares).
+      const takerFill = whole
+        ? remainingTaker
+        : (takerAmount * sharesTake) / (makerAmount || 1n);
+      await fillOrderRaw(order, takerFill);
+      await mergeTx.writeContractAsync({
+        chainId: polygon.id,
+        address: ctf,
+        abi: CONDITIONAL_TOKENS_ABI,
+        functionName: "mergePositions",
+        args: [conditionId, sharesTake],
+      });
+    }
+  }
+
   /** Fill a single resting order completely (used by the book "take" buttons). */
-  async function takeOrder(order: OrderRow) {
+  async function takeOrder(order: UnifiedOrder) {
     if (!account) return;
     try {
-      const remainingTaker = BigInt(order.takerAmount) - BigInt(order.filled);
-      if (remainingTaker <= 0n) return;
+      const availShares = sharesRemainingRaw(order);
+      if (availShares <= 0n) return;
       await ensurePolygon();
-      await fillOrderRaw(order, remainingTaker);
+      await fillUnifiedShares(order, availShares);
       push({ title: "Order filled", variant: "success" });
       query.refetch();
     } catch (err) {
@@ -377,8 +483,8 @@ export function MarketDetail({ id }: { id: number }) {
       push({ title: "Enter a share amount", variant: "danger" });
       return;
     }
-    // BUY consumes asks (sells); SELL consumes bids (buys).
-    const resting = (takeSide === "BUY" ? book.sells : book.buys).filter(
+    // BUY consumes asks (sells); SELL consumes bids (buys) across the unified book.
+    const resting = (takeSide === "BUY" ? unifiedSells : unifiedBuys).filter(
       (o) => o.maker.toLowerCase() !== account.toLowerCase(),
     );
     if (resting.length === 0) {
@@ -399,23 +505,9 @@ export function MarketDetail({ id }: { id: number }) {
         const availShares = sharesRemainingRaw(order);
         if (availShares <= 0n) continue;
 
-        const remainingTaker = BigInt(order.takerAmount) - BigInt(order.filled);
-
-        let takerFill: bigint;
-        if (remainingShares >= availShares) {
-          takerFill = remainingTaker; // take the whole resting order
-        } else if (order.side === "SELL") {
-          // taker pays collateral; collateral for wanted shares = remainingTaker * want/avail
-          takerFill = (remainingTaker * remainingShares) / availShares;
-        } else {
-          // BUY order: taker provides shares directly
-          takerFill = remainingShares;
-        }
-        if (takerFill <= 0n) continue;
-
-        await fillOrderRaw(order, takerFill);
         const sharesTaken =
           remainingShares >= availShares ? availShares : remainingShares;
+        await fillUnifiedShares(order, sharesTaken);
         remainingShares -= sharesTaken;
         fills += 1;
       }
@@ -582,15 +674,16 @@ export function MarketDetail({ id }: { id: number }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        {/* Left column: order book, rules, comments */}
-        <div className="space-y-6">
+        {/* Left column: order book, rules, comments. On mobile this renders
+            after the trade panel so traders don't have to scroll past it. */}
+        <div className="order-2 space-y-6 lg:order-none lg:col-start-1 lg:row-start-1">
           <OrderBookPanel
             outcomes={outcomes}
             selectedIdx={selected.index}
             onSelectOutcome={setSelectedIdx}
             outcomeBuyPrice={outcomeBuyPrice}
-            buys={book.buys}
-            sells={book.sells}
+            buys={unifiedBuys}
+            sells={unifiedSells}
             decimals={decimals}
             bestAsk={bestAsk}
             bestBid={bestBid}
@@ -598,12 +691,24 @@ export function MarketDetail({ id }: { id: number }) {
             mid={mid}
             account={account}
             resolved={resolved}
+            unified={isBinary}
+            otherLabel={otherOutcome?.label ?? null}
             onTake={takeOrder}
             onPickPrice={(p) => {
               setOrderType("limit");
               setLimitCents((p * 100).toFixed(1));
             }}
           />
+
+          {account && (
+            <MarketPortfolio
+              marketId={market.id}
+              account={account}
+              exchange={exchange}
+              positions={positions}
+              onChanged={() => query.refetch()}
+            />
+          )}
 
           <RulesPanel terms={market.terms} description={market.description} />
 
@@ -619,8 +724,9 @@ export function MarketDetail({ id }: { id: number }) {
           <Comments basePath={`/api/markets/${market.id}/comments`} />
         </div>
 
-        {/* Right column: trade panel */}
-        <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        {/* Right column: trade panel. Ordered first on mobile so it's reachable
+            without scrolling past the book/comments. */}
+        <aside className="order-1 space-y-4 lg:order-none lg:col-start-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
           {!account ? (
             <div className="card p-5 text-sm text-muted-foreground">
               Sign in to trade, mint, or redeem shares.
@@ -840,6 +946,8 @@ function OrderBookPanel({
   mid,
   account,
   resolved,
+  unified,
+  otherLabel,
   onTake,
   onPickPrice,
 }: {
@@ -847,8 +955,8 @@ function OrderBookPanel({
   selectedIdx: number;
   onSelectOutcome: (idx: number) => void;
   outcomeBuyPrice: (idx: number) => number | null;
-  buys: OrderRow[];
-  sells: OrderRow[];
+  buys: UnifiedOrder[];
+  sells: UnifiedOrder[];
   decimals: number;
   bestAsk: number | null;
   bestBid: number | null;
@@ -856,7 +964,9 @@ function OrderBookPanel({
   mid: number | null;
   account?: string;
   resolved: boolean;
-  onTake: (o: OrderRow) => void;
+  unified?: boolean;
+  otherLabel?: string | null;
+  onTake: (o: UnifiedOrder) => void;
   onPickPrice: (price: number) => void;
 }) {
   // Asks: worst (highest) at top, best (lowest) just above the spread line.
@@ -881,10 +991,14 @@ function OrderBookPanel({
     <section className="card p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="font-semibold">Order book</h3>
-        {outcomes.length > 2 && (
-          <span className="text-xs text-muted-foreground">
-            {outcomes.find((o) => o.index === selectedIdx)?.label}
-          </span>
+        {unified ? (
+          <span className="badge badge-accent">Unified</span>
+        ) : (
+          outcomes.length > 2 && (
+            <span className="text-xs text-muted-foreground">
+              {outcomes.find((o) => o.index === selectedIdx)?.label}
+            </span>
+          )
         )}
       </div>
 
@@ -935,6 +1049,7 @@ function OrderBookPanel({
             tone="ask"
             mine={!!account && o.maker.toLowerCase() === account.toLowerCase()}
             canTake={!resolved && !!account}
+            otherLabel={otherLabel}
             onTake={onTake}
             onPickPrice={onPickPrice}
           />
@@ -973,6 +1088,7 @@ function OrderBookPanel({
             tone="bid"
             mine={!!account && o.maker.toLowerCase() === account.toLowerCase()}
             canTake={!resolved && !!account}
+            otherLabel={otherLabel}
             onTake={onTake}
             onPickPrice={onPickPrice}
           />
@@ -989,21 +1105,24 @@ function BookRow({
   tone,
   mine,
   canTake,
+  otherLabel,
   onTake,
   onPickPrice,
 }: {
-  order: OrderRow;
+  order: UnifiedOrder;
   decimals: number;
   total: number;
   tone: "ask" | "bid";
   mine: boolean;
   canTake: boolean;
-  onTake: (o: OrderRow) => void;
+  otherLabel?: string | null;
+  onTake: (o: UnifiedOrder) => void;
   onPickPrice: (price: number) => void;
 }) {
   const price = Number(order.price);
   const sharesNum = Number(formatUnits(sharesRemainingRaw(order), decimals));
   const isAsk = tone === "ask";
+  const complementary = !!order._complementary;
 
   return (
     <div
@@ -1026,6 +1145,14 @@ function BookRow({
       </button>
       <span className="text-right font-mono text-foreground">
         {sharesNum.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        {complementary && otherLabel && (
+          <span
+            className="ml-1 text-[9px] uppercase text-muted-foreground"
+            title={`Liquidity from the ${otherLabel} book`}
+          >
+            ·{otherLabel.slice(0, 4)}
+          </span>
+        )}
       </span>
       <span className="flex items-center justify-end gap-2">
         <span className="font-mono text-muted-foreground">{money(total)}</span>

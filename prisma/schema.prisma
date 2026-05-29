@@ -36,6 +36,50 @@ model User {
   @@index([privyId])
 }
 
+// Past usernames a wallet has used. Lets old `/u/<oldname>` links keep resolving
+// to the same wallet after a rename, so a user's identity/stats stay reachable
+// no matter how often they change their display name. Current usernames on the
+// `User` row always take priority over history when resolving a handle.
+model UsernameHistory {
+  id        Int      @id @default(autoincrement())
+  address   String   // checksummed wallet that used this username
+  username  String   // lowercased former username
+  createdAt DateTime @default(now())
+
+  @@unique([username, address])
+  @@index([username])
+  @@index([address])
+}
+
+// A counter-offer on an Open sidebet. A would-be taker who likes the premise but
+// wants different stakes/odds (or tweaked terms) sends revised terms to the
+// proposer, who can accept, decline, or ignore. Purely off-chain negotiation:
+// because the on-chain bet's stakes/terms are fixed at creation, an accepted
+// offer is realized by the proposer relaunching the bet with the agreed terms.
+model BetNegotiation {
+  id            Int      @id @default(autoincrement())
+  betId         Int
+  fromAddress   String   // lowercased address of the negotiator (would-be acceptor)
+
+  // Proposed stakes (wei-unit decimal strings) from the PROPOSER's perspective,
+  // mirroring how a Bet stores them. The negotiator stakes `acceptorStake`.
+  proposerStake String
+  acceptorStake String
+
+  terms         String?  // optional revised resolution terms
+  message       String?  // optional note to the proposer
+
+  status        String   @default("Pending") // Pending | Accepted | Declined | Withdrawn
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bet           Bet      @relation(fields: [betId], references: [id], onDelete: Cascade)
+
+  @@index([betId, status])
+  @@index([fromAddress])
+}
+
 // Peer reputation: one vote per (voter -> target). value is +1 (rep) or -1
 // (downvote). The net score is the sum of values for a target. Self-votes are
 // rejected at the API layer.
@@ -57,10 +101,13 @@ model ProfileComment {
   target    String   // profile owner address (lowercase)
   author    String   // commenter address (lowercase)
   body      String
+  gifUrl    String?  // optional attached GIF (e.g. Giphy/Tenor media url)
+  parentId  Int?     // reply target (another ProfileComment.id) for threaded replies
   createdAt DateTime @default(now())
 
   @@index([target, createdAt])
   @@index([author])
+  @@index([parentId])
 }
 
 // Discussion comments attached to a sidebet or a market. `subjectType` selects
@@ -72,10 +119,40 @@ model ThreadComment {
   subjectId   Int
   author      String   // commenter address (lowercase)
   body        String
+  gifUrl      String?  // optional attached GIF media url
+  parentId    Int?     // reply target (another ThreadComment.id)
   createdAt   DateTime @default(now())
 
   @@index([subjectType, subjectId, createdAt])
   @@index([author])
+  @@index([parentId])
+}
+
+// Likes on comments. `scope` selects which comment table the `commentId` refers
+// to ("thread" | "profile"). One like per (scope, commentId, liker).
+model CommentLike {
+  id        Int      @id @default(autoincrement())
+  scope     String   // "thread" | "profile"
+  commentId Int
+  liker     String   // lowercased address
+  createdAt DateTime @default(now())
+
+  @@unique([scope, commentId, liker])
+  @@index([scope, commentId])
+}
+
+// Profile view tracking. One row per (target, viewer) within a dedupe window;
+// `viewer` is the lowercased wallet address, or an "anon:<id>" key for signed-out
+// visitors. The profile view count is the number of distinct rows for a target.
+model ProfileView {
+  id        Int      @id @default(autoincrement())
+  target    String   // lowercased address being viewed
+  viewer    String   // lowercased viewer address, or "anon:<id>"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([target, viewer])
+  @@index([target])
 }
 
 // In-app notifications. One row per (recipient, event). `recipient` is the
@@ -174,6 +251,8 @@ model Bet {
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  negotiations    BetNegotiation[]
 
   @@unique([chainId, escrowAddress, onchainId])
   @@index([chainId, status])

@@ -5,6 +5,7 @@ import { getAddress, isAddress } from "viem";
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isAllowedAvatarUrl } from "@/lib/profile";
+import { getProfileViewCount } from "@/lib/profileViews";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { computeUserStats, type StatBet } from "@/lib/stats";
 
@@ -26,13 +27,29 @@ export async function GET(
     user = await prisma.user.findFirst({
       where: { username: { equals: handle, mode: "insensitive" } },
     });
-    if (!user) return jsonErr("user not found", 404);
-    address = getAddress(user.address);
+    if (!user) {
+      // Fall back to a former username so old links keep resolving to the same
+      // wallet after a rename. Current usernames always win (checked above).
+      const past = await prisma.usernameHistory.findFirst({
+        where: { username: handle.toLowerCase() },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!past) return jsonErr("user not found", 404);
+      address = getAddress(past.address);
+      user = await prisma.user.findUnique({ where: { address } });
+    } else {
+      address = getAddress(user.address);
+    }
   }
 
+  // Match by address case-insensitively so no on-chain activity is ever missed
+  // due to checksum casing differences. Identity is the wallet, not the name.
   const bets = await prisma.bet.findMany({
     where: {
-      OR: [{ proposer: address }, { acceptor: address }],
+      OR: [
+        { proposer: { equals: address, mode: "insensitive" } },
+        { acceptor: { equals: address, mode: "insensitive" } },
+      ],
     },
     orderBy: { createdAt: "desc" },
     take: 100,
@@ -51,7 +68,7 @@ export async function GET(
 
   // CLOB markets this user created.
   const createdMarkets = await prisma.market.findMany({
-    where: { creator: address },
+    where: { creator: { equals: address, mode: "insensitive" } },
     orderBy: { createdAt: "desc" },
     take: 100,
     include: { _count: { select: { outcomes: true } } },
@@ -66,6 +83,8 @@ export async function GET(
     outcomeCount: m._count.outcomes,
   }));
 
+  const views = await getProfileViewCount(address);
+
   return jsonOk({
     user: {
       address,
@@ -75,6 +94,7 @@ export async function GET(
       twitter: user?.twitter ?? null,
       discord: user?.discord ?? null,
       joinedAt: user?.createdAt ?? null,
+      views,
     },
     stats,
     bets,
@@ -122,14 +142,31 @@ export async function PUT(
   const auth = await verifyWalletAuth({ req, address });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
-  // Enforce unique username (case-insensitive-ish: stored as provided).
+  // Enforce unique username, case-insensitively.
   if (d.username) {
-    const existing = await prisma.user.findUnique({
-      where: { username: d.username },
+    const existing = await prisma.user.findFirst({
+      where: { username: { equals: d.username, mode: "insensitive" } },
     });
     if (existing && existing.address.toLowerCase() !== address.toLowerCase()) {
       return jsonErr("username already taken", 409);
     }
+  }
+
+  // Record the previous username so its old `/u/<name>` links keep resolving to
+  // this wallet. All stats stay keyed to the (immutable) address regardless.
+  const prior = await prisma.user.findUnique({ where: { address } });
+  const oldUsername = prior?.username?.trim();
+  const newUsername = d.username?.trim() || null;
+  if (oldUsername && oldUsername.toLowerCase() !== newUsername?.toLowerCase()) {
+    await prisma.usernameHistory
+      .upsert({
+        where: {
+          username_address: { username: oldUsername.toLowerCase(), address },
+        },
+        update: { createdAt: new Date() },
+        create: { username: oldUsername.toLowerCase(), address },
+      })
+      .catch(() => {});
   }
 
   const user = await prisma.user.upsert({

@@ -198,6 +198,23 @@ export async function GET(req: NextRequest) {
         { acceptor: addr },
         { settler: addr },
       ];
+  } else {
+    // Public feed: hide open offers that expired without a taker. New bets carry
+    // a 1-week acceptDeadline; older ones fall back to created + 1 week. Personal
+    // ("who") views still show them so the proposer can reclaim their stake.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    where.NOT = {
+      AND: [
+        { status: "Open" },
+        {
+          OR: [
+            { acceptDeadline: { lt: BigInt(nowSec) } },
+            { AND: [{ acceptDeadline: null }, { createdAt: { lt: weekAgo } }] },
+          ],
+        },
+      ],
+    };
   }
 
   const [rows, total] = await Promise.all([

@@ -1,14 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, Check, Copy } from "lucide-react";
+import { CalendarDays, Check, Copy, Eye } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
+import { PnlChart } from "@/components/profile/PnlChart";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
 import { ProfileComments } from "@/components/profile/ProfileComments";
 import { ProfileSocialLinks } from "@/components/profile/ProfileSocialLinks";
@@ -56,11 +57,27 @@ type ProfileResponse = {
     twitter: string | null;
     discord: string | null;
     joinedAt: string | null;
+    views: number;
   };
   stats: UserStats;
   bets: ProfileBet[];
   markets: ProfileMarket[];
 };
+
+/** Stable per-browser anonymous id used to dedupe profile views. */
+function getAnonViewerKey(): string {
+  if (typeof window === "undefined") return "anon:server";
+  try {
+    let id = localStorage.getItem("sb_anon_id");
+    if (!id) {
+      id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("sb_anon_id", id);
+    }
+    return `anon:${id}`;
+  } catch {
+    return "anon:nostorage";
+  }
+}
 
 function usd(n: number) {
   const sign = n > 0 ? "+" : n < 0 ? "−" : "";
@@ -93,6 +110,20 @@ export default function ProfilePage() {
 
   // Canonical wallet address (handle may have been an @username).
   const address = data?.user.address;
+
+  // Record a profile view once per resolved profile load.
+  const recorded = useRef<string | null>(null);
+  useEffect(() => {
+    if (!address) return;
+    if (recorded.current === address.toLowerCase()) return;
+    recorded.current = address.toLowerCase();
+    const viewer = connected ?? getAnonViewerKey();
+    fetch(`/api/users/${address}/view`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ viewer }),
+    }).catch(() => {});
+  }, [address, connected]);
 
   if (isError) {
     return (
@@ -158,12 +189,19 @@ export default function ProfilePage() {
                 discord={data?.user.discord}
                 className="mt-2"
               />
-              {joinedLabel(data?.user.joinedAt) && (
-                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  Joined {joinedLabel(data?.user.joinedAt)}
-                </p>
-              )}
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {joinedLabel(data?.user.joinedAt) && (
+                  <span className="flex items-center gap-1.5">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Joined {joinedLabel(data?.user.joinedAt)}
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5">
+                  <Eye className="h-3.5 w-3.5" />
+                  {(data?.user.views ?? 0).toLocaleString()}{" "}
+                  {data?.user.views === 1 ? "view" : "views"}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -214,6 +252,8 @@ export default function ProfilePage() {
           />
         </div>
       )}
+
+      {!isAdmin && <PnlChart address={address} />}
 
       <div className={cn("grid gap-6", !isAdmin && "md:grid-cols-[1fr_280px]")}>
         {!isAdmin && (

@@ -1,7 +1,17 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { ArrowUpRight, Check, Copy, Fuel, Plus, Wallet } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowUpRight,
+  Check,
+  Copy,
+  Fuel,
+  PieChart,
+  Plus,
+  Wallet,
+} from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { formatUnits } from "viem";
 import { useAccount, useBalance, useChainId, useReadContracts } from "wagmi";
@@ -11,6 +21,7 @@ import { useWalletFunds } from "@/components/wallet/FundWalletModal";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { ERC20_ABI } from "@/lib/abi";
 import { getTokens } from "@/lib/chains";
+import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
 
 const STABLE_SYMBOLS = new Set(["USDC", "pUSD", "USDC.e"]);
@@ -55,6 +66,14 @@ export function WalletBalance() {
     query: { enabled: !!address, refetchInterval: 12_000 },
   });
 
+  const { data: positions } = useQuery<{ totalValue: number }>({
+    queryKey: ["walletPositions", address?.toLowerCase()],
+    enabled: !!address,
+    queryFn: () => jsonFetch(`/api/users/${address}/positions`),
+    refetchInterval: 20_000,
+  });
+  const positionsValue = positions?.totalValue ?? 0;
+
   if (!ready || !authenticated || !address) return null;
 
   const onPolygon = chainId === polygon.id;
@@ -65,6 +84,7 @@ export function WalletBalance() {
   });
 
   const totalUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
+  const grandTotal = totalUsd + positionsValue;
   const polAmount = pol ? Number(pol.formatted) : 0;
   const lowGas = polAmount === 0;
 
@@ -84,7 +104,7 @@ export function WalletBalance() {
         <Wallet className="h-4 w-4 text-muted-foreground" />
         <span className="tabular-nums">
           $
-          {totalUsd.toLocaleString(undefined, {
+          {grandTotal.toLocaleString(undefined, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })}
@@ -117,7 +137,25 @@ export function WalletBalance() {
           </div>
 
           <div className="p-3">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <Link
+              href="/portfolio"
+              onClick={() => setMenuOpen(false)}
+              className="-mx-1 mb-3 flex items-center justify-between rounded-lg px-1 py-1.5 transition-colors hover:bg-muted/60"
+            >
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <PieChart className="h-4 w-4 text-primary" />
+                Positions
+              </span>
+              <span className="font-mono text-sm font-semibold tabular-nums">
+                $
+                {positionsValue.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            </Link>
+
+            <div className="border-t border-border pt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Stablecoins
             </div>
             <div className="mt-2 space-y-1.5">
@@ -197,6 +235,14 @@ export function WalletBalance() {
               <Fuel className="h-4 w-4" />
               Top up gas (POL)
             </button>
+            <Link
+              href="/portfolio"
+              onClick={() => setMenuOpen(false)}
+              className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              <PieChart className="h-4 w-4" />
+              Portfolio
+            </Link>
           </div>
 
           <p className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">

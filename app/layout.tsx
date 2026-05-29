@@ -7,6 +7,7 @@ import { WalletBalance } from "@/components/wallet/WalletBalance";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { SearchBar } from "@/components/SearchBar";
 import { NavLinks } from "@/components/NavLinks";
+import { MobileNav } from "@/components/MobileNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import "./globals.css";
 
@@ -43,22 +44,33 @@ export default function RootLayout({
         <Providers>
           <div className="flex min-h-screen flex-col">
             <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
-              <div className="container flex items-center gap-3 py-3.5 sm:py-4">
-                <ThemeToggle />
+              <div className="container flex items-center gap-2 py-3 sm:gap-3 sm:py-4">
+                <MobileNav />
+                <div className="hidden lg:block">
+                  <ThemeToggle />
+                </div>
                 <BrandLogo />
 
-                <div className="flex flex-1 justify-center px-2">
+                {/* Desktop search sits centered in the bar. */}
+                <div className="hidden flex-1 justify-center px-2 lg:flex">
                   <SearchBar />
                 </div>
+                {/* Mobile keeps the bar compact; search drops to its own row. */}
+                <div className="flex-1 lg:hidden" />
 
                 <NavLinks />
                 <WalletBalance />
                 <ConnectButton />
                 <NotificationBell />
               </div>
+
+              {/* Mobile search row */}
+              <div className="container pb-3 lg:hidden">
+                <SearchBar />
+              </div>
             </header>
 
-            <main className="container flex-1 py-8">{children}</main>
+            <main className="container flex-1 py-6 sm:py-8">{children}</main>
 
             <footer className="border-t border-border py-6 text-xs text-muted-foreground">
               <div className="container flex flex-wrap items-center justify-between gap-2">

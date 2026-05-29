@@ -1,39 +1,28 @@
 import { NextRequest } from "next/server";
-import type { Prisma } from "@prisma/client";
 
-import { prisma } from "@/lib/db";
+import { collectDirectoryUsers } from "@/lib/directory";
 import { jsonOk } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/users?q=foo — public directory of users.
- * Returns named users first (A-Z by username), then unnamed wallets.
+ * GET /api/users?q=foo — public directory of every wallet that has interacted
+ * with Sidebet (created/took bets, placed orders, traded, commented, or saved a
+ * profile). Named users come first (A-Z by username), then unnamed wallets.
  */
 export async function GET(req: NextRequest) {
-  const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
+  const q = (req.nextUrl.searchParams.get("q") ?? "").trim().toLowerCase();
 
-  const where: Prisma.UserWhereInput = q
-    ? {
-        OR: [
-          { username: { contains: q, mode: "insensitive" } },
-          { address: { contains: q, mode: "insensitive" } },
-          { bio: { contains: q, mode: "insensitive" } },
-        ],
-      }
-    : {};
+  let users = await collectDirectoryUsers();
 
-  const users = await prisma.user.findMany({
-    where,
-    select: {
-      address: true,
-      username: true,
-      avatarUrl: true,
-      bio: true,
-      createdAt: true,
-    },
-    take: 1000,
-  });
+  if (q) {
+    users = users.filter(
+      (u) =>
+        u.username?.toLowerCase().includes(q) ||
+        u.address.toLowerCase().includes(q) ||
+        u.bio?.toLowerCase().includes(q),
+    );
+  }
 
   // Sort: named users alphabetically (case-insensitive), unnamed wallets last.
   users.sort((a, b) => {
@@ -45,13 +34,5 @@ export async function GET(req: NextRequest) {
     return a.address.toLowerCase().localeCompare(b.address.toLowerCase());
   });
 
-  return jsonOk({
-    users: users.map((u) => ({
-      address: u.address,
-      username: u.username,
-      avatarUrl: u.avatarUrl,
-      bio: u.bio,
-      joinedAt: u.createdAt.toISOString(),
-    })),
-  });
+  return jsonOk({ users });
 }

@@ -12,7 +12,7 @@ import { formatToken, shortAddr } from "@/lib/utils";
 import type { BetStatusName } from "@/lib/abi";
 
 type SearchResults = {
-  markets: {
+  bets: {
     id: number;
     title: string;
     imageUrl: string | null;
@@ -20,6 +20,14 @@ type SearchResults = {
     amount: string;
     decimals: number;
     tokenSymbol: string | null;
+  }[];
+  markets: {
+    id: number;
+    title: string;
+    imageUrl: string | null;
+    status: string;
+    tokenSymbol: string | null;
+    outcomeCount: number;
   }[];
   users: {
     address: string;
@@ -62,7 +70,9 @@ export function SearchBar() {
   });
 
   const hasResults =
-    (data?.markets.length ?? 0) > 0 || (data?.users.length ?? 0) > 0;
+    (data?.bets.length ?? 0) > 0 ||
+    (data?.markets.length ?? 0) > 0 ||
+    (data?.users.length ?? 0) > 0;
 
   function go(href: string) {
     setOpen(false);
@@ -144,7 +154,33 @@ export function SearchBar() {
               </div>
               {data!.markets.map((m) => (
                 <button
-                  key={m.id}
+                  key={`m-${m.id}`}
+                  onClick={() => go(`/markets/${m.id}`)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-muted"
+                >
+                  <BetThumbnail imageUrl={m.imageUrl} title={m.title} size="sm" />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {m.title}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {m.outcomeCount} outcomes
+                    </span>
+                    <StatusBadge status={m.status as BetStatusName} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {(data?.bets.length ?? 0) > 0 && (
+            <div className="border-t border-border p-2">
+              <div className="px-2 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                Sidebets
+              </div>
+              {data!.bets.map((m) => (
+                <button
+                  key={`b-${m.id}`}
                   onClick={() => go(`/bets/${m.id}`)}
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-muted"
                 >
