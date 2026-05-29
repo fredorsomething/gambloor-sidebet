@@ -13,7 +13,8 @@
     "db:studio": "prisma studio",
     "hh:compile": "hardhat compile",
     "hh:test": "hardhat test",
-    "hh:deploy": "hardhat run scripts/deploy.ts --network polygon"
+    "hh:deploy": "hardhat run scripts/deploy.ts --network polygon",
+    "settlers:sync": "hardhat run scripts/syncSettlers.ts --network polygon"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
