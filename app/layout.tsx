@@ -81,6 +81,17 @@ export default function RootLayout({
                 </div>
                 <div>Polygon · USDC · pUSD</div>
               </div>
+              <div className="container mt-4 text-[11px] leading-relaxed text-muted-foreground/70">
+                Sidebet is a brand name of Box, LLC, having its registered
+                address at Omonoias Avenue 13, Limassol 3052, Cyprus. For any
+                inquiries, contact us at{" "}
+                <a
+                  href="mailto:support@sidebet.lol"
+                  className="underline hover:text-foreground"
+                >
+                  support@sidebet.lol
+                </a>
+              </div>
             </footer>
           </div>
           <GlobalChat />
