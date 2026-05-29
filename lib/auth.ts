@@ -1,12 +1,17 @@
 import { getAddress, recoverMessageAddress, type Hex } from "viem";
 
+/** Normalize line endings / trailing whitespace before comparing signed text. */
+export function normalizeProfileMessage(message: string): string {
+  return message.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+}
+
 /**
  * Message a user signs to prove wallet ownership when editing their profile.
- * Kept identical between client (signing) and server (verification).
+ * ASCII-only header (no em dash) so wallets do not rewrite punctuation.
  */
 export function buildProfileMessage(address: string, issuedAt: string): string {
   return [
-    "Sidebet — Update profile",
+    "Sidebet - Update profile",
     "",
     "Sign this message to update your Sidebet profile.",
     "This request will not trigger a transaction or cost any gas.",
@@ -14,6 +19,33 @@ export function buildProfileMessage(address: string, issuedAt: string): string {
     `Address: ${getAddress(address)}`,
     `Issued At: ${issuedAt}`,
   ].join("\n");
+}
+
+/** True if the signed text matches what we expect for these claims. */
+function profileMessageMatchesClaims(
+  message: string,
+  claims: { address: string; issuedAt: string },
+): boolean {
+  const signed = normalizeProfileMessage(message);
+  const expected = normalizeProfileMessage(
+    buildProfileMessage(claims.address, claims.issuedAt),
+  );
+  if (signed === expected) return true;
+
+  // Older clients used an em dash in the title.
+  const legacy = normalizeProfileMessage(
+    expected.replace("Sidebet - Update profile", "Sidebet \u2014 Update profile"),
+  );
+  if (signed === legacy) return true;
+
+  // Wallets must not change Address / Issued At lines; allow minor header drift.
+  const addr = claims.address.toLowerCase();
+  return (
+    signed.includes("Update profile") &&
+    signed.includes("Sign this message to update your Sidebet profile.") &&
+    signed.toLowerCase().includes(`address: ${addr}`) &&
+    signed.includes(`Issued At: ${claims.issuedAt}`)
+  );
 }
 
 export function parseProfileMessage(
@@ -57,7 +89,7 @@ export async function verifyProfileAuth(args: {
   if (claims.address.toLowerCase() !== address.toLowerCase()) {
     return { ok: false, error: "message address mismatch", status: 401 };
   }
-  if (buildProfileMessage(address, claims.issuedAt) !== args.message) {
+  if (!profileMessageMatchesClaims(args.message, claims)) {
     return { ok: false, error: "message does not match canonical format", status: 400 };
   }
 
