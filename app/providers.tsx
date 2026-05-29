@@ -40,9 +40,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       appId={PRIVY_APP_ID}
       clientId={PRIVY_CLIENT_ID}
       config={{
-        loginMethods: ["email", "sms", "google", "wallet"],
+        loginMethods: ["email", "sms", "wallet"],
         appearance: {
-          theme: "light",
+          theme: "dark",
           accentColor: "#6366f1",
           walletChainType: "ethereum-only",
         },

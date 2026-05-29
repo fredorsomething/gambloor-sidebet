@@ -1,14 +1,18 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { Check, Copy } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { isAddress } from "viem";
+import { useState } from "react";
 import { useAccount } from "wagmi";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
+import { RepWidget } from "@/components/profile/RepWidget";
+import { TipButton } from "@/components/profile/TipButton";
+import { UserBadges } from "@/components/profile/UserBadges";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { jsonFetch } from "@/lib/fetcher";
@@ -54,22 +58,30 @@ const eq = (a?: string | null, b?: string | null) =>
 
 export default function ProfilePage() {
   const params = useParams<{ address: string }>();
-  const address = params.address;
+  const handle = params.address;
   const { address: connected } = useAccount();
 
-  const valid = isAddress(address);
-
-  const { data, isLoading } = useQuery<ProfileResponse>({
-    queryKey: ["userPage", address?.toLowerCase()],
-    enabled: valid,
-    queryFn: () => jsonFetch(`/api/users/${address}`),
+  const { data, isLoading, isError } = useQuery<ProfileResponse>({
+    queryKey: ["userPage", handle?.toLowerCase()],
+    enabled: !!handle,
+    retry: false,
+    queryFn: () => jsonFetch(`/api/users/${encodeURIComponent(handle)}`),
   });
 
-  if (!valid) {
+  // Canonical wallet address (handle may have been an @username).
+  const address = data?.user.address;
+
+  if (isError) {
     return (
       <div className="card p-10 text-center text-muted-foreground">
-        Invalid address.
+        User not found.
       </div>
+    );
+  }
+
+  if (!address) {
+    return (
+      <div className="card h-40 animate-pulse rounded-2xl bg-muted/40" />
     );
   }
 
@@ -93,7 +105,7 @@ export default function ProfilePage() {
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
       <div className="card p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <Avatar
               address={address}
@@ -103,23 +115,35 @@ export default function ProfilePage() {
             />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold">
-                {data?.user.username || shortAddr(address)}
+                {data?.user.username
+                  ? `@${data.user.username}`
+                  : shortAddr(address)}
               </h1>
-              <div className="font-mono text-sm text-muted-foreground">
-                {shortAddr(address, 10, 8)}
-              </div>
+              <CopyAddress address={address} />
               {data?.user.bio && (
-                <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
                   {data.user.bio}
                 </p>
               )}
             </div>
           </div>
-          {isMe && (
-            <Button variant="outline" asChild>
-              <Link href="/profile/edit">Edit profile</Link>
-            </Button>
-          )}
+
+          {/* Badges (default: User) */}
+          <UserBadges badges={["User"]} />
+
+          {/* Reputation + actions */}
+          <div className="flex flex-col items-center gap-3 lg:items-end">
+            <RepWidget target={address} />
+            <div className="flex gap-2">
+              {isMe ? (
+                <Button variant="outline" asChild>
+                  <Link href="/profile/edit">Edit profile</Link>
+                </Button>
+              ) : (
+                <TipButton to={address} username={data?.user.username} />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -177,6 +201,28 @@ export default function ProfilePage() {
         <div className="text-center text-sm text-muted-foreground">Loading…</div>
       )}
     </div>
+  );
+}
+
+function CopyAddress({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard?.writeText(address);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className="mt-0.5 inline-flex items-center gap-1.5 font-mono text-sm text-muted-foreground transition-colors hover:text-foreground"
+      title="Copy wallet address"
+    >
+      {shortAddr(address, 10, 8)}
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-success" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" />
+      )}
+    </button>
   );
 }
 

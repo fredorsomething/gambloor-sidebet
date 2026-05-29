@@ -70,7 +70,7 @@ export function Identity({
   if (!link) return inner;
   return (
     <Link
-      href={`/u/${address}`}
+      href={`/u/${data?.username ?? address}`}
       className="hover:text-primary transition-colors"
       onClick={(e) => e.stopPropagation()}
     >

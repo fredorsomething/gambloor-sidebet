@@ -14,19 +14,29 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { address: string } },
 ) {
-  if (!isAddress(params.address)) return jsonErr("bad address", 400);
-  const address = getAddress(params.address);
+  // The handle can be a wallet address or an @username (with or without "@").
+  const handle = decodeURIComponent(params.address).trim().replace(/^@/, "");
 
-  const [user, bets] = await Promise.all([
-    prisma.user.findUnique({ where: { address } }),
-    prisma.bet.findMany({
-      where: {
-        OR: [{ proposer: address }, { acceptor: address }],
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
-  ]);
+  let address: string;
+  let user;
+  if (isAddress(handle)) {
+    address = getAddress(handle);
+    user = await prisma.user.findUnique({ where: { address } });
+  } else {
+    user = await prisma.user.findFirst({
+      where: { username: { equals: handle, mode: "insensitive" } },
+    });
+    if (!user) return jsonErr("user not found", 404);
+    address = getAddress(user.address);
+  }
+
+  const bets = await prisma.bet.findMany({
+    where: {
+      OR: [{ proposer: address }, { acceptor: address }],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
 
   const statBets: StatBet[] = bets.map((b) => ({
     proposer: b.proposer,

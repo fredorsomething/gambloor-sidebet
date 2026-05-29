@@ -11,6 +11,7 @@ import {
   type Hex,
 } from "viem";
 import { useAccount, useChainId, usePublicClient, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { polygon } from "wagmi/chains";
 
 import { BetImageField } from "@/components/bets/BetImageField";
 import { SettlerSelect } from "@/components/SettlerSelect";
@@ -18,6 +19,7 @@ import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { CONDITIONAL_TOKENS_ABI } from "@/lib/abi";
+import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useMarketContracts } from "@/lib/hooks/useEscrow";
 import {
   computeConditionId,
@@ -58,6 +60,7 @@ export function CreateMarketForm() {
   const chainId = useChainId();
   const { ctf, exchange, tokens } = useMarketContracts();
   const publicClient = usePublicClient();
+  const ensurePolygon = useEnsurePolygon();
 
   const [tokenAddress, setTokenAddress] = useState<Address | "">(
     (tokens[0]?.address as Address) ?? "",
@@ -167,7 +170,9 @@ export function CreateMarketForm() {
         title: "Creating condition",
         description: "Confirm the transaction in your wallet.",
       });
+      await ensurePolygon();
       await prepareTx.writeContractAsync({
+        chainId: polygon.id,
         address: ctf as Address,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "prepareCondition",

@@ -13,6 +13,7 @@ import {
   useSignTypedData,
   useWriteContract,
 } from "wagmi";
+import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
@@ -23,6 +24,7 @@ import {
   EXCHANGE_ABI,
 } from "@/lib/abi";
 import { exchangeDomain, ORDER_EIP712_TYPES, randomSalt } from "@/lib/clob";
+import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { jsonFetch } from "@/lib/fetcher";
 import { shortAddr } from "@/lib/utils";
 import type { MarketDetailResponse, OrderRow } from "@/lib/types";
@@ -49,6 +51,7 @@ export function MarketDetail({ id }: { id: number }) {
   const redeemTx = useWriteContract();
   const fillTx = useWriteContract();
   const { signTypedDataAsync } = useSignTypedData();
+  const ensurePolygon = useEnsurePolygon();
 
   const [splitAmt, setSplitAmt] = useState("");
   const [mergeAmt, setMergeAmt] = useState("");
@@ -77,14 +80,17 @@ export function MarketDetail({ id }: { id: number }) {
 
   async function approveCollateral() {
     try {
+      await ensurePolygon();
       // Approve both the exchange (trading) and CTF (splitting).
       await approveTx.writeContractAsync({
+        chainId: polygon.id,
         address: token,
         abi: ERC20_ABI,
         functionName: "approve",
         args: [exchange, maxUint256],
       });
       await ctfApproveTx.writeContractAsync({
+        chainId: polygon.id,
         address: token,
         abi: ERC20_ABI,
         functionName: "approve",
@@ -102,7 +108,9 @@ export function MarketDetail({ id }: { id: number }) {
 
   async function approveShares() {
     try {
+      await ensurePolygon();
       await setApprovalTx.writeContractAsync({
+        chainId: polygon.id,
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "setApprovalForAll",
@@ -122,7 +130,9 @@ export function MarketDetail({ id }: { id: number }) {
     try {
       const amt = parseUnits(splitAmt || "0", decimals);
       if (amt <= 0n) return;
+      await ensurePolygon();
       await splitTx.writeContractAsync({
+        chainId: polygon.id,
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "splitPosition",
@@ -144,7 +154,9 @@ export function MarketDetail({ id }: { id: number }) {
     try {
       const amt = parseUnits(mergeAmt || "0", decimals);
       if (amt <= 0n) return;
+      await ensurePolygon();
       await mergeTx.writeContractAsync({
+        chainId: polygon.id,
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "mergePositions",
@@ -160,7 +172,9 @@ export function MarketDetail({ id }: { id: number }) {
 
   async function doRedeem() {
     try {
+      await ensurePolygon();
       await redeemTx.writeContractAsync({
+        chainId: polygon.id,
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "redeemPositions",
@@ -187,7 +201,9 @@ export function MarketDetail({ id }: { id: number }) {
       const shares = isSellOrder ? makerGives : remainingTaker;
       const cost = isSellOrder ? remainingTaker : makerGives;
 
+      await ensurePolygon();
       await fillTx.writeContractAsync({
+        chainId: polygon.id,
         address: exchange,
         abi: EXCHANGE_ABI,
         functionName: "fillOrder",

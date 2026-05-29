@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
     return jsonOk({ url: blob.url });
   } catch (err) {
     console.error("avatar upload failed", err);
-    return jsonErr("upload failed", 500);
+    const detail = err instanceof Error ? err.message : "";
+    return jsonErr(detail ? `upload failed: ${detail}` : "upload failed", 500);
   }
 }

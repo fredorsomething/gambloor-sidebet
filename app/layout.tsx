@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { Providers } from "./providers";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
+import { WalletBalance } from "@/components/wallet/WalletBalance";
 import { SearchBar } from "@/components/SearchBar";
 import { NavLinks } from "@/components/NavLinks";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -54,6 +55,7 @@ export default function RootLayout({
                 </div>
 
                 <NavLinks />
+                <WalletBalance />
                 <ConnectButton />
               </div>
             </header>

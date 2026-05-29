@@ -7,7 +7,6 @@ import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { polygon } from "wagmi/chains";
 
 import { Avatar } from "@/components/profile/Identity";
-import { useFundWallet } from "@/components/wallet/FundWalletModal";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { shortAddr } from "@/lib/utils";
 
@@ -16,7 +15,6 @@ export function ConnectButton() {
   const { address } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
-  const { open: openFund } = useFundWallet();
   const { data: profile } = useProfile(address);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -89,7 +87,7 @@ export function ConnectButton() {
           </div>
           <nav className="p-1 text-sm">
             <Link
-              href={`/u/${address}`}
+              href={`/u/${profile?.username ?? address}`}
               onClick={() => setMenuOpen(false)}
               className="block rounded-lg px-3 py-2 hover:bg-muted"
             >
@@ -102,15 +100,6 @@ export function ConnectButton() {
             >
               Edit profile
             </Link>
-            <button
-              onClick={() => {
-                openFund();
-                setMenuOpen(false);
-              }}
-              className="block w-full rounded-lg px-3 py-2 text-left hover:bg-muted"
-            >
-              Fund wallet
-            </button>
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(address);

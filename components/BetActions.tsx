@@ -7,11 +7,13 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
+import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
+import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { formatToken, shortAddr } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
@@ -24,6 +26,7 @@ type Props = {
 export function BetActions({ bet, onTxConfirmed }: Props) {
   const { address: account } = useAccount();
   const { push } = useToast();
+  const ensurePolygon = useEnsurePolygon();
 
   const me = account?.toLowerCase();
   const isProposer = me === bet.proposer.toLowerCase();
@@ -64,10 +67,12 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   async function onAccept() {
     if (!account) return;
     try {
+      await ensurePolygon();
       if (needsApproval) {
         setAcceptStep("approving");
         push({ title: "Approving token" });
         await approveTx.writeContractAsync({
+          chainId: polygon.id,
           address: token,
           abi: ERC20_ABI,
           functionName: "approve",
@@ -77,6 +82,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
         setAcceptStep("accepting");
         push({ title: "Accepting bet" });
         await acceptTx.writeContractAsync({
+          chainId: polygon.id,
           address: escrow,
           abi: SIDEBET_ESCROW_V2_ABI,
           functionName: "acceptBet",
@@ -98,6 +104,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
         setAcceptStep("accepting");
         push({ title: "Accepting bet" });
         await acceptTx.writeContractAsync({
+          chainId: polygon.id,
           address: escrow,
           abi: SIDEBET_ESCROW_V2_ABI,
           functionName: "acceptBet",
@@ -127,7 +134,9 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
 
   async function onCancel() {
     try {
+      await ensurePolygon();
       await cancelTx.writeContractAsync({
+        chainId: polygon.id,
         address: escrow,
         abi: SIDEBET_ESCROW_V2_ABI,
         functionName: "cancelBet",
@@ -153,7 +162,9 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   );
   async function onSettle() {
     try {
+      await ensurePolygon();
       await settleTx.writeContractAsync({
+        chainId: polygon.id,
         address: escrow,
         abi: SIDEBET_ESCROW_V2_ABI,
         functionName: "settleBet",

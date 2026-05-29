@@ -17,6 +17,7 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
+import { polygon } from "wagmi/chains";
 import { usePrivy } from "@privy-io/react-auth";
 
 import { BetImageField } from "@/components/bets/BetImageField";
@@ -25,6 +26,7 @@ import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
+import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useEscrow } from "@/lib/hooks/useEscrow";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { jsonFetch } from "@/lib/fetcher";
@@ -46,6 +48,7 @@ export function CreateBetForm() {
   const chainId = useChainId();
   const { escrow, tokens } = useEscrow();
   const publicClient = usePublicClient();
+  const ensurePolygon = useEnsurePolygon();
 
   const [tokenAddress, setTokenAddress] = useState<Address | "">(
     (tokens[0]?.address as Address) ?? "",
@@ -210,7 +213,9 @@ export function CreateBetForm() {
       title: "Submitting bet",
       description: "Confirm the create transaction in your wallet.",
     });
+    await ensurePolygon();
     await createTx.writeContractAsync({
+      chainId: polygon.id,
       address: escrow as Address,
       abi: SIDEBET_ESCROW_V2_ABI,
       functionName: "createBet",
@@ -270,7 +275,9 @@ export function CreateBetForm() {
           title: "Approving token",
           description: "Confirm the approval in your wallet.",
         });
+        await ensurePolygon();
         await approveTx.writeContractAsync({
+          chainId: polygon.id,
           address: tokenAddress as Address,
           abi: ERC20_ABI,
           functionName: "approve",

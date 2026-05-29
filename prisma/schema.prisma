@@ -34,6 +34,20 @@ model User {
   @@index([privyId])
 }
 
+// Peer reputation: one vote per (voter -> target). value is +1 (rep) or -1
+// (downvote). The net score is the sum of values for a target. Self-votes are
+// rejected at the API layer.
+model RepVote {
+  voter     String
+  target    String
+  value     Int      // +1 or -1
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([voter, target])
+  @@index([target])
+}
+
 // Approved settlers: only these addresses can be chosen to resolve a Sidebet or
 // Market. Each sets their own fee (basis points). Seeded with the default wallet.
 model ApprovedSettler {
