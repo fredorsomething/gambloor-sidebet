@@ -58,14 +58,24 @@ function isPrivyEmbeddedWallet(
  * rejects it with "Unsupported method"). External wallets keep using wagmi so
  * their own confirmation UX is preserved.
  */
+function isPrivyWagmiConnector(connectorId: string | undefined): boolean {
+  if (!connectorId) return false;
+  const id = connectorId.toLowerCase();
+  return id === "io.privy.wallet" || id.startsWith("io.privy.wallet.");
+}
+
 export function useTxSender() {
-  const { address } = useAccount();
+  const { address, connector } = useAccount();
   const { wallets } = useWallets();
   const { sendTransaction: privySend } = usePrivySendTransaction();
   const wagmiSend = useSendTransaction();
 
   const isEmbedded = useMemo(() => {
     if (!address) return false;
+    // @privy-io/wagmi exposes embedded wallets as injected connectors like
+    // io.privy.wallet.0x… — those must not use wagmi sendTransaction (chain ends
+    // up undefined and the Privy provider rejects the call).
+    if (isPrivyWagmiConnector(connector?.id)) return true;
     const embedded = getEmbeddedConnectedWallet(wallets);
     if (
       embedded?.address?.toLowerCase() === address.toLowerCase()
@@ -76,7 +86,7 @@ export function useTxSender() {
       (x) => x.address?.toLowerCase() === address.toLowerCase(),
     );
     return isPrivyEmbeddedWallet(active);
-  }, [wallets, address]);
+  }, [wallets, address, connector?.id]);
 
   const sendTx = useCallback(
     async (tx: RawTx, opts?: SendTxOptions): Promise<Hex> => {
@@ -96,6 +106,7 @@ export function useTxSender() {
       }
       return wagmiSend.sendTransactionAsync({
         chainId: polygon.id,
+        account: address,
         to: tx.to,
         data: tx.data,
         value: tx.value ?? 0n,

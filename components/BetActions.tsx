@@ -273,8 +273,37 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
     );
   }
 
+  // Negotiated terms locked in DB but on-chain offer not refreshed yet.
+  if (status === "Open" && bet.escrowRevisionNeeded && !isProposer) {
+    const forMe =
+      !!me &&
+      !!bet.intendedAcceptor &&
+      me === bet.intendedAcceptor.toLowerCase();
+    return (
+      <div className="card p-5 space-y-2 ring-1 ring-[hsl(var(--warning))]/30">
+        <h3 className="font-semibold">Terms locked in</h3>
+        <p className="text-sm text-muted-foreground">
+          {forMe
+            ? "Your counter-offer was accepted on this sidebet. The proposer is publishing the updated on-chain offer — you'll be able to take it here once that's done."
+            : "The proposer is updating the on-chain offer for negotiated terms. Check back shortly."}
+        </p>
+      </div>
+    );
+  }
+
   // Open + I'm not the proposer => can accept.
   if (status === "Open" && !isProposer && !isAcceptor) {
+    const reserved =
+      !!bet.intendedAcceptor &&
+      !!me &&
+      me !== bet.intendedAcceptor.toLowerCase();
+    if (reserved) {
+      return (
+        <div className="card p-5 text-sm text-muted-foreground">
+          This open offer is reserved for a specific counterparty from negotiation.
+        </div>
+      );
+    }
     const theirPick = outcomes[bet.acceptorOutcome];
     return (
       <div className="card p-5 space-y-4 ring-1 ring-primary/30">

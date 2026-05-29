@@ -1,6 +1,9 @@
-import { formatUnits } from "viem";
+import { randomUUID } from "crypto";
+
+import type { Hex } from "viem";
 
 import type { BetRow } from "@/lib/types";
+import { buildTermsHash } from "@/lib/utils";
 
 export type NegotiationStatus = "Pending" | "Accepted" | "Declined" | "Withdrawn";
 
@@ -33,7 +36,89 @@ export type NegotiationBetContext = {
   settler: string;
   feeBps: number;
   estimatedEndDate: string | null;
+  proposerStake: string;
+  acceptorStake: string;
+  lockedNegotiationId: number | null;
+  intendedAcceptor: string | null;
+  escrowRevisionNeeded: boolean;
 };
+
+/** Wallet that should take the other side after terms are locked in. */
+export function negotiationIntendedAcceptor(
+  fromAddress: string,
+  toAddress: string,
+  proposer: string,
+): string {
+  const p = proposer.toLowerCase();
+  return fromAddress.toLowerCase() === p
+    ? toAddress.toLowerCase()
+    : fromAddress.toLowerCase();
+}
+
+/** Apply accepted counter-offer terms onto the existing bet row (off-chain lock-in). */
+export function betUpdateFromAcceptedNegotiation(
+  bet: {
+    title: string;
+    description: string;
+    terms: string;
+    nonce: string;
+    proposer: string;
+    outcomes: unknown;
+  },
+  negotiation: {
+    id: number;
+    fromAddress: string;
+    toAddress: string;
+    proposerStake: string;
+    acceptorStake: string;
+    terms: string | null;
+  },
+): {
+  proposerStake: string;
+  acceptorStake: string;
+  amount: string;
+  terms: string;
+  nonce: string;
+  termsHash: Hex;
+  intendedAcceptor: string;
+  lockedNegotiationId: number;
+  escrowRevisionNeeded: boolean;
+  acceptor: null;
+  status: "Open";
+} {
+  const outcomes = Array.isArray(bet.outcomes)
+    ? (bet.outcomes as string[]).map((o) => o.trim())
+    : [];
+  const terms = (negotiation.terms?.trim() || bet.terms).trim();
+  const termsChanged = terms !== bet.terms.trim();
+  const nonce = termsChanged ? randomUUID() : bet.nonce;
+  const termsHash = buildTermsHash({
+    title: bet.title,
+    description: bet.description,
+    terms,
+    proposer: bet.proposer,
+    nonce,
+    outcomes,
+  });
+  const toAddr = negotiation.toAddress;
+  return {
+    proposerStake: negotiation.proposerStake,
+    acceptorStake: negotiation.acceptorStake,
+    amount: negotiation.proposerStake,
+    terms,
+    nonce,
+    termsHash,
+    intendedAcceptor: negotiationIntendedAcceptor(
+      negotiation.fromAddress,
+      toAddr,
+      bet.proposer,
+    ),
+    lockedNegotiationId: negotiation.id,
+    escrowRevisionNeeded: true,
+    acceptor: null,
+    status: "Open",
+  };
+}
 
 /** Short preview for conversation list when the last message is an offer card. */
 export function negotiationPreview(status: NegotiationStatus): string {
@@ -67,6 +152,12 @@ export function betToNegotiationContext(bet: {
   settler: string;
   feeBps: number;
   estimatedEndDate: Date | string | null;
+  proposerStake?: string;
+  acceptorStake?: string;
+  amount?: string;
+  lockedNegotiationId?: number | null;
+  intendedAcceptor?: string | null;
+  escrowRevisionNeeded?: boolean;
 }): NegotiationBetContext {
   const outcomes = Array.isArray(bet.outcomes)
     ? (bet.outcomes as string[])
@@ -91,38 +182,11 @@ export function betToNegotiationContext(bet: {
     settler: bet.settler,
     feeBps: bet.feeBps,
     estimatedEndDate: end,
-  };
-}
-
-/** Build relaunch payload after an offer is accepted (proposer flow). */
-export function relaunchPayloadFromNegotiation(
-  bet: NegotiationBetContext,
-  n: NegotiationPayload,
-  decimals: number,
-): Record<string, unknown> {
-  const full = (wei: string) => {
-    try {
-      return formatUnits(BigInt(wei), decimals);
-    } catch {
-      return "0";
-    }
-  };
-  const endDate = bet.estimatedEndDate
-    ? new Date(bet.estimatedEndDate).toISOString().slice(0, 10)
-    : "";
-  return {
-    title: bet.title,
-    description: bet.description,
-    terms: n.terms?.trim() || bet.terms,
-    token: bet.token,
-    settler: bet.settler,
-    feeBps: bet.feeBps,
-    endDate,
-    outcomes: bet.outcomes,
-    proposerOutcome: bet.proposerOutcome,
-    acceptorOutcome: bet.acceptorOutcome,
-    yourStakeStr: full(n.proposerStake),
-    theirStakeStr: full(n.acceptorStake),
+    proposerStake: bet.proposerStake ?? bet.amount ?? "0",
+    acceptorStake: bet.acceptorStake ?? bet.amount ?? "0",
+    lockedNegotiationId: bet.lockedNegotiationId ?? null,
+    intendedAcceptor: bet.intendedAcceptor ?? null,
+    escrowRevisionNeeded: bet.escrowRevisionNeeded ?? false,
   };
 }
 

@@ -38,6 +38,7 @@ import { exchangeDomain, ORDER_EIP712_TYPES, randomSalt } from "@/lib/clob";
 import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
+import { waitForAllowance } from "@/lib/txWait";
 import { jsonFetch } from "@/lib/fetcher";
 import { shortAddr } from "@/lib/utils";
 import type { MarketDetailResponse, OrderRow } from "@/lib/types";
@@ -95,7 +96,8 @@ export function MarketDetail({ id }: { id: number }) {
   const ensurePolygon = useEnsurePolygon();
 
   // Pending flags for the approval popup actions.
-  const [approvingCollateral, setApprovingCollateral] = useState(false);
+  const [approvingExchange, setApprovingExchange] = useState(false);
+  const [approvingCtf, setApprovingCtf] = useState(false);
   const [approvingShares, setApprovingShares] = useState(false);
   const [approvalsDismissed, setApprovalsDismissed] = useState(false);
 
@@ -138,8 +140,13 @@ export function MarketDetail({ id }: { id: number }) {
 
   const exchangeAllowance = (approvalReads.data?.[0]?.result as bigint) ?? 0n;
   const ctfAllowance = (approvalReads.data?.[1]?.result as bigint) ?? 0n;
-  const collateralApproved = exchangeAllowance > 0n && ctfAllowance > 0n;
+  const exchangeCollateralApproved = exchangeAllowance > 0n;
+  const ctfCollateralApproved = ctfAllowance > 0n;
+  const collateralApproved =
+    exchangeCollateralApproved && ctfCollateralApproved;
   const sharesApproved = (approvalReads.data?.[2]?.result as boolean) ?? false;
+
+  const approvalUi = { showWalletUIs: true as const };
 
   // Trade panel state (seeded from ?o= / ?side= deep links on the cards).
   const [selectedIdx, setSelectedIdx] = useState(() => {
@@ -238,31 +245,65 @@ export function MarketDetail({ id }: { id: number }) {
 
   // ---- on-chain actions -------------------------------------------------
 
-  async function approveCollateral() {
-    setApprovingCollateral(true);
+  async function approveExchangeCollateral() {
+    if (!account || !token) return;
+    setApprovingExchange(true);
     try {
       await ensurePolygon();
-      await writeContract({
-        address: token,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [exchange, maxUint256],
+      const hash = await writeContract(
+        {
+          address: token,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [exchange, maxUint256],
+        },
+        approvalUi,
+      );
+      await waitForAllowance(token, exchange, account as Address, 1n, hash);
+      push({
+        title: `${sym} approved for trading`,
+        description: "Exchange can move your collateral for buys.",
+        variant: "success",
       });
-      await writeContract({
-        address: token,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [ctf, maxUint256],
-      });
-      push({ title: `${sym} approved`, variant: "success" });
-      approvalReads.refetch();
+      await approvalReads.refetch();
     } catch (err) {
       const { title, description } = formatCryptoError(err, {
         fallbackTitle: "Approval failed",
       });
       push({ title, description, variant: "danger" });
     } finally {
-      setApprovingCollateral(false);
+      setApprovingExchange(false);
+    }
+  }
+
+  async function approveCtfCollateral() {
+    if (!account || !token) return;
+    setApprovingCtf(true);
+    try {
+      await ensurePolygon();
+      const hash = await writeContract(
+        {
+          address: token,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [ctf, maxUint256],
+        },
+        approvalUi,
+      );
+      await waitForAllowance(token, ctf, account as Address, 1n, hash);
+      push({
+        title: `${sym} approved for minting`,
+        description: "Outcome tokens can pull collateral when you mint sets.",
+        variant: "success",
+      });
+      await approvalReads.refetch();
+    } catch (err) {
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Approval failed",
+      });
+      push({ title, description, variant: "danger" });
+    } finally {
+      setApprovingCtf(false);
     }
   }
 
@@ -270,12 +311,15 @@ export function MarketDetail({ id }: { id: number }) {
     setApprovingShares(true);
     try {
       await ensurePolygon();
-      await writeContract({
-        address: ctf,
-        abi: CONDITIONAL_TOKENS_ABI,
-        functionName: "setApprovalForAll",
-        args: [exchange, true],
-      });
+      await writeContract(
+        {
+          address: ctf,
+          abi: CONDITIONAL_TOKENS_ABI,
+          functionName: "setApprovalForAll",
+          args: [exchange, true],
+        },
+        approvalUi,
+      );
       push({ title: "Shares approved for trading", variant: "success" });
       approvalReads.refetch();
     } catch (err) {
@@ -698,12 +742,15 @@ export function MarketDetail({ id }: { id: number }) {
       {showApprovalModal && (
         <ApprovalsModal
           sym={sym}
-          collateralApproved={collateralApproved}
+          exchangeCollateralApproved={exchangeCollateralApproved}
+          ctfCollateralApproved={ctfCollateralApproved}
           sharesApproved={sharesApproved}
           loading={approvalReads.isLoading}
-          onApproveCollateral={approveCollateral}
+          onApproveExchange={approveExchangeCollateral}
+          onApproveCtf={approveCtfCollateral}
           onApproveShares={approveShares}
-          collateralPending={approvingCollateral}
+          exchangePending={approvingExchange}
+          ctfPending={approvingCtf}
           sharesPending={approvingShares}
           onClose={() => setApprovalsDismissed(true)}
         />
@@ -893,22 +940,28 @@ export function MarketDetail({ id }: { id: number }) {
 
 function ApprovalsModal({
   sym,
-  collateralApproved,
+  exchangeCollateralApproved,
+  ctfCollateralApproved,
   sharesApproved,
   loading,
-  onApproveCollateral,
+  onApproveExchange,
+  onApproveCtf,
   onApproveShares,
-  collateralPending,
+  exchangePending,
+  ctfPending,
   sharesPending,
   onClose,
 }: {
   sym: string;
-  collateralApproved: boolean;
+  exchangeCollateralApproved: boolean;
+  ctfCollateralApproved: boolean;
   sharesApproved: boolean;
   loading: boolean;
-  onApproveCollateral: () => void;
+  onApproveExchange: () => void;
+  onApproveCtf: () => void;
   onApproveShares: () => void;
-  collateralPending: boolean;
+  exchangePending: boolean;
+  ctfPending: boolean;
   sharesPending: boolean;
   onClose: () => void;
 }) {
@@ -945,32 +998,52 @@ function ApprovalsModal({
           <h3 className="text-lg font-semibold">Approve to trade</h3>
         </div>
         <p className="mb-4 text-sm text-muted-foreground">
-          Two one-time on-chain approvals let this wallet trade the market.
-          You&apos;ll only do this once.
+          Three one-time wallet confirmations let you trade. Do them in order —
+          one at a time.
         </p>
 
         <ul className="space-y-2.5">
           <ChecklistRow
-            done={collateralApproved}
+            done={exchangeCollateralApproved}
             loading={loading}
             title={
               <span className="inline-flex items-center gap-1">
-                Approve <TokenSymbol symbol={sym} size={13} />
+                1. <TokenSymbol symbol={sym} size={13} /> for exchange
               </span>
             }
-            hint="Needed to buy shares and mint sets"
-            actionLabel={collateralPending ? "Approving…" : "Approve"}
-            onAction={onApproveCollateral}
-            pending={collateralPending}
+            hint="Required to buy shares on the book"
+            actionLabel={exchangePending ? "Approving…" : "Approve"}
+            onAction={onApproveExchange}
+            pending={exchangePending || ctfPending || sharesPending}
+            disabled={exchangeCollateralApproved}
+          />
+          <ChecklistRow
+            done={ctfCollateralApproved}
+            loading={loading}
+            title={
+              <span className="inline-flex items-center gap-1">
+                2. <TokenSymbol symbol={sym} size={13} /> for minting
+              </span>
+            }
+            hint="Required to mint outcome token sets"
+            actionLabel={ctfPending ? "Approving…" : "Approve"}
+            onAction={onApproveCtf}
+            pending={exchangePending || ctfPending || sharesPending}
+            disabled={ctfCollateralApproved || !exchangeCollateralApproved}
           />
           <ChecklistRow
             done={sharesApproved}
             loading={loading}
-            title="Approve shares"
-            hint="Needed to sell or merge shares"
+            title="3. Approve shares"
+            hint="Required to sell or merge shares"
             actionLabel={sharesPending ? "Approving…" : "Approve"}
             onAction={onApproveShares}
-            pending={sharesPending}
+            pending={exchangePending || ctfPending || sharesPending}
+            disabled={
+              !exchangeCollateralApproved ||
+              !ctfCollateralApproved ||
+              sharesApproved
+            }
           />
         </ul>
 
@@ -994,6 +1067,7 @@ function ChecklistRow({
   actionLabel,
   onAction,
   pending,
+  disabled,
 }: {
   done: boolean;
   loading: boolean;
@@ -1002,6 +1076,7 @@ function ChecklistRow({
   actionLabel: string;
   onAction: () => void;
   pending: boolean;
+  disabled?: boolean;
 }) {
   return (
     <li className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 p-2.5">
@@ -1027,7 +1102,7 @@ function ChecklistRow({
           size="sm"
           variant="outline"
           onClick={onAction}
-          disabled={pending || loading}
+          disabled={disabled || pending || loading}
         >
           {actionLabel}
         </Button>

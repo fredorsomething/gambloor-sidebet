@@ -13,14 +13,12 @@ import { NegotiationCard } from "@/components/negotiations/NegotiationCard";
 import { NegotiationCompose } from "@/components/negotiations/NegotiationCompose";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
-import { RELAUNCH_KEY } from "@/components/BetNegotiations";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import type { DmNegotiationBundle } from "@/lib/dmNegotiations";
 import { jsonFetch } from "@/lib/fetcher";
 import {
-  relaunchPayloadFromNegotiation,
   type NegotiationBetContext,
 } from "@/lib/negotiations";
 import { cn, shortAddr } from "@/lib/utils";
@@ -268,18 +266,8 @@ function MessagesInner() {
     betContext[0] ??
     null;
 
-  function relaunchFrom(bundle: DmNegotiationBundle) {
-    const payload = relaunchPayloadFromNegotiation(
-      bundle.bet,
-      bundle.negotiation,
-      bundle.bet.decimals,
-    );
-    try {
-      sessionStorage.setItem(RELAUNCH_KEY, JSON.stringify(payload));
-    } catch {
-      /* ignore */
-    }
-    router.push("/create?type=sidebet");
+  function openPublishEscrow(betId: number) {
+    router.push(`/bets/${betId}#revise-escrow`);
   }
 
   function submit() {
@@ -483,6 +471,31 @@ function MessagesInner() {
                     const n = bundle.negotiation;
                     const b = bundle.bet;
                     const tokenSym = b.tokenSymbol || "USDC";
+                    if (b.status !== "Open") {
+                      return (
+                        <div
+                          key={m.id}
+                          className={cn(
+                            "flex flex-col gap-1",
+                            m.mine ? "items-end" : "items-start",
+                          )}
+                        >
+                          <p className="max-w-sm rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                            <Link
+                              href={`/bets/${b.id}`}
+                              className="font-medium text-foreground hover:text-primary"
+                            >
+                              {b.title}
+                            </Link>{" "}
+                            — sidebet {b.status.toLowerCase()}. Negotiation is
+                            closed.
+                          </p>
+                          <span className="px-1 text-[10px] text-muted-foreground">
+                            {timeLabel(m.createdAt)}
+                          </span>
+                        </div>
+                      );
+                    }
                     return (
                       <div
                         key={m.id}
@@ -532,9 +545,13 @@ function MessagesInner() {
                                   })
                               : undefined
                           }
-                          onRelaunch={
-                            n.status === "Accepted"
-                              ? () => relaunchFrom(bundle)
+                          escrowRevisionNeeded={b.escrowRevisionNeeded}
+                          intendedAcceptor={b.intendedAcceptor}
+                          onLockInEscrow={
+                            n.status === "Accepted" &&
+                            b.escrowRevisionNeeded &&
+                            address?.toLowerCase() === b.proposer.toLowerCase()
+                              ? () => openPublishEscrow(b.id)
                               : undefined
                           }
                           onCounter={

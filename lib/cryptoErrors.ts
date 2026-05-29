@@ -41,6 +41,8 @@ function sanitizeRpcMessage(msg: string): string {
     /Missing or invalid parameters\.\s*Double check[^\n]*/gi,
     "",
   );
+  s = s.replace(/An internal error was received\.\s*/gi, "");
+  s = s.replace(/Request Arguments:[\s\S]*/gi, "");
   return s.replace(/\s{2,}/g, " ").trim();
 }
 
@@ -80,6 +82,12 @@ const RULES: Array<{
     test: /allowance|erc20: insufficient allowance|approve/i,
     title: "Approval needed",
     description: "Approve the token in your wallet, then try again.",
+  },
+  {
+    test: /unexpected error|internal error was received/i,
+    title: "Wallet couldn't send",
+    description:
+      "Refresh the page, make sure you're on Polygon, and try the approval again.",
   },
   {
     test: /unsupported method|wallet_sendTransaction|eth_sendRawTransaction/i,

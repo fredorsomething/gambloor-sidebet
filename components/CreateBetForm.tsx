@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   decodeEventLog,
   getAddress,
@@ -89,65 +89,6 @@ export function CreateBetForm() {
       setTokenAddress(tokens[0].address as Address);
     }
   }, [chainId, tokens, tokenAddress]);
-
-  // Pre-fill from an accepted sidebet negotiation ("relaunch with these terms").
-  // The negotiation UI stashes the agreed terms in sessionStorage before routing
-  // here; we read it once on mount so the proposer can re-create with one click.
-  const prefilled = useRef(false);
-  useEffect(() => {
-    if (prefilled.current) return;
-    prefilled.current = true;
-    let raw: string | null = null;
-    try {
-      raw = sessionStorage.getItem("sidebet:relaunch");
-      if (raw) sessionStorage.removeItem("sidebet:relaunch");
-    } catch {
-      return;
-    }
-    if (!raw) return;
-    try {
-      const p = JSON.parse(raw) as {
-        title?: string;
-        description?: string;
-        terms?: string;
-        token?: string;
-        settler?: string;
-        feeBps?: number;
-        endDate?: string;
-        outcomes?: string[];
-        proposerOutcome?: number;
-        acceptorOutcome?: number;
-        yourStakeStr?: string;
-        theirStakeStr?: string;
-      };
-      if (p.title) setTitle(p.title);
-      if (p.description) setDescription(p.description);
-      if (p.terms) setTerms(p.terms);
-      if (p.token && isAddress(p.token)) setTokenAddress(getAddress(p.token) as Address);
-      if (p.settler && isAddress(p.settler)) setSettler(getAddress(p.settler));
-      if (typeof p.feeBps === "number") setSettlerFeeBps(p.feeBps);
-      if (p.endDate) setEndDate(p.endDate);
-      if (p.yourStakeStr) setYourStakeStr(p.yourStakeStr);
-      if (p.theirStakeStr) setTheirStakeStr(p.theirStakeStr);
-
-      const outs = p.outcomes ?? [];
-      const pOut = p.proposerOutcome ?? 0;
-      const aOut = p.acceptorOutcome ?? 1;
-      const isBinaryYesNo =
-        outs.length === 2 && outs[0] === "Yes" && outs[1] === "No";
-      if (isBinaryYesNo) {
-        setMode("binary");
-        setStance(pOut === 0 ? "yes" : "no");
-      } else if (outs.length >= 2) {
-        setMode("custom");
-        setCustomOutcomes(outs);
-        setProposerOutcome(pOut);
-        setAcceptorOutcome(aOut);
-      }
-    } catch {
-      /* ignore malformed prefill */
-    }
-  }, []);
 
   const decimals = tokenMeta?.decimals ?? 6;
   const live = useTokenInfo({

@@ -22,10 +22,12 @@ export function NegotiationCard({
   onAccept,
   onDecline,
   onWithdraw,
-  onRelaunch,
+  onLockInEscrow,
   onCounter,
   busy,
   compact,
+  escrowRevisionNeeded,
+  intendedAcceptor,
 }: {
   n: NegotiationPayload;
   betTitle: string;
@@ -38,15 +40,22 @@ export function NegotiationCard({
   onAccept?: () => void;
   onDecline?: () => void;
   onWithdraw?: () => void;
-  onRelaunch?: () => void;
+  onLockInEscrow?: () => void;
   onCounter?: () => void;
   busy?: boolean;
   compact?: boolean;
+  escrowRevisionNeeded?: boolean;
+  intendedAcceptor?: string | null;
 }) {
   const me = viewerAddress?.toLowerCase();
   const isProposer = !!me && me === betProposer.toLowerCase();
   const isSender = !!me && me === n.fromAddress.toLowerCase();
   const isRecipient = !!me && me === n.toAddress.toLowerCase();
+  const isIntendedAcceptor =
+    !!me &&
+    !!intendedAcceptor &&
+    me === intendedAcceptor.toLowerCase() &&
+    n.status === "Accepted";
 
   const proposerStake = useMemo(() => BigInt(n.proposerStake), [n.proposerStake]);
   const acceptorStake = useMemo(() => BigInt(n.acceptorStake), [n.acceptorStake]);
@@ -147,31 +156,63 @@ export function NegotiationCard({
         </div>
       )}
 
-      {n.status === "Accepted" && isProposer && betStatus === "Open" && onRelaunch && (
-        <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
-          <p className="text-muted-foreground">
-            Terms locked in. Cancel this open offer if needed, then relaunch with
-            the agreed stakes.
-          </p>
-          <div className="mt-2 flex justify-end">
-            <Button size="sm" onClick={onRelaunch}>
-              Relaunch with these terms
-            </Button>
+      {n.status === "Accepted" &&
+        isProposer &&
+        betStatus === "Open" &&
+        escrowRevisionNeeded &&
+        onLockInEscrow && (
+          <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
+            <p className="text-muted-foreground">
+              Terms are locked in on this sidebet. Publish the updated on-chain
+              offer (same listing — no duplicate).
+            </p>
+            <div className="mt-2 flex justify-end">
+              <Button size="sm" onClick={onLockInEscrow}>
+                Publish on-chain offer
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {n.status === "Accepted" && !isProposer && isSender && (
+      {n.status === "Accepted" &&
+        isProposer &&
+        betStatus === "Open" &&
+        !escrowRevisionNeeded && (
+          <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm text-muted-foreground">
+            <p>Locked-in terms are live on-chain for this sidebet.</p>
+          </div>
+        )}
+
+      {n.status === "Accepted" && isIntendedAcceptor && (
         <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm text-muted-foreground">
-          <p>Your terms were accepted.</p>
+          <p>
+            {escrowRevisionNeeded
+              ? "Your terms were accepted and locked in. Waiting for the proposer to publish the updated on-chain offer."
+              : "Your terms were accepted. Take the bet below."}
+          </p>
           <Link
             href={`/bets/${betId}`}
             className="mt-2 inline-block font-medium text-primary hover:underline"
           >
-            Take the bet once it&apos;s relaunched →
+            Open sidebet →
           </Link>
         </div>
       )}
+
+      {n.status === "Accepted" &&
+        !isProposer &&
+        !isIntendedAcceptor &&
+        isSender && (
+          <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm text-muted-foreground">
+            <p>Your terms were accepted on this sidebet.</p>
+            <Link
+              href={`/bets/${betId}`}
+              className="mt-2 inline-block font-medium text-primary hover:underline"
+            >
+              View sidebet →
+            </Link>
+          </div>
+        )}
 
       {n.status === "Pending" && isRecipient && onCounter && betStatus === "Open" && (
         <div className="border-t border-border pt-2">

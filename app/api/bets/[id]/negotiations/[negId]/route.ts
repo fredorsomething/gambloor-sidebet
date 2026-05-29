@@ -5,6 +5,7 @@ import { z } from "zod";
 import { verifyWalletAuth } from "@/lib/auth";
 import { createDirectMessage } from "@/lib/directMessages";
 import { prisma } from "@/lib/db";
+import { betUpdateFromAcceptedNegotiation } from "@/lib/negotiations";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
@@ -76,10 +77,50 @@ export async function PATCH(
   const nextStatus =
     action === "accept" ? "Accepted" : action === "decline" ? "Declined" : "Withdrawn";
 
-  const updated = await prisma.betNegotiation.update({
-    where: { id: negId },
-    data: { status: nextStatus },
+  const toAddress = toAddr;
+  const updated = await prisma.$transaction(async (tx) => {
+    const neg = await tx.betNegotiation.update({
+      where: { id: negId },
+      data: { status: nextStatus },
+    });
+
+    if (action === "accept") {
+      if (bet.status !== "Open") {
+        throw new Error("BET_NOT_OPEN");
+      }
+      const lock = betUpdateFromAcceptedNegotiation(bet, {
+        id: neg.id,
+        fromAddress: negotiation.fromAddress,
+        toAddress,
+        proposerStake: negotiation.proposerStake,
+        acceptorStake: negotiation.acceptorStake,
+        terms: negotiation.terms,
+      });
+      await tx.bet.update({
+        where: { id: betId },
+        data: lock,
+      });
+      await tx.betNegotiation.updateMany({
+        where: {
+          betId,
+          status: "Pending",
+          id: { not: negId },
+        },
+        data: { status: "Declined" },
+      });
+    }
+
+    return neg;
+  }).catch((err: Error) => {
+    if (err.message === "BET_NOT_OPEN") {
+      return null;
+    }
+    throw err;
   });
+
+  if (!updated) {
+    return jsonErr("this bet is no longer open to negotiate", 409);
+  }
 
   const notifyTarget =
     action === "withdraw" ? toAddr : negotiation.fromAddress;
@@ -96,8 +137,15 @@ export async function PATCH(
       recipient: negotiation.fromAddress,
       type: "status",
       title: "Counter-offer accepted",
-      body: `Your terms on "${bet.title}" were accepted.`,
-      link: `/messages?with=${toAddr}&bet=${betId}`,
+      body: `Your terms on "${bet.title}" are locked in. The proposer will refresh the on-chain offer on the same sidebet.`,
+      link: `/bets/${betId}`,
+    });
+    await notify({
+      recipient: bet.proposer,
+      type: "status",
+      title: "Publish updated offer",
+      body: `Terms on "${bet.title}" are locked in — update the on-chain escrow on the same sidebet page.`,
+      link: `/bets/${betId}#revise-escrow`,
     });
   } else if (action === "decline") {
     await notify({

@@ -81,7 +81,8 @@ model BetNegotiation {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  bet           Bet              @relation(fields: [betId], references: [id], onDelete: Cascade)
+  bet            Bet              @relation(fields: [betId], references: [id], onDelete: Cascade)
+  lockedOnBet    Bet?             @relation("LockedNegotiation")
   directMessages DirectMessage[]
 
   @@index([betId, status])
@@ -277,10 +278,18 @@ model Bet {
   acceptDeadline  BigInt?
   estimatedEndDate DateTime?
 
+  // When a counter-offer is accepted, terms/stakes lock onto this bet row.
+  // `escrowRevisionNeeded` stays true until the proposer publishes a fresh
+  // on-chain offer (new onchainId) for the same indexed bet.
+  lockedNegotiationId   Int?     @unique
+  intendedAcceptor      String?  // lowercased wallet that should take the bet
+  escrowRevisionNeeded  Boolean  @default(false)
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  negotiations    BetNegotiation[]
+  lockedNegotiation BetNegotiation? @relation("LockedNegotiation", fields: [lockedNegotiationId], references: [id], onDelete: SetNull)
+  negotiations      BetNegotiation[]
 
   @@unique([chainId, escrowAddress, onchainId])
   @@index([chainId, status])

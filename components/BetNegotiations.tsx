@@ -13,10 +13,8 @@ import { NegotiationCompose } from "@/components/negotiations/NegotiationCompose
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { jsonFetch } from "@/lib/fetcher";
-import { relaunchPayloadFromNegotiation, type NegotiationPayload } from "@/lib/negotiations";
+import type { NegotiationPayload } from "@/lib/negotiations";
 import type { BetRow } from "@/lib/types";
-
-export const RELAUNCH_KEY = "sidebet:relaunch";
 
 type ListResponse = {
   isProposer: boolean;
@@ -91,6 +89,7 @@ export function BetNegotiations({ bet }: { bet: BetRow }) {
       setOpen(false);
       setCounterTo(null);
       void qc.invalidateQueries({ queryKey });
+      router.refresh();
     },
     onError: (e) =>
       push({
@@ -117,8 +116,16 @@ export function BetNegotiations({ bet }: { bet: BetRow }) {
           : vars.action === "decline"
             ? "declined"
             : "withdrawn";
-      push({ title: `Offer ${label}`, variant: "success" });
+      push({
+        title: vars.action === "accept" ? "Terms locked in" : `Offer ${label}`,
+        description:
+          vars.action === "accept"
+            ? "Stakes updated on this sidebet. Publish the on-chain offer when ready."
+            : undefined,
+        variant: "success",
+      });
       void qc.invalidateQueries({ queryKey });
+      router.refresh();
     },
     onError: (e) =>
       push({
@@ -128,38 +135,15 @@ export function BetNegotiations({ bet }: { bet: BetRow }) {
       }),
   });
 
-  function relaunchWith(n: NegotiationPayload) {
-    const payload = relaunchPayloadFromNegotiation(
-      {
-        id: bet.id,
-        title: bet.title,
-        status: bet.status,
-        proposer: bet.proposer,
-        tokenSymbol: bet.tokenSymbol,
-        decimals: bet.decimals,
-        outcomes: bet.outcomes,
-        proposerOutcome: bet.proposerOutcome,
-        acceptorOutcome: bet.acceptorOutcome,
-        terms: bet.terms,
-        description: bet.description,
-        token: bet.token,
-        settler: bet.settler,
-        feeBps: bet.feeBps,
-        estimatedEndDate: bet.estimatedEndDate,
-      },
-      n,
-      decimals,
-    );
-    try {
-      sessionStorage.setItem(RELAUNCH_KEY, JSON.stringify(payload));
-    } catch {
-      /* ignore */
-    }
-    router.push("/create?type=sidebet");
+  function publishLockedTerms() {
+    router.push(`/bets/${bet.id}#revise-escrow`);
+    const el = document.getElementById("revise-escrow");
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   const showSendBox = !!me && !isProposer && bet.status === "Open";
   if (!me) return null;
+  if (bet.status !== "Open") return null;
   if (negotiations.length === 0 && !showSendBox) return null;
 
   return (
@@ -213,7 +197,13 @@ export function BetNegotiations({ bet }: { bet: BetRow }) {
                 onAccept={() => respond.mutate({ id: n.id, action: "accept" })}
                 onDecline={() => respond.mutate({ id: n.id, action: "decline" })}
                 onWithdraw={() => respond.mutate({ id: n.id, action: "withdraw" })}
-                onRelaunch={() => relaunchWith(n)}
+                escrowRevisionNeeded={bet.escrowRevisionNeeded}
+                intendedAcceptor={bet.intendedAcceptor}
+                onLockInEscrow={
+                  isProposer && bet.escrowRevisionNeeded
+                    ? publishLockedTerms
+                    : undefined
+                }
                 onCounter={
                   isProposer && n.status === "Pending"
                     ? () => setCounterTo(n.fromAddress)

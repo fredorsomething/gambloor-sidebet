@@ -35,6 +35,9 @@ export type BetRow = {
   feeBps: number;
   acceptDeadline: string | null;
   estimatedEndDate: string | null;
+  lockedNegotiationId: number | null;
+  intendedAcceptor: string | null;
+  escrowRevisionNeeded: boolean;
   createdAt: string;
   updatedAt: string;
 };
