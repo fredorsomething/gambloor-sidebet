@@ -1,6 +1,6 @@
 import "dotenv/config";
 import hre from "hardhat";
-import { getAddress } from "viem";
+import { getAddress, type Address } from "viem";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -22,7 +22,7 @@ async function main() {
     getAddress(escrowAddr),
   );
 
-  const onChainOwner = await escrow.read.owner();
+  const onChainOwner = (await escrow.read.owner()) as Address;
   console.log(`Escrow:  ${escrowAddr}`);
   console.log(`Owner:   ${onChainOwner}`);
   console.log(`Signer:  ${owner.account.address}`);
