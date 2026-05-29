@@ -2,6 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { ArrowDownUp, ChevronDown, RefreshCw } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   encodeFunctionData,
@@ -51,6 +52,7 @@ const SLIPPAGE_BPS = 100;
 const POL_GAS_RESERVE = parseUnits("0.08", 18);
 
 export function SwapPanel() {
+  const searchParams = useSearchParams();
   const { authenticated, login } = usePrivy();
   const { address } = useAccount();
   const { sendTx } = useTxSender();
@@ -65,6 +67,15 @@ export function SwapPanel() {
 
   const [sellSymbol, setSellSymbol] = useState<SwapAssetSymbol>("USDC.e");
   const [buySymbol, setBuySymbol] = useState<SwapAssetSymbol>("pUSD");
+
+  useEffect(() => {
+    const sell = searchParams.get("sell");
+    const buy = searchParams.get("buy");
+    const sellAsset = sell ? getSwapAsset(sell) : undefined;
+    const buyAsset = buy ? getSwapAsset(buy) : undefined;
+    if (sellAsset) setSellSymbol(sellAsset.symbol);
+    if (buyAsset) setBuySymbol(buyAsset.symbol);
+  }, [searchParams]);
   const [amount, setAmount] = useState("");
   const [price, setPrice] = useState<ZeroXPriceResponse | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);

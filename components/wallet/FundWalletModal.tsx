@@ -1,7 +1,8 @@
 "use client";
 
 import { useFundWallet as usePrivyFundWallet, usePrivy } from "@privy-io/react-auth";
-import { ArrowUpRight, Check, Copy, CreditCard, Fuel, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowDownUp, ArrowUpRight, Check, Copy, CreditCard, Fuel, X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -14,6 +15,7 @@ import { encodeFunctionData, isAddress, parseUnits, type Address, type Hex } fro
 import {
   useAccount,
   useBalance,
+  useReadContracts,
   useWaitForTransactionReceipt,
 } from "wagmi";
 import { polygon } from "wagmi/chains";
@@ -22,7 +24,13 @@ import { Button } from "@/components/ui/button";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI } from "@/lib/abi";
-import { explorerTx, getTokens } from "@/lib/chains";
+import {
+  explorerTx,
+  getMarketCollateralToken,
+  getTokenBySymbol,
+  getTokens,
+  MARKET_COLLATERAL_SYMBOL,
+} from "@/lib/chains";
 import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
@@ -124,6 +132,33 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
     chainId: polygon.id,
     query: { enabled: !!address },
   });
+  const nativeUsdc = getTokenBySymbol(polygon.id, "USDC")!;
+  const marketUsdc = getMarketCollateralToken();
+  const { data: stableBalances } = useReadContracts({
+    allowFailure: true,
+    contracts: address
+      ? [
+          {
+            address: nativeUsdc.address,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [address],
+            chainId: polygon.id,
+          },
+          {
+            address: marketUsdc.address,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [address],
+            chainId: polygon.id,
+          },
+        ]
+      : [],
+    query: { enabled: !!address },
+  });
+  const nativeUsdcBal =
+    (stableBalances?.[0]?.result as bigint | undefined) ?? 0n;
+  const usdceBal = (stableBalances?.[1]?.result as bigint | undefined) ?? 0n;
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState<"usdc" | "pol" | null>(null);
 
@@ -192,9 +227,40 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          Top up your wallet on Polygon with USDC for betting, or POL for gas.
-          Privy supports card, exchange, and external wallet transfers.
+          Prediction markets settle in{" "}
+          <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> (bridged).
+          Privy card checkout deposits native USDC — swap to{" "}
+          {MARKET_COLLATERAL_SYMBOL} before trading. POL covers gas.
         </p>
+
+        {address && (
+          <div className="mt-3 rounded-xl border border-border bg-muted/20 p-3 text-xs">
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground">Native USDC</span>
+              <span className="font-mono tabular-nums">
+                {formatToken(nativeUsdcBal, nativeUsdc.decimals)}
+              </span>
+            </div>
+            <div className="mt-1 flex justify-between gap-2">
+              <span className="text-muted-foreground">
+                {MARKET_COLLATERAL_SYMBOL} (markets)
+              </span>
+              <span className="font-mono tabular-nums text-primary">
+                {formatToken(usdceBal, marketUsdc.decimals)}
+              </span>
+            </div>
+            {nativeUsdcBal > usdceBal && nativeUsdcBal > 0n && (
+              <Link
+                href="/swap?sell=USDC&buy=USDC.e"
+                onClick={onClose}
+                className="mt-2 inline-flex items-center gap-1 font-medium text-primary hover:underline"
+              >
+                <ArrowDownUp className="h-3 w-3" />
+                Swap USDC → {MARKET_COLLATERAL_SYMBOL}
+              </Link>
+            )}
+          </div>
+        )}
 
         <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
           <div className="text-xs font-medium text-muted-foreground">
@@ -233,9 +299,10 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           >
             <CreditCard className="h-4 w-4 shrink-0" />
             <span className="text-left">
-              <span className="block font-semibold">Buy / deposit USDC</span>
+              <span className="block font-semibold">Buy / deposit USDC (native)</span>
               <span className="block text-xs font-normal opacity-80">
-                Card, Coinbase, or transfer from another wallet
+                Card or transfer — then swap to {MARKET_COLLATERAL_SYMBOL} for
+                markets
               </span>
             </span>
           </Button>
@@ -259,8 +326,10 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <p className="mt-4 text-xs text-muted-foreground">
-          Or send USDC / POL on Polygon directly to the address above from any
-          exchange or wallet.
+          Or send {MARKET_COLLATERAL_SYMBOL} (contract{" "}
+          <span className="font-mono">{shortAddr(marketUsdc.address)}</span>) or
+          POL directly to your address. Use the swap page to convert native USDC
+          ↔ {MARKET_COLLATERAL_SYMBOL}.
         </p>
       </div>
     </div>
@@ -269,7 +338,9 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
 
 const WITHDRAW_ASSETS = () => {
   const stables = getTokens()
-    .filter((t) => t.symbol === "USDC" || t.symbol === "pUSD")
+    .filter((t) =>
+      ["USDC.e", "USDC", "pUSD"].includes(t.symbol),
+    )
     .map((t) => ({
       symbol: t.symbol,
       decimals: t.decimals,

@@ -65,12 +65,19 @@ const RULES: Array<{
   {
     test: /insufficient funds|exceeds balance|transfer amount exceeds|insufficient balance/i,
     title: "Insufficient balance",
-    description: "You don't have enough of this token for that amount.",
+    description:
+      "You don't have enough of this token for that amount. Prediction markets use USDC.e (bridged) — if you deposited via card, swap native USDC to USDC.e first.",
   },
   {
     test: /gas required exceeds|intrinsic gas too low/i,
     title: "Transaction too large",
     description: "Try a smaller amount or try again in a moment.",
+  },
+  {
+    test: /INSUFFICIENT_BALANCE/i,
+    title: "Not enough shares or collateral",
+    description:
+      "This fill needs more outcome shares or USDC than your wallet holds. Try a smaller size, mint a set first, or fund your wallet.",
   },
   {
     test: /execution reverted|reverted|revert/i,

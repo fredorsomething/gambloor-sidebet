@@ -1,8 +1,8 @@
 import hre from "hardhat";
 import { getAddress } from "viem";
 
-// Native USDC on Polygon mainnet (6 decimals) — collateral for CLOB markets.
-const POLYGON_USDC = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
+// Bridged USDC.e on Polygon — collateral for CLOB markets (not native USDC).
+const POLYGON_USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
 
 async function verify(address: string, constructorArguments: unknown[]) {
   try {
@@ -17,7 +17,7 @@ async function main() {
   const network = hre.network.name;
   const defaultSettler = process.env.NEXT_PUBLIC_DEFAULT_SETTLER?.trim();
   const collateral =
-    process.env.NEXT_PUBLIC_COLLATERAL_ADDRESS_POLYGON?.trim() || POLYGON_USDC;
+    process.env.NEXT_PUBLIC_COLLATERAL_ADDRESS_POLYGON?.trim() || POLYGON_USDC_E;
 
   console.log(`Deploying protocol to ${network}...`);
 

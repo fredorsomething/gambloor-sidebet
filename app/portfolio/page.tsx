@@ -157,7 +157,10 @@ export default function PortfolioPage() {
                     })}
                   </div>
                   <div className="flex items-center justify-end gap-0.5 text-[11px] text-muted-foreground">
-                    <TokenSymbol symbol={p.tokenSymbol || "USDC"} size={10} />
+                    <TokenSymbol
+                      symbol={p.tokenSymbol || "USDC.e"}
+                      size={10}
+                    />
                     <ArrowRight className="h-3 w-3" />
                   </div>
                 </div>

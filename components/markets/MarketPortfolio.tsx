@@ -101,7 +101,7 @@ export function MarketPortfolio({
 
   const data = query.data;
   const decimals = data?.decimals ?? 6;
-  const sym = data?.tokenSymbol || "USDC";
+  const sym = data?.tokenSymbol || "USDC.e";
   const fmt = (raw: string, max = 2) =>
     Number(formatUnits(BigInt(raw || "0"), decimals)).toLocaleString(undefined, {
       maximumFractionDigits: max,

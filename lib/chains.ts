@@ -99,6 +99,19 @@ export function getTokenByAddress(_chainId: number, address: Address) {
   return getTokens().find((t) => t.address.toLowerCase() === a);
 }
 
+/** Prefer on-chain registry symbol; fall back to stored label or market default. */
+export function resolveTokenSymbol(
+  address: Address | string | undefined,
+  storedSymbol?: string | null,
+  fallback: string = MARKET_COLLATERAL_SYMBOL,
+): string {
+  if (address) {
+    const known = getTokenByAddress(POLYGON_CHAIN_ID, address as Address);
+    if (known) return known.symbol;
+  }
+  return storedSymbol?.trim() || fallback;
+}
+
 export function explorerTx(_chainId: number, hash: string) {
   return `https://polygonscan.com/tx/${hash}`;
 }

@@ -13,6 +13,7 @@ import {
 } from "viem";
 import {
   useAccount,
+  usePublicClient,
   useReadContracts,
   useSignTypedData,
 } from "wagmi";
@@ -35,12 +36,18 @@ import {
   EXCHANGE_ABI,
 } from "@/lib/abi";
 import { exchangeDomain, ORDER_EIP712_TYPES, randomSalt } from "@/lib/clob";
+import { MarketUsdceBanner } from "@/components/wallet/MarketUsdceBanner";
 import { formatCryptoError } from "@/lib/cryptoErrors";
+import {
+  MARKET_COLLATERAL_SYMBOL,
+  resolveTokenSymbol,
+} from "@/lib/chains";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
-import { waitForAllowance } from "@/lib/txWait";
+import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
+import { waitForAllowance, waitForTxReceipt } from "@/lib/txWait";
 import { jsonFetch } from "@/lib/fetcher";
-import { shortAddr } from "@/lib/utils";
+import { formatToken, shortAddr } from "@/lib/utils";
 import type { MarketDetailResponse, OrderRow } from "@/lib/types";
 
 type Side = "BUY" | "SELL";
@@ -74,6 +81,7 @@ function sharesRemainingRaw(o: OrderRow): bigint {
 
 export function MarketDetail({ id }: { id: number }) {
   const { address: account } = useAccount();
+  const publicClient = usePublicClient({ chainId: polygon.id });
   const { push } = useToast();
   const searchParams = useSearchParams();
 
@@ -94,6 +102,12 @@ export function MarketDetail({ id }: { id: number }) {
   const { writeContract } = useTxSender();
   const { signTypedDataAsync } = useSignTypedData();
   const ensurePolygon = useEnsurePolygon();
+  const collateralToken = market?.token as Address | undefined;
+  const collateralLive = useTokenInfo({
+    token: collateralToken,
+    owner: account,
+    spender: market?.exchangeAddress as Address | undefined,
+  });
 
   // Pending flags for the approval popup actions.
   const [approvingExchange, setApprovingExchange] = useState(false);
@@ -162,7 +176,11 @@ export function MarketDetail({ id }: { id: number }) {
   const [submitting, setSubmitting] = useState(false);
 
   const decimals = market?.decimals ?? 6;
-  const sym = market?.tokenSymbol || "USDC";
+  const sym = resolveTokenSymbol(
+    market?.token,
+    market?.tokenSymbol,
+    MARKET_COLLATERAL_SYMBOL,
+  );
   const positions = data?.positions ?? {};
 
   if (query.isLoading) {
@@ -332,23 +350,54 @@ export function MarketDetail({ id }: { id: number }) {
     }
   }
 
+  async function readCollateralBalance(): Promise<bigint> {
+    if (!publicClient || !account || !token) return 0n;
+    return publicClient.readContract({
+      address: token,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [account as Address],
+    });
+  }
+
+  function assertCollateralFor(amt: bigint, balance: bigint) {
+    const tokenDecimals = collateralLive.decimals ?? decimals;
+    if (amt > balance) {
+      throw new Error(
+        `Need ${formatToken(amt, tokenDecimals)} ${sym} — you have ${formatToken(balance, tokenDecimals)}`,
+      );
+    }
+  }
+
   async function doSplit(amountStr: string) {
     try {
-      const amt = parseUnits(amountStr || "0", decimals);
+      const tokenDecimals = collateralLive.decimals ?? decimals;
+      const amt = parseUnits(amountStr || "0", tokenDecimals);
       if (amt <= 0n) return;
+      if (!ctfCollateralApproved) {
+        setApprovalsDismissed(false);
+        throw new Error(`Approve ${sym} for minting first`);
+      }
       await ensurePolygon();
-      await writeContract({
-        address: ctf,
-        abi: CONDITIONAL_TOKENS_ABI,
-        functionName: "splitPosition",
-        args: [conditionId, amt],
-      });
+      const balance = await readCollateralBalance();
+      assertCollateralFor(amt, balance);
+      const hash = await writeContract(
+        {
+          address: ctf,
+          abi: CONDITIONAL_TOKENS_ABI,
+          functionName: "splitPosition",
+          args: [conditionId, amt],
+        },
+        approvalUi,
+      );
+      await waitForTxReceipt(hash);
       push({
         title: "Minted a full set",
         description: `You now hold ${amountStr} of every outcome.`,
         variant: "success",
       });
       setShares("");
+      await collateralLive.refetch();
       query.refetch();
     } catch (err) {
       const { title, description } = formatCryptoError(err, {
@@ -399,11 +448,72 @@ export function MarketDetail({ id }: { id: number }) {
     }
   }
 
-  /** Fill `takerFill` (taker-side raw units) against one resting order. */
-  async function fillOrderRaw(order: OrderRow, takerFill: bigint) {
+  function sharesForOutcome(idx: number): bigint {
+    return BigInt(positions[idx] ?? "0");
+  }
+
+  /** Pre-flight so fills fail in-app with a clear message, not a raw revert. */
+  function assertCanFill(order: UnifiedOrder, sharesTake: bigint) {
     const makerAmount = BigInt(order.makerAmount);
     const takerAmount = BigInt(order.takerAmount);
-    if (takerFill <= 0n) return;
+    const remainingTaker = takerAmount - BigInt(order.filled);
+    const avail = sharesRemainingRaw(order);
+    const whole = sharesTake >= avail;
+    const collateralBal = collateralLive.balance ?? 0n;
+    const fmt = (wei: bigint) => formatToken(wei, decimals);
+
+    if (!order._complementary) {
+      if (order.side === "SELL") {
+        const takerFill = whole
+          ? remainingTaker
+          : (takerAmount * sharesTake) / (makerAmount || 1n);
+        if (collateralBal < takerFill) {
+          throw new Error(
+            `Need ${fmt(takerFill)} ${sym} to buy — you have ${fmt(collateralBal)}`,
+          );
+        }
+        return;
+      }
+      const posIdx =
+        outcomes.find((o) => o.positionId === order.positionId)?.index ??
+        selected.index;
+      const need = whole ? avail : sharesTake;
+      const have = sharesForOutcome(posIdx);
+      if (have < need) {
+        const label =
+          outcomes.find((o) => o.index === posIdx)?.label ?? "outcome";
+        throw new Error(
+          `Need ${fmt(need)} ${label} shares to sell — you have ${fmt(have)}`,
+        );
+      }
+      return;
+    }
+
+    if (order.side === "BUY") {
+      if (collateralBal < sharesTake) {
+        throw new Error(
+          `Need ${fmt(sharesTake)} ${sym} to mint a set and fill — you have ${fmt(collateralBal)}`,
+        );
+      }
+      return;
+    }
+
+    const haveSelected = sharesForOutcome(selected.index);
+    if (haveSelected < sharesTake) {
+      throw new Error(
+        `Need ${fmt(sharesTake)} ${selected.label} shares to complete this fill — you have ${fmt(haveSelected)}. Mint a set or buy shares first.`,
+      );
+    }
+  }
+
+  /** Fill `takerFill` (taker-side raw units) against one resting order. */
+  async function fillOrderRaw(
+    order: OrderRow,
+    takerFill: bigint,
+  ): Promise<import("viem").Hex> {
+    const makerAmount = BigInt(order.makerAmount);
+    const takerAmount = BigInt(order.takerAmount);
+    if (takerFill <= 0n) throw new Error("Fill amount must be positive");
     const makerGives = (takerFill * makerAmount) / (takerAmount || 1n);
     const isSellOrder = order.side === "SELL";
     const sharesMoved = isSellOrder ? makerGives : takerFill;
@@ -439,6 +549,7 @@ export function MarketDetail({ id }: { id: number }) {
         txHash,
       }),
     });
+    return txHash;
   }
 
   /**
@@ -448,6 +559,8 @@ export function MarketDetail({ id }: { id: number }) {
    */
   async function fillUnifiedShares(order: UnifiedOrder, sharesTake: bigint) {
     if (sharesTake <= 0n) return;
+    assertCanFill(order, sharesTake);
+
     const makerAmount = BigInt(order.makerAmount);
     const takerAmount = BigInt(order.takerAmount);
     const remainingTaker = takerAmount - BigInt(order.filled);
@@ -456,45 +569,48 @@ export function MarketDetail({ id }: { id: number }) {
 
     if (!order._complementary) {
       if (order.side === "SELL") {
-        // Native ask — buy `selected`: taker pays collateral.
         const takerFill = whole
           ? remainingTaker
           : (takerAmount * sharesTake) / (makerAmount || 1n);
         await fillOrderRaw(order, takerFill);
       } else {
-        // Native bid — sell `selected`: taker provides shares.
         const takerFill = whole ? remainingTaker : sharesTake;
         await fillOrderRaw(order, takerFill);
       }
       return;
     }
 
-    // Complementary fills: order belongs to the opposing outcome.
     if (order.side === "BUY") {
-      // Opposing BUY == ask here. Buy `selected` by minting a full set and
-      // selling the opposing shares into this order.
-      await writeContract({
-        address: ctf,
-        abi: CONDITIONAL_TOKENS_ABI,
-        functionName: "splitPosition",
-        args: [conditionId, sharesTake],
-      });
-      const takerFill = whole ? remainingTaker : sharesTake; // BUY taker units = shares
+      const splitHash = await writeContract(
+        {
+          address: ctf,
+          abi: CONDITIONAL_TOKENS_ABI,
+          functionName: "splitPosition",
+          args: [conditionId, sharesTake],
+        },
+        approvalUi,
+      );
+      await waitForTxReceipt(splitHash);
+      const takerFill = whole ? remainingTaker : sharesTake;
       await fillOrderRaw(order, takerFill);
-    } else {
-      // Opposing SELL == bid here. Sell `selected` by buying the opposing
-      // shares, then merging a full set (requires holding `selected` shares).
-      const takerFill = whole
-        ? remainingTaker
-        : (takerAmount * sharesTake) / (makerAmount || 1n);
-      await fillOrderRaw(order, takerFill);
-      await writeContract({
+      return;
+    }
+
+    const takerFill = whole
+      ? remainingTaker
+      : (takerAmount * sharesTake) / (makerAmount || 1n);
+    const fillHash = await fillOrderRaw(order, takerFill);
+    await waitForTxReceipt(fillHash);
+    const mergeHash = await writeContract(
+      {
         address: ctf,
         abi: CONDITIONAL_TOKENS_ABI,
         functionName: "mergePositions",
         args: [conditionId, sharesTake],
-      });
-    }
+      },
+      approvalUi,
+    );
+    await waitForTxReceipt(mergeHash);
   }
 
   /** Fill a single resting order completely (used by the book "take" buttons). */
@@ -728,6 +844,76 @@ export function MarketDetail({ id }: { id: number }) {
     }
   }
 
+  const tokenDecimals = collateralLive.decimals ?? decimals;
+  const collateralBal = collateralLive.balance ?? 0n;
+  const walletBalanceLabel = formatToken(collateralBal, tokenDecimals);
+
+  /** Disable trade/mint/redeem actions with a clear reason before sending txs. */
+  function getTradeBlockedReason(): string | null {
+    let amt = 0n;
+    try {
+      amt = parseUnits(shares || "0", tokenDecimals);
+    } catch {
+      return "Invalid amount";
+    }
+
+    if (orderType === "limit" || orderType === "market") {
+      if (side === "BUY" && !exchangeCollateralApproved) {
+        return `Approve ${sym} to buy`;
+      }
+      if (side === "SELL" && !sharesApproved) {
+        return "Approve shares to sell";
+      }
+      if (side === "BUY" && amt > 0n) {
+        const price =
+          orderType === "limit"
+            ? Number(limitCents) / 100
+            : (bestAsk ?? 0);
+        if (price > 0) {
+          const priceBps = Math.round(price * 10_000);
+          const cost = (amt * BigInt(priceBps)) / 10_000n;
+          if (cost > collateralBal) {
+            return `Need ${formatToken(cost, tokenDecimals)} ${sym} — you have ${walletBalanceLabel}`;
+          }
+        }
+      }
+      return null;
+    }
+
+    if (orderType === "mint") {
+      if (!ctfCollateralApproved) return `Approve ${sym} to mint`;
+      if (amt > 0n && amt > collateralBal) {
+        return `Need ${formatToken(amt, tokenDecimals)} ${sym} — you have ${walletBalanceLabel}`;
+      }
+      return null;
+    }
+
+    if (orderType === "redeem") {
+      if (!sharesApproved) return "Approve shares to merge";
+      let minHeld: bigint | null = null;
+      for (const o of outcomes) {
+        const h = BigInt(positions[o.index] ?? "0");
+        minHeld = minHeld === null || h < minHeld ? h : minHeld;
+      }
+      const held = minHeld ?? 0n;
+      if (amt > 0n && amt > held) {
+        return `Need ${formatToken(amt, tokenDecimals)} shares per outcome — you have ${formatToken(held, tokenDecimals)}`;
+      }
+    }
+
+    return null;
+  }
+
+  const tradeBlockedReason = getTradeBlockedReason();
+
+  function setMaxMintAmount() {
+    if (collateralBal <= 0n) {
+      setShares("");
+      return;
+    }
+    setShares(formatUnits(collateralBal, tokenDecimals));
+  }
+
   // Approvals are surfaced as an unavoidable popup rather than a permanent
   // panel: it appears when the market is tradeable and approvals are missing,
   // and disappears automatically once both approvals are satisfied.
@@ -875,6 +1061,7 @@ export function MarketDetail({ id }: { id: number }) {
           ) : (
             <>
               <LowGasBanner />
+              <MarketUsdceBanner />
 
               <TradePanel
                 outcomes={outcomes}
@@ -899,10 +1086,11 @@ export function MarketDetail({ id }: { id: number }) {
                     : "0"
                 }
                 resolved={resolved}
-                collateralApproved={collateralApproved}
-                sharesApproved={sharesApproved}
+                blockedReason={tradeBlockedReason}
+                walletBalance={walletBalanceLabel}
                 submitting={submitting}
                 onSubmit={onSubmit}
+                onMaxMint={setMaxMintAmount}
                 onRedeemWinnings={doRedeem}
                 onApprovalNeeded={() => setApprovalsDismissed(false)}
               />
@@ -1441,10 +1629,11 @@ function TradePanel(props: {
   bestBid: number | null;
   myPosition: string;
   resolved: boolean;
-  collateralApproved: boolean;
-  sharesApproved: boolean;
+  blockedReason: string | null;
+  walletBalance: string;
   submitting: boolean;
   onSubmit: () => void;
+  onMaxMint: () => void;
   onRedeemWinnings: () => void;
   onApprovalNeeded: () => void;
 }) {
@@ -1466,10 +1655,11 @@ function TradePanel(props: {
     bestBid,
     myPosition,
     resolved,
-    collateralApproved,
-    sharesApproved,
+    blockedReason,
+    walletBalance,
     submitting,
     onSubmit,
+    onMaxMint,
     onRedeemWinnings,
     onApprovalNeeded,
   } = props;
@@ -1491,18 +1681,6 @@ function TradePanel(props: {
   function bump(delta: number) {
     const next = Math.max(0, Math.round((sharesNum + delta) * 100) / 100);
     setShares(next ? String(next) : "");
-  }
-
-  // Approval gating per action.
-  let blockedReason: string | null = null;
-  if (isOrder && side === "BUY" && !collateralApproved) {
-    blockedReason = `Approve ${sym} to buy`;
-  } else if (isOrder && side === "SELL" && !sharesApproved) {
-    blockedReason = "Approve shares to sell";
-  } else if (orderType === "mint" && !collateralApproved) {
-    blockedReason = `Approve ${sym} to mint`;
-  } else if (orderType === "redeem" && !sharesApproved) {
-    blockedReason = "Approve shares to merge";
   }
 
   const selectedLabel =
@@ -1648,6 +1826,15 @@ function TradePanel(props: {
               </button>
             ))}
           </div>
+          {orderType === "mint" && (
+            <button
+              type="button"
+              onClick={onMaxMint}
+              className="mt-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              Use max {sym}
+            </button>
+          )}
       </div>
 
       {/* Position + totals */}
@@ -1674,11 +1861,19 @@ function TradePanel(props: {
           </>
         )}
         {orderType === "mint" && (
-          <Row label="Cost">
-            <span className="inline-flex items-center gap-1 font-mono text-primary">
-              {money(sharesNum)} <TokenSymbol symbol={sym} size={12} />
-            </span>
-          </Row>
+          <>
+            <Row label={`${sym} balance`}>
+              <span className="inline-flex items-center gap-1 font-mono">
+                {walletBalance}
+                <TokenSymbol symbol={sym} size={12} />
+              </span>
+            </Row>
+            <Row label="Cost">
+              <span className="inline-flex items-center gap-1 font-mono text-primary">
+                {money(sharesNum)} <TokenSymbol symbol={sym} size={12} />
+              </span>
+            </Row>
+          </>
         )}
         {orderType === "redeem" && (
           <Row label="Returns">
@@ -1693,7 +1888,12 @@ function TradePanel(props: {
         <Button
           className="w-full"
           variant="secondary"
-          onClick={onApprovalNeeded}
+          onClick={
+            blockedReason.includes("Approve")
+              ? onApprovalNeeded
+              : undefined
+          }
+          disabled={!blockedReason.includes("Approve")}
           title={blockedReason}
         >
           {blockedReason}
@@ -1705,7 +1905,7 @@ function TradePanel(props: {
             isOrder ? (side === "BUY" ? "success" : "danger") : "default"
           }
           disabled={submitting || (orderType !== "redeem" && resolved)}
-          onClick={onSubmit}
+          onClick={() => void onSubmit()}
         >
           {submitting ? "Working…" : actionLabel}
         </Button>
