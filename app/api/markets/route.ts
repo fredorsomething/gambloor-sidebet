@@ -2,7 +2,11 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
-import { getMarketCollateralToken, getTokenByAddress } from "@/lib/chains";
+import {
+  getExchangeAddress,
+  getMarketCollateralToken,
+  getTokenByAddress,
+} from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -182,6 +186,10 @@ export async function GET(req: NextRequest) {
 
   const where: Record<string, unknown> = {};
   if (q.chainId) where.chainId = q.chainId;
+  // Only surface markets on the current exchange (USDC.e). Markets created on a
+  // retired exchange are not shown.
+  const activeExchange = getExchangeAddress();
+  if (activeExchange) where.exchangeAddress = getAddress(activeExchange);
   if (q.status) {
     const statuses = q.status
       .split(",")

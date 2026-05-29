@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 
+import { getAddress } from "viem";
+
+import { getExchangeAddress } from "@/lib/chains";
 import { collectDirectoryUsers } from "@/lib/directory";
 import { prisma } from "@/lib/db";
 import { jsonOk } from "@/lib/serialize";
@@ -16,6 +19,7 @@ export async function GET(req: NextRequest) {
 
   const isHex = /^0x[0-9a-fA-F]+$/.test(q);
   const lower = q.toLowerCase();
+  const activeExchange = getExchangeAddress();
 
   const [bets, markets, profileUsers] = await Promise.all([
     prisma.bet.findMany({
@@ -38,6 +42,9 @@ export async function GET(req: NextRequest) {
     prisma.market.findMany({
       where: {
         ...(chainId ? { chainId } : {}),
+        ...(activeExchange
+          ? { exchangeAddress: getAddress(activeExchange) }
+          : {}),
         status: { not: "Rejected" },
         OR: [{ title: { contains: q } }, { description: { contains: q } }],
       },

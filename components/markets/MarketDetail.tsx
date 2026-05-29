@@ -352,14 +352,18 @@ export function MarketDetail({ id }: { id: number }) {
     }
   }
 
-  async function readCollateralBalance(): Promise<bigint> {
-    if (!publicClient || !account || !token) return 0n;
+  async function readCollateralBalanceOf(owner?: Address): Promise<bigint> {
+    if (!publicClient || !owner || !token) return 0n;
     return publicClient.readContract({
       address: token,
       abi: ERC20_ABI,
       functionName: "balanceOf",
-      args: [account as Address],
+      args: [owner],
     });
+  }
+
+  async function readCollateralBalance(): Promise<bigint> {
+    return readCollateralBalanceOf(account as Address | undefined);
   }
 
   function assertCollateralFor(amt: bigint, balance: bigint) {
@@ -504,7 +508,9 @@ export function MarketDetail({ id }: { id: number }) {
     const makerGives = makerGivesFor(order, takerFill);
     const collateralBal = await readCollateralBalance();
 
-    // Resting SELL (ask or complementary bid): maker must still hold outcome shares.
+    // The resting maker must still be able to deliver their side on-chain, or the
+    // fill reverts with a confusing ERC20/ERC1155 balance error. SELL makers owe
+    // outcome shares; BUY makers owe collateral.
     if (order.side === "SELL") {
       const makerBal = await readShareBalance(
         order.positionId,
@@ -513,6 +519,15 @@ export function MarketDetail({ id }: { id: number }) {
       if (makerBal < makerGives) {
         throw new Error(
           "This order can't be filled — the maker no longer has enough outcome shares on-chain. Try another price level.",
+        );
+      }
+    } else {
+      const makerCollateral = await readCollateralBalanceOf(
+        order.maker as Address,
+      );
+      if (makerCollateral < makerGives) {
+        throw new Error(
+          `This order can't be filled — the maker no longer has enough ${sym} on-chain to back it. Try another price level.`,
         );
       }
     }
