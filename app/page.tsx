@@ -57,8 +57,8 @@ export default function HomePage() {
               Need tokens to bet?
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Swap POL, USDC, USDC.e &amp; pUSD instantly — right here on
-              Polygon.
+              Swap POL, USDC, USDC.e &amp; pUSD instantly. Right here on
+              sidebet.lol, straight to your wallet.
             </p>
           </div>
         </div>
