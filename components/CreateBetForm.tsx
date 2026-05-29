@@ -20,11 +20,11 @@ import {
 import { usePrivy } from "@privy-io/react-auth";
 
 import { BetImageField } from "@/components/bets/BetImageField";
+import { SettlerSelect } from "@/components/SettlerSelect";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
-import { ERC20_ABI, SIDEBET_ESCROW_ABI } from "@/lib/abi";
-import { DEFAULT_SETTLER } from "@/lib/chains";
+import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { useEscrow } from "@/lib/hooks/useEscrow";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { jsonFetch } from "@/lib/fetcher";
@@ -36,6 +36,7 @@ import {
 } from "@/lib/utils";
 
 type Step = "idle" | "approving" | "creating" | "indexing" | "done";
+type Mode = "binary" | "custom";
 
 export function CreateBetForm() {
   const router = useRouter();
@@ -46,7 +47,6 @@ export function CreateBetForm() {
   const { escrow, tokens } = useEscrow();
   const publicClient = usePublicClient();
 
-  // Default token = first configured for the chain.
   const [tokenAddress, setTokenAddress] = useState<Address | "">(
     (tokens[0]?.address as Address) ?? "",
   );
@@ -54,22 +54,32 @@ export function CreateBetForm() {
     (t) => t.address.toLowerCase() === (tokenAddress || "").toLowerCase(),
   );
 
-  // Form state.
+  // Content
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [terms, setTerms] = useState("");
-  const [amountStr, setAmountStr] = useState("");
-  const [settler, setSettler] = useState(DEFAULT_SETTLER ?? "");
-  const [acceptHours, setAcceptHours] = useState("72");
-  const [settleHours, setSettleHours] = useState("168");
-  const [feeBpsStr, setFeeBpsStr] = useState("0");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+
+  // Outcomes + stance
+  const [mode, setMode] = useState<Mode>("binary");
+  const [stance, setStance] = useState<"yes" | "no">("yes");
+  const [customOutcomes, setCustomOutcomes] = useState<string[]>(["", ""]);
+  const [proposerOutcome, setProposerOutcome] = useState(0);
+  const [acceptorOutcome, setAcceptorOutcome] = useState(1);
+
+  // Stakes
+  const [yourStakeStr, setYourStakeStr] = useState("");
+  const [theirStakeStr, setTheirStakeStr] = useState("");
+
+  // Settler + end date
+  const [settler, setSettler] = useState("");
+  const [settlerFeeBps, setSettlerFeeBps] = useState(200);
+  const [endDate, setEndDate] = useState(""); // yyyy-mm-dd
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  // Re-sync token default when chain changes.
   useEffect(() => {
     if (!tokens.length) return;
     if (!tokens.some((t) => t.address.toLowerCase() === (tokenAddress || "").toLowerCase())) {
@@ -85,20 +95,33 @@ export function CreateBetForm() {
   });
   const effectiveDecimals = live.decimals ?? decimals;
 
-  const amount = useMemo(() => {
+  // Resolve the active outcomes + the indices each side backs.
+  const outcomes = useMemo(() => {
+    if (mode === "binary") return ["Yes", "No"];
+    return customOutcomes.map((o) => o.trim());
+  }, [mode, customOutcomes]);
+
+  const myOutcome = mode === "binary" ? (stance === "yes" ? 0 : 1) : proposerOutcome;
+  const theirOutcome = mode === "binary" ? (stance === "yes" ? 1 : 0) : acceptorOutcome;
+
+  const yourStake = useMemo(() => {
     try {
-      return parseAmount(amountStr, effectiveDecimals);
+      return parseAmount(yourStakeStr, effectiveDecimals);
     } catch {
       return 0n;
     }
-  }, [amountStr, effectiveDecimals]);
+  }, [yourStakeStr, effectiveDecimals]);
 
-  const needsApproval =
-    amount > 0n && (live.allowance ?? 0n) < amount;
+  const theirStake = useMemo(() => {
+    try {
+      return parseAmount(theirStakeStr, effectiveDecimals);
+    } catch {
+      return 0n;
+    }
+  }, [theirStakeStr, effectiveDecimals]);
 
-  const feeBps = Math.max(0, Math.min(1000, Number(feeBpsStr) || 0));
+  const needsApproval = yourStake > 0n && (live.allowance ?? 0n) < yourStake;
 
-  // ---- write hooks ----
   const approveTx = useWriteContract();
   const createTx = useWriteContract();
   const approveWait = useWaitForTransactionReceipt({ hash: approveTx.data });
@@ -127,6 +150,23 @@ export function CreateBetForm() {
     };
   }, [coverPreview]);
 
+  function addOutcome() {
+    setCustomOutcomes((prev) => (prev.length >= 16 ? prev : [...prev, ""]));
+  }
+  function removeOutcome(idx: number) {
+    setCustomOutcomes((prev) => {
+      if (prev.length <= 2) return prev;
+      const next = prev.filter((_, i) => i !== idx);
+      // Keep selected indices valid.
+      setProposerOutcome((p) => Math.min(p, next.length - 1));
+      setAcceptorOutcome((a) => Math.min(a, next.length - 1));
+      return next;
+    });
+  }
+  function setOutcomeLabel(idx: number, label: string) {
+    setCustomOutcomes((prev) => prev.map((o, i) => (i === idx ? label : o)));
+  }
+
   function validate(): string | null {
     if (!account) return "Connect a wallet first";
     if (!escrow) return "Escrow not configured for this chain";
@@ -134,31 +174,60 @@ export function CreateBetForm() {
     if (title.trim().length < 3) return "Title needs at least 3 characters";
     if (description.trim().length < 1) return "Add a short description";
     if (terms.trim().length < 1) return "Spell out the resolution terms";
-    if (amount <= 0n) return "Stake amount must be positive";
-    if (live.balance !== undefined && live.balance < amount)
+    if (outcomes.length < 2) return "Add at least two outcomes";
+    if (outcomes.some((o) => o.length < 1)) return "Every outcome needs a label";
+    if (new Set(outcomes.map((o) => o.toLowerCase())).size !== outcomes.length)
+      return "Outcomes must be unique";
+    if (myOutcome === theirOutcome)
+      return "You and your counterparty must back different outcomes";
+    if (myOutcome >= outcomes.length || theirOutcome >= outcomes.length)
+      return "Outcome selection is invalid";
+    if (yourStake <= 0n) return "Your stake must be positive";
+    if (theirStake <= 0n) return "Their stake must be positive";
+    if (live.balance !== undefined && live.balance < yourStake)
       return `Insufficient ${tokenMeta?.symbol ?? "token"} balance (${formatToken(
         live.balance,
         effectiveDecimals,
-      )} < ${amountStr})`;
-    if (!isAddress(settler)) return "Settler must be a valid address";
-    if (getAddress(settler) === getAddress(account)) {
-      // soft-allow but warn? The contract still allows it. We'll just warn.
-    }
-    if (feeBps < 0 || feeBps > 1000) return "Fee must be 0–10%";
-    const ah = Number(acceptHours);
-    const sh = Number(settleHours);
-    if (!Number.isFinite(ah) || ah < 0) return "Accept deadline (hours) invalid";
-    if (!Number.isFinite(sh) || sh <= ah)
-      return "Settle deadline must be after accept deadline";
+      )} < ${yourStakeStr})`;
+    if (!settler || !isAddress(settler)) return "Pick an approved settler";
+    if (getAddress(settler) === getAddress(account))
+      return "You can't be your own settler";
     return null;
   }
 
   const [pendingCreate, setPendingCreate] = useState<null | {
     nonce: string;
     termsHash: Hex;
-    acceptDeadline: number;
-    settleDeadline: number;
+    estimatedEndDate: number;
+    outcomes: string[];
+    proposerOutcome: number;
+    acceptorOutcome: number;
   }>(null);
+
+  async function runCreate(pc: NonNullable<typeof pendingCreate>) {
+    setStep("creating");
+    push({
+      title: "Submitting bet",
+      description: "Confirm the create transaction in your wallet.",
+    });
+    await createTx.writeContractAsync({
+      address: escrow as Address,
+      abi: SIDEBET_ESCROW_V2_ABI,
+      functionName: "createBet",
+      args: [
+        getAddress(settler),
+        tokenAddress as Address,
+        yourStake,
+        theirStake,
+        pc.proposerOutcome,
+        pc.acceptorOutcome,
+        pc.outcomes.length,
+        0n, // acceptDeadline: none
+        BigInt(pc.estimatedEndDate),
+        pc.termsHash,
+      ],
+    });
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -171,23 +240,31 @@ export function CreateBetForm() {
     if (!account || !escrow || !tokenAddress) return;
 
     const nonce = crypto.randomUUID();
+    const trimmedOutcomes = outcomes.map((o) => o.trim());
     const termsHash = buildTermsHash({
       title,
       description,
       terms,
       proposer: account,
       nonce,
+      outcomes: trimmedOutcomes,
     });
-    const now = Math.floor(Date.now() / 1000);
-    const acceptDeadline =
-      Number(acceptHours) > 0 ? now + Number(acceptHours) * 3600 : 0;
-    const settleDeadline =
-      Number(settleHours) > 0 ? now + Number(settleHours) * 3600 : 0;
+    const estimatedEndDate = endDate
+      ? Math.floor(new Date(`${endDate}T00:00:00Z`).getTime() / 1000)
+      : 0;
 
-    setPendingCreate({ nonce, termsHash, acceptDeadline, settleDeadline });
+    const pc = {
+      nonce,
+      termsHash,
+      estimatedEndDate,
+      outcomes: trimmedOutcomes,
+      proposerOutcome: myOutcome,
+      acceptorOutcome: theirOutcome,
+    };
+    setPendingCreate(pc);
 
-    if (needsApproval) {
-      try {
+    try {
+      if (needsApproval) {
         setStep("approving");
         push({
           title: "Approving token",
@@ -199,71 +276,26 @@ export function CreateBetForm() {
           functionName: "approve",
           args: [escrow as Address, maxUint256],
         });
-        // The effect on approveWait will fire runCreate after confirmation.
-      } catch (err: unknown) {
-        setStep("idle");
-        setPendingCreate(null);
-        const msg = (err as Error)?.message || "Approval rejected";
-        setError(msg);
-        push({ title: "Approval failed", description: msg, variant: "danger" });
+      } else {
+        await runCreate(pc);
       }
-    } else {
-      try {
-        setStep("creating");
-        push({
-          title: "Submitting bet",
-          description: "Confirm the create transaction in your wallet.",
-        });
-        await createTx.writeContractAsync({
-          address: escrow as Address,
-          abi: SIDEBET_ESCROW_ABI,
-          functionName: "createBet",
-          args: [
-            getAddress(settler),
-            tokenAddress as Address,
-            amount,
-            BigInt(acceptDeadline),
-            BigInt(settleDeadline),
-            feeBps,
-            termsHash,
-          ],
-        });
-      } catch (err: unknown) {
-        setStep("idle");
-        setPendingCreate(null);
-        const msg = (err as Error)?.message || "Create rejected";
-        setError(msg);
-        push({ title: "Create failed", description: msg, variant: "danger" });
-      }
+    } catch (err: unknown) {
+      setStep("idle");
+      setPendingCreate(null);
+      const msg = (err as Error)?.message || "Transaction rejected";
+      setError(msg);
+      push({ title: "Failed", description: msg, variant: "danger" });
     }
   }
 
-  // After approval confirms, kick off the create tx.
+  // After approval confirms, kick off create.
   useEffect(() => {
     if (step !== "approving") return;
     if (!approveWait.isSuccess) return;
     if (!pendingCreate) return;
     void (async () => {
       try {
-        setStep("creating");
-        push({
-          title: "Submitting bet",
-          description: "Confirm the create transaction in your wallet.",
-        });
-        await createTx.writeContractAsync({
-          address: escrow as Address,
-          abi: SIDEBET_ESCROW_ABI,
-          functionName: "createBet",
-          args: [
-            getAddress(settler),
-            tokenAddress as Address,
-            amount,
-            BigInt(pendingCreate.acceptDeadline),
-            BigInt(pendingCreate.settleDeadline),
-            feeBps,
-            pendingCreate.termsHash,
-          ],
-        });
+        await runCreate(pendingCreate);
       } catch (err: unknown) {
         setStep("idle");
         setPendingCreate(null);
@@ -275,7 +307,7 @@ export function CreateBetForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, approveWait.isSuccess]);
 
-  // After create confirms, parse the BetCreated event and index into the DB.
+  // After create confirms, parse BetCreated + index.
   useEffect(() => {
     if (step !== "creating") return;
     if (!createWait.isSuccess) return;
@@ -293,7 +325,7 @@ export function CreateBetForm() {
           if (log.address.toLowerCase() !== (escrow as string).toLowerCase()) continue;
           try {
             const decoded = decodeEventLog({
-              abi: SIDEBET_ESCROW_ABI,
+              abi: SIDEBET_ESCROW_V2_ABI,
               data: log.data,
               topics: log.topics,
             });
@@ -313,9 +345,7 @@ export function CreateBetForm() {
         let imageUrl: string | null = null;
         if (coverFile) {
           const token = await getAccessToken();
-          if (!token) {
-            throw new Error("Your session expired. Please sign in again.");
-          }
+          if (!token) throw new Error("Your session expired. Please sign in again.");
           const fd = new FormData();
           fd.append("file", coverFile);
           fd.append("address", account);
@@ -354,16 +384,19 @@ export function CreateBetForm() {
             token: tokenAddress,
             tokenSymbol: tokenMeta?.symbol,
             decimals: effectiveDecimals,
-            amount: amount.toString(),
+            proposerStake: yourStake.toString(),
+            acceptorStake: theirStake.toString(),
+            outcomes: pendingCreate.outcomes,
+            proposerOutcome: pendingCreate.proposerOutcome,
+            acceptorOutcome: pendingCreate.acceptorOutcome,
             title,
             description,
             imageUrl,
             terms,
             termsHash: pendingCreate.termsHash,
             nonce: pendingCreate.nonce,
-            feeBps,
-            acceptDeadline: pendingCreate.acceptDeadline || 0,
-            settleDeadline: pendingCreate.settleDeadline || 0,
+            feeBps: settlerFeeBps,
+            estimatedEndDate: pendingCreate.estimatedEndDate || 0,
           }),
         });
 
@@ -408,10 +441,7 @@ export function CreateBetForm() {
           />
         </Field>
 
-        <Field
-          label="Cover image"
-          hint="Optional — thumbnail on market cards and search."
-        >
+        <Field label="Cover image" hint="Optional — thumbnail on market cards and search.">
           <BetImageField
             previewUrl={coverPreview}
             onPick={onPickCover}
@@ -428,10 +458,128 @@ export function CreateBetForm() {
             className="textarea min-h-[140px]"
             value={terms}
             onChange={(e) => setTerms(e.target.value)}
-            placeholder={`If the Knicks play in the 2026 ECF — or are eliminated from the East Conference Finals — proposer wins. Otherwise acceptor wins. Push if season is cancelled.`}
+            placeholder={`If the Knicks play in the 2026 ECF, "Yes" wins. Otherwise "No" wins.`}
             maxLength={10_000}
           />
         </Field>
+
+        {/* Outcomes + stance */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="label">Outcomes & your side</span>
+            <div className="flex gap-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setMode("binary")}
+                className={`rounded-md px-2 py-1 ${mode === "binary" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
+              >
+                Yes / No
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("custom");
+                  setCustomOutcomes(["Yes", "No"]);
+                  setProposerOutcome(0);
+                  setAcceptorOutcome(1);
+                }}
+                className={`rounded-md px-2 py-1 ${mode === "custom" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
+              >
+                Custom outcomes
+              </button>
+            </div>
+          </div>
+
+          {mode === "binary" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setStance("yes")}
+                className={`rounded-lg border-2 p-4 text-center font-bold transition-all ${
+                  stance === "yes"
+                    ? "border-success bg-success/15 text-success"
+                    : "border-border text-muted-foreground hover:border-success/40"
+                }`}
+              >
+                <div className="text-lg">YES</div>
+                <div className="mt-1 text-[11px] font-normal">You back this</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStance("no")}
+                className={`rounded-lg border-2 p-4 text-center font-bold transition-all ${
+                  stance === "no"
+                    ? "border-danger bg-danger/15 text-danger"
+                    : "border-border text-muted-foreground hover:border-danger/40"
+                }`}
+              >
+                <div className="text-lg">NO</div>
+                <div className="mt-1 text-[11px] font-normal">You back this</div>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {customOutcomes.map((o, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    className="input flex-1"
+                    value={o}
+                    onChange={(e) => setOutcomeLabel(i, e.target.value)}
+                    placeholder={`Outcome ${i + 1}`}
+                    maxLength={80}
+                  />
+                  {customOutcomes.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() => removeOutcome(i)}
+                      className="text-muted-foreground hover:text-[hsl(var(--danger))]"
+                      aria-label="Remove outcome"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              {customOutcomes.length < 16 && (
+                <button
+                  type="button"
+                  onClick={addOutcome}
+                  className="text-sm text-[hsl(var(--primary))] hover:underline"
+                >
+                  + Add outcome
+                </button>
+              )}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Field label="You back">
+                  <select
+                    className="select"
+                    value={proposerOutcome}
+                    onChange={(e) => setProposerOutcome(Number(e.target.value))}
+                  >
+                    {customOutcomes.map((o, i) => (
+                      <option key={i} value={i}>
+                        {o.trim() || `Outcome ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Counterparty backs">
+                  <select
+                    className="select"
+                    value={acceptorOutcome}
+                    onChange={(e) => setAcceptorOutcome(Number(e.target.value))}
+                  >
+                    {customOutcomes.map((o, i) => (
+                      <option key={i} value={i}>
+                        {o.trim() || `Outcome ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Token">
@@ -448,7 +596,7 @@ export function CreateBetForm() {
             </select>
           </Field>
           <Field
-            label="Stake per side"
+            label="Your stake"
             hint={
               live.balance !== undefined && tokenMeta
                 ? `Balance: ${formatToken(live.balance, effectiveDecimals)} ${tokenMeta.symbol}`
@@ -458,60 +606,61 @@ export function CreateBetForm() {
             <input
               className="input font-mono"
               inputMode="decimal"
-              value={amountStr}
-              onChange={(e) => setAmountStr(e.target.value)}
+              value={yourStakeStr}
+              onChange={(e) => setYourStakeStr(e.target.value)}
               placeholder="100"
             />
           </Field>
         </div>
 
         <Field
-          label="Settler"
-          hint="The address authorized to declare the winner. Usually a neutral third party."
+          label="Their stake"
+          hint="Asymmetric stakes are allowed — set what the other side must put up."
         >
           <input
             className="input font-mono"
-            value={settler}
-            onChange={(e) => setSettler(e.target.value)}
-            placeholder="0x…"
+            inputMode="decimal"
+            value={theirStakeStr}
+            onChange={(e) => setTheirStakeStr(e.target.value)}
+            placeholder="100"
           />
         </Field>
 
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Accept deadline (hours)">
-            <input
-              className="input"
-              inputMode="numeric"
-              value={acceptHours}
-              onChange={(e) => setAcceptHours(e.target.value)}
-              placeholder="72"
-            />
-          </Field>
-          <Field label="Settle deadline (hours)">
-            <input
-              className="input"
-              inputMode="numeric"
-              value={settleHours}
-              onChange={(e) => setSettleHours(e.target.value)}
-              placeholder="168"
-            />
-          </Field>
-          <Field label="Settler fee (bps)" hint="Max 1000 = 10%.">
-            <input
-              className="input"
-              inputMode="numeric"
-              value={feeBpsStr}
-              onChange={(e) => setFeeBpsStr(e.target.value)}
-              placeholder="0"
-            />
-          </Field>
-        </div>
+        <Field
+          label="Settler"
+          hint="An approved neutral party who declares the winning outcome. You can't settle your own bet."
+        >
+          <SettlerSelect
+            value={settler}
+            onChange={(addr, feeBps) => {
+              setSettler(addr);
+              setSettlerFeeBps(feeBps);
+            }}
+            excludeAddress={account}
+          />
+        </Field>
+
+        <Field
+          label="Estimated end date"
+          hint="Optional — informational date the market is expected to resolve."
+        >
+          <input
+            type="date"
+            className="input"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+        </Field>
       </div>
 
       <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
         <div>
-          Escrow:{" "}
-          <span className="font-mono">{shortAddr(escrow ?? "")}</span>
+          Escrow: <span className="font-mono">{shortAddr(escrow ?? "")}</span>
+        </div>
+        <div>
+          Settler fee: <b>{(settlerFeeBps / 100).toFixed(2)}%</b> of the pool
+          (set by the settler). Winner takes the pool less this fee. If the
+          winning outcome is one nobody backed, both stakes are refunded.
         </div>
         <div>
           You will sign{" "}
@@ -525,14 +674,8 @@ export function CreateBetForm() {
               <b>one</b> transaction: <code>createBet</code>
             </span>
           )}
-          . Your stake is pulled into escrow on the second tx.
+          . Your stake is pulled into escrow on the create tx.
         </div>
-        {coverFile && (
-          <div>
-            Your cover image is uploaded to your account after the on-chain
-            create (no extra gas).
-          </div>
-        )}
       </div>
 
       {error && (

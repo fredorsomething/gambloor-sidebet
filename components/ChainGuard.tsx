@@ -6,10 +6,21 @@ import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
 import { ConnectButton } from "@/components/ConnectButton";
-import { getEscrowAddress } from "@/lib/chains";
+import {
+  getCtfAddress,
+  getEscrowAddress,
+  getEscrowV2Address,
+  getExchangeAddress,
+} from "@/lib/chains";
 
-/** Requires a signed-in Privy account on Polygon mainnet + deployed escrow. */
-export function ChainGuard({ children }: { children: React.ReactNode }) {
+/** Requires a signed-in Privy account on Polygon mainnet + deployed contracts. */
+export function ChainGuard({
+  children,
+  require: requirement = "escrow",
+}: {
+  children: React.ReactNode;
+  require?: "escrow" | "market";
+}) {
   const { ready, authenticated } = usePrivy();
   const { address } = useAccount();
   const chainId = useChainId();
@@ -50,14 +61,32 @@ export function ChainGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const escrow = getEscrowAddress();
+  if (requirement === "market") {
+    const ctf = getCtfAddress();
+    const exchange = getExchangeAddress();
+    if (!ctf || !exchange) {
+      return (
+        <div className="card p-8 space-y-2">
+          <h2 className="text-lg font-semibold">Markets not configured</h2>
+          <p className="text-sm text-muted-foreground">
+            Set <code>NEXT_PUBLIC_CTF_ADDRESS_POLYGON</code> and{" "}
+            <code>NEXT_PUBLIC_EXCHANGE_ADDRESS_POLYGON</code> to your deployed
+            contracts on Polygon mainnet, then redeploy the app.
+          </p>
+        </div>
+      );
+    }
+    return <>{children}</>;
+  }
+
+  const escrow = getEscrowV2Address() ?? getEscrowAddress();
   if (!escrow) {
     return (
       <div className="card p-8 space-y-2">
         <h2 className="text-lg font-semibold">Escrow not configured</h2>
         <p className="text-sm text-muted-foreground">
-          Set <code>NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON</code> to your deployed
-          SidebetEscrow contract on Polygon mainnet, then redeploy the app.
+          Set <code>NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON</code> to your deployed
+          SidebetEscrowV2 contract on Polygon mainnet, then redeploy the app.
         </p>
       </div>
     );

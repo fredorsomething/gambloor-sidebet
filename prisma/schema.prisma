@@ -34,6 +34,19 @@ model User {
   @@index([privyId])
 }
 
+// Approved settlers: only these addresses can be chosen to resolve a Sidebet or
+// Market. Each sets their own fee (basis points). Seeded with the default wallet.
+model ApprovedSettler {
+  address   String   @id
+  username  String?
+  feeBps    Int      @default(200) // 2%
+  approved  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([approved])
+}
+
 model Bet {
   id              Int      @id @default(autoincrement())
 
@@ -50,7 +63,18 @@ model Bet {
   token           String
   tokenSymbol     String?
   decimals        Int      @default(6)
-  amount          String   // wei-units, decimal string
+
+  // Asymmetric stakes (wei-units, decimal strings). `amount` kept as the
+  // proposer-side stake for backwards compatibility / legacy reads.
+  amount          String
+  proposerStake   String   @default("0")
+  acceptorStake   String   @default("0")
+
+  // Outcomes: ordered labels (e.g. ["Yes","No"] or custom brackets) and the
+  // outcome index each side is backing.
+  outcomes        Json     @default("[\"Yes\",\"No\"]")
+  proposerOutcome Int      @default(0)
+  acceptorOutcome Int      @default(1)
 
   // Off-chain content
   title           String
@@ -63,9 +87,10 @@ model Bet {
   // Lifecycle
   status          String   @default("Open") // Open | Matched | Settled | Cancelled | Refunded
   winner          String?
-  feeBps          Int      @default(0)
+  winningOutcome  Int?
+  feeBps          Int      @default(0) // settler fee snapshot at creation
   acceptDeadline  BigInt?
-  settleDeadline  BigInt?
+  estimatedEndDate DateTime?
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -75,4 +100,122 @@ model Bet {
   @@index([proposer])
   @@index([acceptor])
   @@index([settler])
+}
+
+// ---------------- CLOB prediction markets ----------------
+
+model Market {
+  id               Int      @id @default(autoincrement())
+
+  // On-chain references
+  chainId          Int
+  exchangeAddress  String   // CTFExchange address
+  ctfAddress       String   // ConditionalTokens address
+  conditionId      String   // bytes32 hex
+  questionId       String   // bytes32 hex (keccak of termsHash + nonce)
+  txHash           String?
+
+  // Roles + collateral
+  creator          String
+  settler          String
+  feeBps           Int      @default(200) // settler fee snapshot
+  token            String
+  tokenSymbol      String?
+  decimals         Int      @default(6)
+
+  // Off-chain content
+  title            String
+  description      String
+  imageUrl         String?
+  terms            String
+  termsHash        String
+  nonce            String
+
+  // Lifecycle
+  status           String   @default("Open") // Open | Resolved
+  winningOutcome   Int?
+  estimatedEndDate DateTime?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  outcomes         MarketOutcome[]
+  orders           Order[]
+  trades           Trade[]
+
+  @@unique([chainId, exchangeAddress, conditionId])
+  @@index([chainId, status])
+  @@index([creator])
+  @@index([settler])
+}
+
+model MarketOutcome {
+  id         Int    @id @default(autoincrement())
+  marketId   Int
+  index      Int
+  label      String
+  positionId String // ERC-1155 token id, uint256 as decimal string
+
+  market     Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@unique([marketId, index])
+  @@index([positionId])
+}
+
+model Order {
+  // Order hash (EIP-712) as the primary key.
+  hash         String   @id
+
+  marketId     Int
+  maker        String
+  side         String   // BUY | SELL  (maker's perspective on the outcome share)
+  outcomeIndex Int
+  positionId   String   // ERC-1155 token id (decimal string)
+
+  // Price in collateral units per whole share (decimal string, scaled by token decimals).
+  price        String
+
+  // Raw EIP-712 order fields (decimal strings).
+  makerAmount  String
+  takerAmount  String
+  salt         String
+  expiry       BigInt   @default(0) // unix seconds, 0 = no expiry
+  signature    String
+
+  // Fill tracking (taker-side amount filled, decimal string).
+  filled       String   @default("0")
+  status       String   @default("Open") // Open | Filled | Cancelled | Expired
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  market       Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  trades       Trade[]
+
+  @@index([marketId, status])
+  @@index([maker])
+  @@index([positionId, side, status])
+}
+
+model Trade {
+  id           Int      @id @default(autoincrement())
+  marketId     Int
+  orderHash    String
+  taker        String
+  maker        String
+  side         String   // taker's side: BUY | SELL
+  outcomeIndex Int
+  positionId   String
+  shares       String   // share amount (decimal string)
+  cost         String   // collateral amount (decimal string)
+  txHash       String?
+
+  createdAt    DateTime @default(now())
+
+  market       Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  order        Order    @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
+
+  @@index([marketId])
+  @@index([taker])
+  @@index([maker])
 }

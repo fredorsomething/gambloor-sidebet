@@ -35,6 +35,7 @@ export function buildTermsHash(args: {
   terms: string;
   proposer: string;
   nonce: string;
+  outcomes?: string[];
 }): Hex {
   const blob = JSON.stringify({
     title: args.title.trim(),
@@ -42,6 +43,7 @@ export function buildTermsHash(args: {
     terms: args.terms.trim(),
     proposer: args.proposer.toLowerCase(),
     nonce: args.nonce,
+    outcomes: (args.outcomes ?? []).map((o) => o.trim()),
   });
   return keccak256(toBytes(blob));
 }

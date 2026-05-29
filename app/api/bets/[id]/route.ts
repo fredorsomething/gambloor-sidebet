@@ -3,9 +3,11 @@ import { getAddress } from "viem";
 
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
-import { readBet } from "@/lib/onchain";
+import { readBetV2 } from "@/lib/onchain";
 
 export const dynamic = "force-dynamic";
+
+const ZERO = "0x0000000000000000000000000000000000000000";
 
 export async function GET(
   _req: NextRequest,
@@ -17,8 +19,8 @@ export async function GET(
   const bet = await prisma.bet.findUnique({ where: { id } });
   if (!bet) return jsonErr("not found", 404);
 
-  // Opportunistic sync from chain.
-  const onchain = await readBet(
+  // Opportunistic sync from chain (SidebetEscrowV2).
+  const onchain = await readBetV2(
     bet.chainId,
     getAddress(bet.escrowAddress) as `0x${string}`,
     BigInt(bet.onchainId),
@@ -29,17 +31,22 @@ export async function GET(
     if (onchain.status !== bet.status) updates.status = onchain.status;
     if (
       onchain.acceptor &&
-      onchain.acceptor !== "0x0000000000000000000000000000000000000000" &&
+      onchain.acceptor !== ZERO &&
       onchain.acceptor.toLowerCase() !== (bet.acceptor || "").toLowerCase()
     ) {
       updates.acceptor = getAddress(onchain.acceptor);
     }
-    if (
-      onchain.winner &&
-      onchain.winner !== "0x0000000000000000000000000000000000000000" &&
-      onchain.winner.toLowerCase() !== (bet.winner || "").toLowerCase()
-    ) {
-      updates.winner = getAddress(onchain.winner);
+    if (onchain.status === "Settled") {
+      const win = onchain.winningOutcome;
+      if (bet.winningOutcome !== win) updates.winningOutcome = win;
+      // Map the winning outcome to the winning address (or null on a refund).
+      const winnerAddr =
+        win === onchain.proposerOutcome
+          ? getAddress(onchain.proposer)
+          : win === onchain.acceptorOutcome && onchain.acceptor !== ZERO
+            ? getAddress(onchain.acceptor)
+            : null;
+      if ((bet.winner || null) !== winnerAddr) updates.winner = winnerAddr;
     }
     if (Object.keys(updates).length > 0) {
       try {

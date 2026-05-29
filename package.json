@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "hh:compile": "hardhat compile",
     "hh:test": "hardhat test",
@@ -41,11 +42,13 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-ignition": "^0.15.16",
     "@nomicfoundation/hardhat-ignition-viem": "^0.15.16",
     "@nomicfoundation/hardhat-network-helpers": "^1.1.2",
     "@nomicfoundation/hardhat-toolbox-viem": "^3.0.0",
     "@nomicfoundation/hardhat-verify": "^2.1.3",
     "@nomicfoundation/hardhat-viem": "^2.1.3",
+    "@nomicfoundation/ignition-core": "^0.15.15",
     "@types/chai": "^4.3.20",
     "@types/chai-as-promised": "^7.1.8",
     "@types/mocha": "^10.0.10",

@@ -5,32 +5,26 @@ import { getAddress, isAddress, keccak256, toBytes } from "viem";
 import { prisma } from "@/lib/db";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { getApprovedSettler } from "@/lib/settlers";
 
 export const dynamic = "force-dynamic";
 
 const HEX64 = /^0x[0-9a-fA-F]{64}$/;
 const DECIMAL = /^[0-9]+$/;
 
-const CreateBetSchema = z.object({
+const CreateMarketSchema = z.object({
   chainId: z.number().int().positive(),
-  escrowAddress: z.string().refine(isAddress, "bad escrow address"),
-  onchainId: z.string().regex(DECIMAL, "onchainId must be a uint string"),
-  txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
+  exchangeAddress: z.string().refine(isAddress, "bad exchange address"),
+  ctfAddress: z.string().refine(isAddress, "bad ctf address"),
+  conditionId: z.string().regex(HEX64, "conditionId must be 0x + 64 hex"),
+  questionId: z.string().regex(HEX64, "questionId must be 0x + 64 hex"),
+  txHash: z.string().regex(HEX64).optional(),
 
-  proposer: z.string().refine(isAddress, "bad proposer"),
+  creator: z.string().refine(isAddress, "bad creator"),
   settler: z.string().refine(isAddress, "bad settler"),
   token: z.string().refine(isAddress, "bad token"),
   tokenSymbol: z.string().max(16).optional(),
   decimals: z.number().int().min(0).max(36),
-
-  // Asymmetric stakes.
-  proposerStake: z.string().regex(DECIMAL, "proposerStake must be a uint string"),
-  acceptorStake: z.string().regex(DECIMAL, "acceptorStake must be a uint string"),
-
-  // Outcomes.
-  outcomes: z.array(z.string().min(1).max(80)).min(2).max(16),
-  proposerOutcome: z.number().int().min(0).max(15),
-  acceptorOutcome: z.number().int().min(0).max(15),
 
   title: z.string().min(3).max(200),
   description: z.string().min(1).max(2000),
@@ -45,9 +39,10 @@ const CreateBetSchema = z.object({
   termsHash: z.string().regex(HEX64, "termsHash must be 0x + 64 hex"),
   nonce: z.string().min(1).max(80),
 
-  feeBps: z.number().int().min(0).max(1000),
-  acceptDeadline: z.number().int().min(0).optional(),
-  estimatedEndDate: z.number().int().min(0).optional(), // unix seconds
+  outcomes: z.array(z.string().min(1).max(80)).min(2).max(16),
+  positionIds: z.array(z.string().regex(DECIMAL)).min(2).max(16),
+
+  estimatedEndDate: z.number().int().min(0).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -58,27 +53,24 @@ export async function POST(req: NextRequest) {
     return jsonErr("invalid json");
   }
 
-  const parsed = CreateBetSchema.safeParse(body);
+  const parsed = CreateMarketSchema.safeParse(body);
   if (!parsed.success) {
     return jsonErr(parsed.error.errors.map((e) => e.message).join(", "));
   }
   const d = parsed.data;
 
-  if (d.proposerOutcome >= d.outcomes.length || d.acceptorOutcome >= d.outcomes.length) {
-    return jsonErr("outcome index out of range", 400);
-  }
-  if (d.proposerOutcome === d.acceptorOutcome) {
-    return jsonErr("proposer and acceptor must back different outcomes", 400);
+  if (d.outcomes.length !== d.positionIds.length) {
+    return jsonErr("outcomes and positionIds length mismatch", 400);
   }
 
-  // Confirm the off-chain content matches the committed termsHash.
+  // termsHash commitment over the off-chain content.
   const expected = keccak256(
     toBytes(
       JSON.stringify({
         title: d.title.trim(),
         description: d.description.trim(),
         terms: d.terms.trim(),
-        proposer: d.proposer.toLowerCase(),
+        creator: d.creator.toLowerCase(),
         nonce: d.nonce,
         outcomes: d.outcomes.map((o) => o.trim()),
       }),
@@ -88,37 +80,37 @@ export async function POST(req: NextRequest) {
     return jsonErr("termsHash does not match content", 400);
   }
 
+  // Settler must be approved and not the creator.
+  if (getAddress(d.settler) === getAddress(d.creator)) {
+    return jsonErr("you can't be your own settler", 400);
+  }
+  const approved = await getApprovedSettler(d.settler);
+  if (!approved) return jsonErr("settler is not approved", 400);
+
   try {
-    const bet = await prisma.bet.upsert({
+    const market = await prisma.market.upsert({
       where: {
-        chainId_escrowAddress_onchainId: {
+        chainId_exchangeAddress_conditionId: {
           chainId: d.chainId,
-          escrowAddress: getAddress(d.escrowAddress),
-          onchainId: d.onchainId,
+          exchangeAddress: getAddress(d.exchangeAddress),
+          conditionId: d.conditionId.toLowerCase(),
         },
       },
-      update: {
-        txHash: d.txHash,
-      },
+      update: { txHash: d.txHash },
       create: {
         chainId: d.chainId,
-        escrowAddress: getAddress(d.escrowAddress),
-        onchainId: d.onchainId,
+        exchangeAddress: getAddress(d.exchangeAddress),
+        ctfAddress: getAddress(d.ctfAddress),
+        conditionId: d.conditionId.toLowerCase(),
+        questionId: d.questionId.toLowerCase(),
         txHash: d.txHash,
 
-        proposer: getAddress(d.proposer),
+        creator: getAddress(d.creator),
         settler: getAddress(d.settler),
+        feeBps: approved.feeBps,
         token: getAddress(d.token),
         tokenSymbol: d.tokenSymbol,
         decimals: d.decimals,
-
-        amount: d.proposerStake,
-        proposerStake: d.proposerStake,
-        acceptorStake: d.acceptorStake,
-
-        outcomes: d.outcomes.map((o) => o.trim()),
-        proposerOutcome: d.proposerOutcome,
-        acceptorOutcome: d.acceptorOutcome,
 
         title: d.title.trim(),
         description: d.description.trim(),
@@ -127,30 +119,34 @@ export async function POST(req: NextRequest) {
         termsHash: d.termsHash.toLowerCase(),
         nonce: d.nonce,
 
-        feeBps: d.feeBps,
-        acceptDeadline: d.acceptDeadline ? BigInt(d.acceptDeadline) : null,
+        status: "Open",
         estimatedEndDate: d.estimatedEndDate
           ? new Date(d.estimatedEndDate * 1000)
           : null,
 
-        status: "Open",
+        outcomes: {
+          create: d.outcomes.map((label, i) => ({
+            index: i,
+            label: label.trim(),
+            positionId: d.positionIds[i],
+          })),
+        },
       },
+      include: { outcomes: true },
     });
 
-    return jsonOk(bet, { status: 201 });
+    return jsonOk(market, { status: 201 });
   } catch (err) {
-    console.error("create bet failed", err);
-    return jsonErr("failed to create bet", 500);
+    console.error("create market failed", err);
+    return jsonErr("failed to create market", 500);
   }
 }
 
 const ListQuerySchema = z.object({
   chainId: z.coerce.number().int().positive().optional(),
-  status: z
-    .enum(["Open", "Matched", "Settled", "Cancelled", "Refunded"])
-    .optional(),
-  who: z.string().optional(), // address — proposer/acceptor/settler
-  role: z.enum(["proposer", "acceptor", "settler", "any"]).optional(),
+  status: z.enum(["Open", "Resolved"]).optional(),
+  who: z.string().optional(),
+  role: z.enum(["creator", "settler", "any"]).optional(),
   take: z.coerce.number().int().min(1).max(100).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
@@ -169,25 +165,20 @@ export async function GET(req: NextRequest) {
   if (q.who && isAddress(q.who)) {
     const addr = getAddress(q.who);
     const role = q.role ?? "any";
-    if (role === "proposer") where.proposer = addr;
-    else if (role === "acceptor") where.acceptor = addr;
+    if (role === "creator") where.creator = addr;
     else if (role === "settler") where.settler = addr;
-    else
-      where.OR = [
-        { proposer: addr },
-        { acceptor: addr },
-        { settler: addr },
-      ];
+    else where.OR = [{ creator: addr }, { settler: addr }];
   }
 
   const [rows, total] = await Promise.all([
-    prisma.bet.findMany({
+    prisma.market.findMany({
       where,
       orderBy: [{ createdAt: "desc" }],
       take: q.take,
       skip: q.skip,
+      include: { outcomes: { orderBy: { index: "asc" } } },
     }),
-    prisma.bet.count({ where }),
+    prisma.market.count({ where }),
   ]);
 
   return jsonOk({ items: rows, total });

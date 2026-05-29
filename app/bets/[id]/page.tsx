@@ -36,9 +36,15 @@ export default async function BetDetailPage({
   if (!data) notFound();
   const { bet } = data;
 
-  const stake = formatToken(BigInt(bet.amount), bet.decimals);
-  const pool = formatToken(BigInt(bet.amount) * 2n, bet.decimals);
+  const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
+  const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
+  const poolWei = proposerStake + acceptorStake;
+  const pool = formatToken(poolWei, bet.decimals);
   const tokenSym = bet.tokenSymbol || "tokens";
+  const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
+  const endDateSecs = bet.estimatedEndDate
+    ? Math.floor(new Date(bet.estimatedEndDate).getTime() / 1000)
+    : 0;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -70,19 +76,45 @@ export default async function BetDetailPage({
           {bet.title}
         </h1>
         <p className="text-muted-foreground">{bet.description}</p>
+
+        {outcomes.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {outcomes.map((o, i) => (
+              <span
+                key={i}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  i === bet.proposerOutcome
+                    ? "bg-success/15 text-success"
+                    : i === bet.acceptorOutcome
+                      ? "bg-danger/15 text-danger"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {o}
+                {i === bet.proposerOutcome && " · proposer"}
+                {i === bet.acceptorOutcome && " · acceptor"}
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
-          <Stat label="Stake / side" value={`${stake} ${tokenSym}`} />
+          <Stat
+            label="Proposer stake"
+            value={`${formatToken(proposerStake, bet.decimals)} ${tokenSym}`}
+          />
+          <Stat
+            label="Acceptor stake"
+            value={`${formatToken(acceptorStake, bet.decimals)} ${tokenSym}`}
+          />
           <Stat label="Total pool" value={`${pool} ${tokenSym}`} />
           <Stat label="Settler fee" value={`${(bet.feeBps / 100).toFixed(2)}%`} />
-          <Stat
-            label="Settle by"
-            value={
-              bet.settleDeadline
-                ? `${fromNowUnix(BigInt(bet.settleDeadline))}`
-                : "no deadline"
-            }
-          />
         </div>
+        {endDateSecs > 0 && (
+          <div className="pt-1 text-xs text-muted-foreground">
+            Estimated end: {formatTimestamp(endDateSecs)} ({fromNowUnix(endDateSecs)})
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
@@ -163,10 +195,10 @@ export default async function BetDetailPage({
                 value={`${formatTimestamp(BigInt(bet.acceptDeadline))} (${fromNowUnix(BigInt(bet.acceptDeadline))})`}
               />
             )}
-            {bet.settleDeadline && (
+            {endDateSecs > 0 && (
               <Row
-                label="Settle by"
-                value={`${formatTimestamp(BigInt(bet.settleDeadline))} (${fromNowUnix(BigInt(bet.settleDeadline))})`}
+                label="Est. end"
+                value={`${formatTimestamp(endDateSecs)} (${fromNowUnix(endDateSecs)})`}
               />
             )}
             <Row

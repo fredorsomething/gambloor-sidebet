@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { getAddress, maxUint256, type Address } from "viem";
+import { useEffect, useState } from "react";
+import { maxUint256, type Address } from "viem";
 import {
   useAccount,
   useWaitForTransactionReceipt,
@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { useToast } from "@/components/ui/Toast";
-import { ERC20_ABI, SIDEBET_ESCROW_ABI } from "@/lib/abi";
+import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { formatToken, shortAddr } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
@@ -28,24 +28,25 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   const me = account?.toLowerCase();
   const isProposer = me === bet.proposer.toLowerCase();
   const isSettler = me === bet.settler.toLowerCase();
-  const isAcceptor = bet.acceptor ? me === bet.acceptor.toLowerCase() : false;
 
-  const amount = BigInt(bet.amount);
+  const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
+  const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
+  const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
+  const pool = proposerStake + acceptorStake;
   const token = bet.token as Address;
   const escrow = bet.escrowAddress as Address;
 
-  const live = useTokenInfo({
-    token,
-    owner: account,
-    spender: escrow,
-  });
+  const live = useTokenInfo({ token, owner: account, spender: escrow });
   const decimals = live.decimals ?? bet.decimals;
   const tokenSym = bet.tokenSymbol || live.symbol || "tokens";
 
+  // Acceptor must stake the acceptorStake amount.
   const needsApproval =
-    !!account && bet.status === "Open" && !isProposer && (live.allowance ?? 0n) < amount;
+    !!account &&
+    bet.status === "Open" &&
+    !isProposer &&
+    (live.allowance ?? 0n) < acceptorStake;
 
-  // -------- approve + accept flow --------
   const approveTx = useWriteContract();
   const approveWait = useWaitForTransactionReceipt({ hash: approveTx.data });
   const acceptTx = useWriteContract();
@@ -54,12 +55,10 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   const cancelWait = useWaitForTransactionReceipt({ hash: cancelTx.data });
   const settleTx = useWriteContract();
   const settleWait = useWaitForTransactionReceipt({ hash: settleTx.data });
-  const refundTx = useWriteContract();
-  const refundWait = useWaitForTransactionReceipt({ hash: refundTx.data });
 
-  const [acceptStep, setAcceptStep] = useState<
-    "idle" | "approving" | "accepting"
-  >("idle");
+  const [acceptStep, setAcceptStep] = useState<"idle" | "approving" | "accepting">(
+    "idle",
+  );
   const acceptBusy = acceptStep !== "idle";
 
   async function onAccept() {
@@ -79,7 +78,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
         push({ title: "Accepting bet" });
         await acceptTx.writeContractAsync({
           address: escrow,
-          abi: SIDEBET_ESCROW_ABI,
+          abi: SIDEBET_ESCROW_V2_ABI,
           functionName: "acceptBet",
           args: [BigInt(bet.onchainId)],
         });
@@ -91,7 +90,6 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
     }
   }
 
-  // After approval lands, automatically issue acceptBet.
   useEffect(() => {
     if (acceptStep !== "approving") return;
     if (!approveWait.isSuccess) return;
@@ -101,7 +99,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
         push({ title: "Accepting bet" });
         await acceptTx.writeContractAsync({
           address: escrow,
-          abi: SIDEBET_ESCROW_ABI,
+          abi: SIDEBET_ESCROW_V2_ABI,
           functionName: "acceptBet",
           args: [BigInt(bet.onchainId)],
         });
@@ -127,12 +125,11 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acceptStep, acceptWait.isSuccess]);
 
-  // -------- cancel --------
   async function onCancel() {
     try {
       await cancelTx.writeContractAsync({
         address: escrow,
-        abi: SIDEBET_ESCROW_ABI,
+        abi: SIDEBET_ESCROW_V2_ABI,
         functionName: "cancelBet",
         args: [BigInt(bet.onchainId)],
       });
@@ -144,33 +141,23 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   }
   useEffect(() => {
     if (cancelWait.isSuccess) {
-      push({
-        title: "Bet cancelled",
-        description: "Stake refunded.",
-        variant: "success",
-      });
+      push({ title: "Bet cancelled", description: "Stake refunded.", variant: "success" });
       onTxConfirmed?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelWait.isSuccess]);
 
-  // -------- settle --------
-  const [winner, setWinner] = useState<"proposer" | "acceptor" | "push">(
-    "proposer",
+  // -------- settle: pick the winning outcome --------
+  const [winningOutcome, setWinningOutcome] = useState<number>(
+    bet.proposerOutcome ?? 0,
   );
   async function onSettle() {
-    const winAddr =
-      winner === "proposer"
-        ? bet.proposer
-        : winner === "acceptor"
-          ? bet.acceptor ?? "0x0000000000000000000000000000000000000000"
-          : "0x0000000000000000000000000000000000000000";
     try {
       await settleTx.writeContractAsync({
         address: escrow,
-        abi: SIDEBET_ESCROW_ABI,
+        abi: SIDEBET_ESCROW_V2_ABI,
         functionName: "settleBet",
-        args: [BigInt(bet.onchainId), getAddress(winAddr)],
+        args: [BigInt(bet.onchainId), winningOutcome],
       });
       push({ title: "Settle submitted" });
     } catch (err) {
@@ -180,51 +167,15 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
   }
   useEffect(() => {
     if (settleWait.isSuccess) {
-      push({
-        title: "Settled",
-        description:
-          winner === "push" ? "Push — both sides refunded." : "Winner paid.",
-        variant: "success",
-      });
+      push({ title: "Settled", description: "Outcome declared.", variant: "success" });
       onTxConfirmed?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settleWait.isSuccess]);
 
-  // -------- refund expired --------
-  const canRefund = useMemo(() => {
-    if (bet.status !== "Matched") return false;
-    if (!bet.settleDeadline) return false;
-    return Date.now() / 1000 >= Number(bet.settleDeadline);
-  }, [bet.status, bet.settleDeadline]);
+  const feePct = (bet.feeBps / 100).toFixed(2);
+  const payout = (pool * BigInt(10000 - bet.feeBps)) / 10000n;
 
-  async function onRefund() {
-    try {
-      await refundTx.writeContractAsync({
-        address: escrow,
-        abi: SIDEBET_ESCROW_ABI,
-        functionName: "refundExpired",
-        args: [BigInt(bet.onchainId)],
-      });
-      push({ title: "Refund submitted" });
-    } catch (err) {
-      const msg = (err as Error)?.message || "Refund rejected";
-      push({ title: "Refund failed", description: msg, variant: "danger" });
-    }
-  }
-  useEffect(() => {
-    if (refundWait.isSuccess) {
-      push({
-        title: "Refunded",
-        description: "Both stakes returned.",
-        variant: "success",
-      });
-      onTxConfirmed?.();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refundWait.isSuccess]);
-
-  // ---- render ----
   if (!account) {
     return (
       <div className="card p-4 text-sm text-muted-foreground">
@@ -233,20 +184,23 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
     );
   }
 
-  // Open + I'm not the proposer => can accept
+  // Open + I'm not the proposer => can accept.
   if (bet.status === "Open" && !isProposer) {
+    const theirPick = outcomes[bet.acceptorOutcome];
     return (
       <div className="card p-5 space-y-3">
         <LowGasBanner />
         <div>
           <h3 className="font-semibold">Take the other side</h3>
           <p className="text-sm text-muted-foreground">
-            You'll stake{" "}
+            You'll back{" "}
+            <span className="font-semibold text-danger">{theirPick ?? "the other outcome"}</span>{" "}
+            and stake{" "}
             <span className="font-mono">
-              {formatToken(amount, decimals)} {tokenSym}
+              {formatToken(acceptorStake, decimals)} {tokenSym}
             </span>{" "}
-            into escrow. Winner takes the pool less the settler fee (
-            {(bet.feeBps / 100).toFixed(2)}%).
+            into escrow. If your outcome wins, you take the{" "}
+            {formatToken(pool, decimals)} {tokenSym} pool less the {feePct}% settler fee.
           </p>
         </div>
         {live.balance !== undefined && (
@@ -260,21 +214,21 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
         <Button onClick={onAccept} disabled={acceptBusy} size="lg">
           {acceptStep === "approving" && "Approving…"}
           {acceptStep === "accepting" && "Accepting…"}
-          {acceptStep === "idle" &&
-            (needsApproval ? "Approve & accept" : "Accept bet")}
+          {acceptStep === "idle" && (needsApproval ? "Approve & accept" : "Accept bet")}
         </Button>
       </div>
     );
   }
 
-  // Open + I'm the proposer => can cancel
+  // Open + I'm the proposer => can cancel.
   if (bet.status === "Open" && isProposer) {
     return (
       <div className="card p-5 space-y-3">
         <LowGasBanner />
         <h3 className="font-semibold">Your open offer</h3>
         <p className="text-sm text-muted-foreground">
-          No taker yet. You can cancel to pull your stake back.
+          No taker yet. You can cancel to pull your{" "}
+          {formatToken(proposerStake, decimals)} {tokenSym} stake back.
         </p>
         <Button
           variant="danger"
@@ -287,7 +241,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
     );
   }
 
-  // Matched + I'm the settler => can settle
+  // Matched + I'm the settler => can settle by picking the winning outcome.
   if (bet.status === "Matched" && isSettler) {
     return (
       <div className="card p-5 space-y-4">
@@ -295,124 +249,95 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
         <div>
           <h3 className="font-semibold">Settle market</h3>
           <p className="text-sm text-muted-foreground">
-            Read the terms carefully. Declaring a winner pays out{" "}
+            Read the terms carefully and declare the winning outcome. The pool of{" "}
             <span className="font-mono">
-              {formatToken(amount * 2n, decimals)} {tokenSym}
+              {formatToken(pool, decimals)} {tokenSym}
             </span>{" "}
-            less your {(bet.feeBps / 100).toFixed(2)}% fee. Picking{" "}
-            <em>push</em> refunds both sides.
+            pays the winning side less your {feePct}% fee. If you pick an outcome
+            nobody backed, both sides are refunded (no fee).
           </p>
         </div>
         <div className="grid grid-cols-1 gap-2">
-          {(
-            [
-              {
-                key: "proposer" as const,
-                label: `Proposer wins (${shortAddr(bet.proposer)})`,
-              },
-              {
-                key: "acceptor" as const,
-                label: `Acceptor wins (${shortAddr(bet.acceptor ?? "")})`,
-              },
-              { key: "push" as const, label: "Push — split refund" },
-            ]
-          ).map((opt) => (
-            <label
-              key={opt.key}
-              className={`flex items-center gap-2 rounded-md border p-3 cursor-pointer text-sm ${
-                winner === opt.key
-                  ? "border-[hsl(var(--primary))]/60 bg-[hsl(var(--primary))]/10"
-                  : "border-border"
-              }`}
-            >
-              <input
-                type="radio"
-                name="winner"
-                checked={winner === opt.key}
-                onChange={() => setWinner(opt.key)}
-              />
-              <span>{opt.label}</span>
-            </label>
-          ))}
+          {outcomes.map((label, i) => {
+            const backedBy =
+              i === bet.proposerOutcome
+                ? "Proposer"
+                : i === bet.acceptorOutcome
+                  ? "Acceptor"
+                  : "Nobody (refund)";
+            return (
+              <label
+                key={i}
+                className={`flex items-center justify-between gap-2 rounded-md border p-3 cursor-pointer text-sm ${
+                  winningOutcome === i
+                    ? "border-[hsl(var(--primary))]/60 bg-[hsl(var(--primary))]/10"
+                    : "border-border"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="winningOutcome"
+                    checked={winningOutcome === i}
+                    onChange={() => setWinningOutcome(i)}
+                  />
+                  <span className="font-medium">{label}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">{backedBy}</span>
+              </label>
+            );
+          })}
         </div>
         <Button
           onClick={onSettle}
           disabled={settleTx.isPending || settleWait.isLoading}
           size="lg"
         >
-          {settleWait.isLoading ? "Settling…" : "Settle market"}
+          {settleWait.isLoading ? "Settling…" : "Declare winning outcome"}
         </Button>
       </div>
     );
   }
 
-  // Matched + past settleDeadline => anyone can refund
-  if (bet.status === "Matched" && canRefund) {
-    return (
-      <div className="card p-5 space-y-3">
-        <LowGasBanner />
-        <h3 className="font-semibold">Settle deadline passed</h3>
-        <p className="text-sm text-muted-foreground">
-          The settler did not resolve before the deadline. Either party (or
-          anyone) can now refund both stakes.
-        </p>
-        <Button
-          onClick={onRefund}
-          variant="outline"
-          disabled={refundTx.isPending || refundWait.isLoading}
-        >
-          {refundWait.isLoading ? "Refunding…" : "Refund both stakes"}
-        </Button>
-      </div>
-    );
-  }
-
-  // Matched + waiting on settler => no action for you
+  // Matched + waiting on settler.
   if (bet.status === "Matched") {
     return (
       <div className="card p-5 text-sm">
         <h3 className="font-semibold">Awaiting settlement</h3>
         <p className="text-muted-foreground mt-1">
           Both sides are funded. Settler{" "}
-          <span className="font-mono">{shortAddr(bet.settler)}</span> will
-          resolve the market.
+          <span className="font-mono">{shortAddr(bet.settler)}</span> will declare
+          the winning outcome.
         </p>
       </div>
     );
   }
 
-  // Resolved states.
-  if (bet.status === "Settled" && bet.winner) {
-    const winnerLabel =
-      bet.winner.toLowerCase() === bet.proposer.toLowerCase()
-        ? "Proposer"
-        : bet.acceptor &&
-            bet.winner.toLowerCase() === bet.acceptor.toLowerCase()
-          ? "Acceptor"
-          : "Unknown";
+  // Settled.
+  if (bet.status === "Settled") {
+    const win = bet.winningOutcome;
+    const winLabel = win != null ? outcomes[win] : undefined;
+    const refunded =
+      win != null && win !== bet.proposerOutcome && win !== bet.acceptorOutcome;
     return (
       <div className="card p-5">
         <h3 className="font-semibold">Resolved</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          {winnerLabel} won.{" "}
-          <span className="font-mono">{shortAddr(bet.winner)}</span> received{" "}
-          {formatToken(
-            (amount * 2n * BigInt(10000 - bet.feeBps)) / 10000n,
-            decimals,
-          )}{" "}
-          {tokenSym}.
-        </p>
-      </div>
-    );
-  }
-
-  if (bet.status === "Settled" && !bet.winner) {
-    return (
-      <div className="card p-5">
-        <h3 className="font-semibold">Push</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Settler declared a push. Both sides were refunded.
-        </p>
+        {refunded ? (
+          <p className="text-sm text-muted-foreground mt-1">
+            Winning outcome <b>{winLabel}</b> was backed by neither side — both
+            stakes were refunded.
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground mt-1">
+            Winning outcome: <b>{winLabel ?? "—"}</b>.{" "}
+            {bet.winner && (
+              <>
+                <span className="font-mono">{shortAddr(bet.winner)}</span> received{" "}
+                {formatToken(payout, decimals)} {tokenSym}.
+              </>
+            )}
+          </p>
+        )}
       </div>
     );
   }
@@ -433,7 +358,7 @@ export function BetActions({ bet, onTxConfirmed }: Props) {
       <div className="card p-5">
         <h3 className="font-semibold">Refunded</h3>
         <p className="text-sm text-muted-foreground mt-1">
-          Settler did not resolve in time. Both stakes were returned.
+          Both stakes were returned.
         </p>
       </div>
     );

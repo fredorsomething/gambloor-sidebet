@@ -7,9 +7,13 @@ import { formatToken } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
 
 export function BetCard({ bet }: { bet: BetRow }) {
-  const stake = formatToken(BigInt(bet.amount), bet.decimals);
-  const pool = formatToken(BigInt(bet.amount) * 2n, bet.decimals);
+  const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
+  const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
+  const stake = formatToken(proposerStake, bet.decimals);
+  const pool = formatToken(proposerStake + acceptorStake, bet.decimals);
   const sym = bet.tokenSymbol || "tokens";
+  const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
+  const proposerPick = outcomes[bet.proposerOutcome];
 
   return (
     <Link
@@ -35,9 +39,35 @@ export function BetCard({ bet }: { bet: BetRow }) {
         </div>
       </div>
 
+      {outcomes.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {outcomes.slice(0, 4).map((o, i) => (
+            <span
+              key={i}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                i === bet.proposerOutcome
+                  ? "bg-success/15 text-success"
+                  : i === bet.acceptorOutcome
+                    ? "bg-danger/15 text-danger"
+                    : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {o}
+            </span>
+          ))}
+          {outcomes.length > 4 && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+              +{outcomes.length - 4}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="mt-4 flex items-end justify-between">
         <div>
-          <div className="label">Stake / side</div>
+          <div className="label">
+            Proposer backs{proposerPick ? ` ${proposerPick}` : ""}
+          </div>
           <div className="font-mono text-lg font-bold">
             {stake} <span className="text-sm text-muted-foreground">{sym}</span>
           </div>
