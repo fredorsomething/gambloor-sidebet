@@ -82,16 +82,20 @@ export async function GET(
   for (const t of trades) {
     const decimals = t.market?.decimals ?? 6;
     const isTaker = t.taker.toLowerCase() === lower;
+    // Maker fields (when present) capture the maker's outcome for complementary
+    // fills; legacy rows mirror the taker side on the same outcome.
+    const userOutcome = isTaker
+      ? t.outcomeIndex
+      : t.makerOutcomeIndex ?? t.outcomeIndex;
     const userSide = isTaker
       ? (t.side as "BUY" | "SELL")
-      : t.side === "BUY"
-        ? "SELL"
-        : "BUY";
-    const shares = dollars(t.shares, decimals);
-    const cost = dollars(t.cost, decimals);
+      : ((t.makerSide as "BUY" | "SELL" | null) ??
+        (t.side === "BUY" ? "SELL" : "BUY"));
+    const shares = dollars(isTaker ? t.shares : t.makerShares ?? t.shares, decimals);
+    const cost = dollars(isTaker ? t.cost : t.makerCost ?? t.cost, decimals);
     if (shares <= 0) continue;
 
-    const key = `${t.marketId}:${t.outcomeIndex}`;
+    const key = `${t.marketId}:${userOutcome}`;
     const p = pos.get(key) ?? { qty: 0, cost: 0 };
 
     if (userSide === "BUY") {

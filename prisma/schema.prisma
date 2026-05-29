@@ -399,11 +399,23 @@ model Trade {
   orderHash    String
   taker        String
   maker        String
+  // Taker's economic perspective on the outcome they actually traded. For
+  // complementary (cross-outcome) fills this differs from the resting order's
+  // outcome, so the maker's perspective is recorded separately below.
   side         String   // taker's side: BUY | SELL
-  outcomeIndex Int
-  positionId   String
-  shares       String   // share amount (decimal string)
-  cost         String   // collateral amount (decimal string)
+  outcomeIndex Int      // taker's outcome
+  positionId   String   // taker's position id
+  shares       String   // taker's share amount (decimal string)
+  cost         String   // taker's collateral amount (decimal string)
+
+  // Maker's perspective (their resting order's outcome). Null on legacy rows,
+  // in which case the maker side is the opposite of `side` on `outcomeIndex`.
+  makerSide         String?
+  makerOutcomeIndex Int?
+  makerPositionId   String?
+  makerShares       String?
+  makerCost         String?
+
   txHash       String?
 
   createdAt    DateTime @default(now())

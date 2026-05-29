@@ -95,20 +95,35 @@ export async function GET(
   };
   const history: Norm[] = trades.map((t) => {
     const isTaker = t.taker.toLowerCase() === lower;
-    // `t.side` is the taker's side. Maker side is the opposite.
-    const userSide = isTaker
-      ? (t.side as "BUY" | "SELL")
-      : t.side === "BUY"
-        ? "SELL"
-        : "BUY";
+    // The taker fields are the taker's perspective. The maker fields (when
+    // present) are the maker's perspective on their own resting order's
+    // outcome — these differ for complementary (cross-outcome) fills. Legacy
+    // rows have no maker* fields, so fall back to mirroring the taker side.
+    if (isTaker) {
+      return {
+        outcomeIndex: t.outcomeIndex,
+        label: labelOf(t.outcomeIndex),
+        side: t.side as "BUY" | "SELL",
+        shares: t.shares,
+        cost: t.cost,
+        counterparty: t.maker,
+        role: "taker" as const,
+        txHash: t.txHash,
+        createdAt: t.createdAt.toISOString(),
+      };
+    }
+    const mOutcome = t.makerOutcomeIndex ?? t.outcomeIndex;
+    const mSide =
+      (t.makerSide as "BUY" | "SELL" | null) ??
+      (t.side === "BUY" ? "SELL" : "BUY");
     return {
-      outcomeIndex: t.outcomeIndex,
-      label: labelOf(t.outcomeIndex),
-      side: userSide,
-      shares: t.shares,
-      cost: t.cost,
-      counterparty: isTaker ? t.maker : t.taker,
-      role: isTaker ? "taker" : "maker",
+      outcomeIndex: mOutcome,
+      label: labelOf(mOutcome),
+      side: mSide,
+      shares: t.makerShares ?? t.shares,
+      cost: t.makerCost ?? t.cost,
+      counterparty: t.taker,
+      role: "maker" as const,
       txHash: t.txHash,
       createdAt: t.createdAt.toISOString(),
     };

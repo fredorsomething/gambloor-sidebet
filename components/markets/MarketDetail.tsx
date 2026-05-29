@@ -205,20 +205,40 @@ export function MarketDetail({ id }: { id: number }) {
   const selected = outcomes[selectedIdx] ?? outcomes[0];
   const book = data?.orderBook?.[selected.index] ?? { buys: [], sells: [] };
 
-  // ---- Order book (native, per-outcome) --------------------------------
-  // Each outcome has its own book. A BUY of "Yes" only matches a SELL of "Yes"
-  // (and vice-versa), so every fill is a clean 1:1 collateral<->share swap with
-  // unambiguous accounting. We intentionally do NOT fold the opposing outcome's
-  // liquidity in: cross-outcome matching needs mint/merge sequences that are
-  // fragile on-chain and muddle inventory/cost-basis. To provide liquidity on
-  // both sides, mint a full set and post orders on each outcome.
-  const unifiedSells: UnifiedOrder[] = [...book.sells].sort(
-    (a, b) => Number(a.price) - Number(b.price),
-  );
-  const unifiedBuys: UnifiedOrder[] = [...book.buys].sort(
-    (a, b) => Number(b.price) - Number(a.price),
-  );
+  // ---- Unified (combined Yes/No) order book ----------------------------
+  // For binary markets the two outcomes are complementary (price sums to 1),
+  // so we fold the *other* outcome's liquidity into a single book denominated
+  // in the selected outcome. A resting BUY on the other side is, economically,
+  // an ASK on this side at (1 - price); a resting SELL on the other side is a
+  // BID here at (1 - price). Complementary rows are filled peer-to-peer by
+  // minting (split) or merging a full set around the native fill.
+  const isBinary = outcomes.length === 2;
+  const otherOutcome = isBinary
+    ? outcomes.find((o) => o.index !== selected.index) ?? null
+    : null;
+  const otherBook =
+    otherOutcome != null
+      ? data?.orderBook?.[otherOutcome.index] ?? { buys: [], sells: [] }
+      : { buys: [], sells: [] };
 
+  const compl = (o: OrderRow): UnifiedOrder => ({
+    ...o,
+    price: String(1 - Number(o.price)),
+    _complementary: true,
+  });
+
+  const unifiedSells: UnifiedOrder[] = isBinary
+    ? [...book.sells, ...otherBook.buys.map(compl)].sort(
+        (a, b) => Number(a.price) - Number(b.price),
+      )
+    : (book.sells as UnifiedOrder[]);
+  const unifiedBuys: UnifiedOrder[] = isBinary
+    ? [...book.buys, ...otherBook.sells.map(compl)].sort(
+        (a, b) => Number(b.price) - Number(a.price),
+      )
+    : (book.buys as UnifiedOrder[]);
+
+  // Best prices reflect combined liquidity across both outcomes.
   const bestAsk = unifiedSells[0] ? Number(unifiedSells[0].price) : null;
   const bestBid = unifiedBuys[0] ? Number(unifiedBuys[0].price) : null;
   const spread = bestAsk != null && bestBid != null ? bestAsk - bestBid : null;
@@ -227,10 +247,20 @@ export function MarketDetail({ id }: { id: number }) {
       ? (bestAsk + bestBid) / 2
       : (bestAsk ?? bestBid);
 
-  // Best ask per outcome (cost to buy) from that outcome's own asks.
+  // Best ask per outcome (cost to buy), combining native asks with the
+  // complementary bids from the opposing outcome.
   function outcomeBuyPrice(idx: number): number | null {
     const b = data?.orderBook?.[idx];
-    return b?.sells[0] ? Number(b.sells[0].price) : null;
+    let best = b?.sells[0] ? Number(b.sells[0].price) : null;
+    if (isBinary) {
+      const other = outcomes.find((o) => o.index !== idx);
+      const ob = other ? data?.orderBook?.[other.index] : undefined;
+      if (ob?.buys[0]) {
+        const p = 1 - Number(ob.buys[0].price);
+        best = best == null ? p : Math.min(best, p);
+      }
+    }
+    return best;
   }
 
   // ---- on-chain actions -------------------------------------------------
@@ -334,6 +364,28 @@ export function MarketDetail({ id }: { id: number }) {
 
   async function readCollateralBalance(): Promise<bigint> {
     return readCollateralBalanceOf(account as Address | undefined);
+  }
+
+  /** Collateral allowance an owner has granted the exchange. */
+  async function readCollateralAllowance(owner: Address): Promise<bigint> {
+    if (!publicClient || !token) return 0n;
+    return publicClient.readContract({
+      address: token,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [owner, exchange],
+    });
+  }
+
+  /** Whether an owner approved the exchange to move their outcome shares. */
+  async function readSharesApprovedFor(owner: Address): Promise<boolean> {
+    if (!publicClient) return false;
+    return publicClient.readContract({
+      address: ctf,
+      abi: CONDITIONAL_TOKENS_ABI,
+      functionName: "isApprovedForAll",
+      args: [owner, exchange],
+    });
   }
 
   function assertCollateralFor(amt: bigint, balance: bigint) {
@@ -449,14 +501,26 @@ export function MarketDetail({ id }: { id: number }) {
     const avail = sharesRemainingRaw(order);
     const whole = sharesTake >= avail;
 
-    // SELL (ask): taker pays collateral, taker units are collateral-denominated.
-    // BUY (bid): taker delivers shares, taker units are share-denominated.
-    if (order.side === "SELL") {
-      return whole
-        ? remainingTaker
-        : (takerAmount * sharesTake) / (makerAmount || 1n);
+    if (!order._complementary) {
+      // Native SELL (ask): taker pays collateral (collateral-denominated units).
+      // Native BUY (bid): taker delivers shares (share-denominated units).
+      if (order.side === "SELL") {
+        return whole
+          ? remainingTaker
+          : (takerAmount * sharesTake) / (makerAmount || 1n);
+      }
+      return whole ? remainingTaker : sharesTake;
     }
-    return whole ? remainingTaker : sharesTake;
+    // Complementary BUY (other-side buy → ask here): we sell the OTHER outcome
+    // into it; taker units are share-denominated.
+    if (order.side === "BUY") {
+      return whole ? remainingTaker : sharesTake;
+    }
+    // Complementary SELL (other-side sell → bid here): we buy the OTHER outcome
+    // from it; taker units are collateral-denominated.
+    return whole
+      ? remainingTaker
+      : (takerAmount * sharesTake) / (makerAmount || 1n);
   }
 
   function makerGivesFor(order: OrderRow, takerFill: bigint): bigint {
@@ -474,67 +538,104 @@ export function MarketDetail({ id }: { id: number }) {
 
     // The resting maker must still be able to deliver their side on-chain, or the
     // fill reverts with a confusing ERC20/ERC1155 balance error. SELL makers owe
-    // outcome shares; BUY makers owe collateral.
+    // outcome shares; BUY makers owe collateral. We also verify the maker still
+    // has the exchange approved — a revoked approval reverts the same way.
+    const maker = order.maker as Address;
     if (order.side === "SELL") {
-      const makerBal = await readShareBalance(
-        order.positionId,
-        order.maker as Address,
-      );
-      if (makerBal < makerGives) {
+      const [makerBal, makerApproved] = await Promise.all([
+        readShareBalance(order.positionId, maker),
+        readSharesApprovedFor(maker),
+      ]);
+      if (makerBal < makerGives || !makerApproved) {
         throw new Error(
-          "This order can't be filled — the maker no longer has enough outcome shares on-chain. Try another price level.",
+          "This order can't be filled — the maker no longer has the outcome shares (or approval) to back it on-chain. Try another price level.",
         );
       }
     } else {
-      const makerCollateral = await readCollateralBalanceOf(
-        order.maker as Address,
-      );
-      if (makerCollateral < makerGives) {
+      const [makerCollateral, makerAllowance] = await Promise.all([
+        readCollateralBalanceOf(maker),
+        readCollateralAllowance(maker),
+      ]);
+      if (makerCollateral < makerGives || makerAllowance < makerGives) {
         throw new Error(
-          `This order can't be filled — the maker no longer has enough ${sym} on-chain to back it. Try another price level.`,
+          `This order can't be filled — the maker no longer has enough ${sym} (or approval) to back it on-chain. Try another price level.`,
         );
       }
     }
 
-    if (order.side === "SELL") {
-      // Taker buys: pays collateral, receives shares.
-      if (collateralBal < takerFill) {
+    if (!order._complementary) {
+      if (order.side === "SELL") {
+        // Native buy: taker pays collateral, receives shares.
+        if (collateralBal < takerFill) {
+          throw new Error(
+            `Need ${fmt(takerFill)} ${sym} to buy — you have ${fmt(collateralBal)}`,
+          );
+        }
+        return;
+      }
+      // Native sell: taker delivers shares, receives collateral.
+      if (!sharesApproved) {
+        throw new Error("Approve outcome shares for the exchange before selling");
+      }
+      const have = await readShareBalance(order.positionId, account as Address);
+      if (have < sharesTake) {
+        const label =
+          outcomes.find((o) => o.positionId === order.positionId)?.label ??
+          "outcome";
         throw new Error(
-          `Need ${fmt(takerFill)} ${sym} to buy — you have ${fmt(collateralBal)}`,
+          `Need ${fmt(sharesTake)} ${label} shares to sell — you have ${fmt(have)}. Mint a set or buy shares first.`,
         );
       }
       return;
     }
 
-    // order.side === "BUY": taker sells, delivers shares, receives collateral.
-    if (!sharesApproved) {
-      throw new Error("Approve outcome shares for the exchange before selling");
+    // Complementary BUY (buy selected by minting a set, then selling the other
+    // leg into the maker's buy): taker fronts `sharesTake` collateral to mint.
+    if (order.side === "BUY") {
+      if (collateralBal < sharesTake) {
+        throw new Error(
+          `Need ${fmt(sharesTake)} ${sym} to mint a set and fill — you have ${fmt(collateralBal)}`,
+        );
+      }
+      if (!collateralApproved) {
+        throw new Error(
+          `Approve ${sym} for minting before filling this order`,
+        );
+      }
+      return;
     }
-    const have = await readShareBalance(order.positionId, account as Address);
-    if (have < sharesTake) {
-      const label =
-        outcomes.find((o) => o.positionId === order.positionId)?.label ??
-        "outcome";
+
+    // Complementary SELL (sell selected by buying the other leg, then merging
+    // the set): taker fronts `takerFill` collateral to buy the other leg and
+    // must hold `sharesTake` of the selected outcome to merge.
+    if (collateralBal < takerFill) {
       throw new Error(
-        `Need ${fmt(sharesTake)} ${label} shares to sell — you have ${fmt(have)}. Mint a set or buy shares first.`,
+        `Need ${fmt(takerFill)} ${sym} for this fill — you have ${fmt(collateralBal)}`,
+      );
+    }
+    if (!sharesApproved) {
+      throw new Error(
+        `Approve ${selected.label} shares for the exchange before filling this bid`,
+      );
+    }
+    const haveSelected = await readShareBalance(
+      selected.positionId,
+      account as Address,
+    );
+    if (haveSelected < sharesTake) {
+      throw new Error(
+        `Need ${fmt(sharesTake)} ${selected.label} shares to complete this fill — you have ${fmt(haveSelected)}. Mint a set or buy shares first.`,
       );
     }
   }
 
-  /** Fill `takerFill` (taker-side raw units) against one resting order. */
+  /** Submit one on-chain `fillOrder` against a resting order; returns the tx hash. */
   async function fillOrderRaw(
     order: OrderRow,
     takerFill: bigint,
   ): Promise<import("viem").Hex> {
-    const makerAmount = BigInt(order.makerAmount);
-    const takerAmount = BigInt(order.takerAmount);
     if (takerFill <= 0n) throw new Error("Fill amount must be positive");
-    const makerGives = (takerFill * makerAmount) / (takerAmount || 1n);
-    const isSellOrder = order.side === "SELL";
-    const sharesMoved = isSellOrder ? makerGives : takerFill;
-    const cost = isSellOrder ? takerFill : makerGives;
-
-    const txHash = await writeContract({
+    return writeContract({
       address: exchange,
       abi: EXCHANGE_ABI,
       functionName: "fillOrder",
@@ -543,8 +644,8 @@ export function MarketDetail({ id }: { id: number }) {
           salt: BigInt(order.salt),
           maker: order.maker as Address,
           tokenId: BigInt(order.positionId),
-          makerAmount,
-          takerAmount,
+          makerAmount: BigInt(order.makerAmount),
+          takerAmount: BigInt(order.takerAmount),
           expiration: BigInt(order.expiry),
           side: order.side === "BUY" ? 0 : 1,
         },
@@ -552,30 +653,127 @@ export function MarketDetail({ id }: { id: number }) {
         takerFill,
       ],
     });
+  }
+
+  /**
+   * Record a confirmed fill off-chain, from BOTH the taker's and maker's
+   * economic perspective. For complementary fills the taker's outcome differs
+   * from the maker's (selected vs. the opposing outcome), so both legs are
+   * stored explicitly to keep each side's inventory + cost basis correct.
+   */
+  async function recordFill(args: {
+    order: UnifiedOrder;
+    takerFill: bigint; // taker-side units of the resting order (filled tracking)
+    sharesTake: bigint; // selected-outcome shares the taker netted
+    txHash: import("viem").Hex;
+  }) {
+    const { order, takerFill, sharesTake, txHash } = args;
+    const makerGives = makerGivesFor(order, takerFill);
+
+    let takerLeg: { outcomeIndex: number; side: Side; shares: bigint; cost: bigint; positionId: string };
+    let makerLeg: { outcomeIndex: number; side: Side; shares: bigint; cost: bigint; positionId: string };
+
+    if (!order._complementary) {
+      if (order.side === "SELL") {
+        // Taker buys the order's outcome for collateral.
+        takerLeg = { outcomeIndex: order.outcomeIndex, side: "BUY", shares: makerGives, cost: takerFill, positionId: order.positionId };
+        makerLeg = { outcomeIndex: order.outcomeIndex, side: "SELL", shares: makerGives, cost: takerFill, positionId: order.positionId };
+      } else {
+        // Taker sells the order's outcome for collateral.
+        takerLeg = { outcomeIndex: order.outcomeIndex, side: "SELL", shares: takerFill, cost: makerGives, positionId: order.positionId };
+        makerLeg = { outcomeIndex: order.outcomeIndex, side: "BUY", shares: takerFill, cost: makerGives, positionId: order.positionId };
+      }
+    } else if (order.side === "BUY") {
+      // Other-side BUY (ask here): taker minted a set and sold the other leg
+      // into the maker's buy, keeping `sharesTake` of the selected outcome.
+      takerLeg = { outcomeIndex: selected.index, side: "BUY", shares: sharesTake, cost: sharesTake - makerGives, positionId: selected.positionId };
+      makerLeg = { outcomeIndex: order.outcomeIndex, side: "BUY", shares: takerFill, cost: makerGives, positionId: order.positionId };
+    } else {
+      // Other-side SELL (bid here): taker bought the other leg, then merged the
+      // set, netting collateral for `sharesTake` of the selected outcome.
+      takerLeg = { outcomeIndex: selected.index, side: "SELL", shares: sharesTake, cost: sharesTake - takerFill, positionId: selected.positionId };
+      makerLeg = { outcomeIndex: order.outcomeIndex, side: "SELL", shares: makerGives, cost: takerFill, positionId: order.positionId };
+    }
 
     await jsonFetch(`/api/markets/${id}/fills`, {
       method: "POST",
       body: JSON.stringify({
         orderHash: order.hash,
         taker: account,
-        shares: sharesMoved.toString(),
-        cost: cost.toString(),
         takerFillAmount: takerFill.toString(),
         txHash,
+        takerOutcomeIndex: takerLeg.outcomeIndex,
+        takerSide: takerLeg.side,
+        takerShares: takerLeg.shares.toString(),
+        takerCost: takerLeg.cost.toString(),
+        takerPositionId: takerLeg.positionId,
+        makerOutcomeIndex: makerLeg.outcomeIndex,
+        makerSide: makerLeg.side,
+        makerShares: makerLeg.shares.toString(),
+        makerCost: makerLeg.cost.toString(),
+        makerPositionId: makerLeg.positionId,
       }),
     });
-    return txHash;
   }
 
   /**
-   * Fill `sharesTake` (selected-outcome share units) of a resting native order.
-   * Every fill is a direct 1:1 collateral<->share swap against the maker.
+   * Fill `sharesTake` (selected-outcome share units) of a resting order. Native
+   * orders are a direct fill. Complementary orders (from the opposing outcome)
+   * mint a set before / merge a set after the native fill, so the taker ends up
+   * holding the selected outcome. Fills are only recorded once the chain
+   * confirms, so a failed leg never leaves the book or inventory out of sync.
    */
   async function fillUnifiedShares(order: UnifiedOrder, sharesTake: bigint) {
     if (sharesTake <= 0n) return;
     await assertCanFill(order, sharesTake);
+
     const takerFill = takerFillFor(order, sharesTake);
-    await fillOrderRaw(order, takerFill);
+
+    if (!order._complementary) {
+      const txHash = await fillOrderRaw(order, takerFill);
+      await waitForTxReceipt(txHash);
+      await recordFill({ order, takerFill, sharesTake, txHash });
+      return;
+    }
+
+    if (order.side === "BUY") {
+      // Mint a full set, then sell the opposing leg into the maker's buy.
+      const splitHash = await writeContract(
+        {
+          address: ctf,
+          abi: CONDITIONAL_TOKENS_ABI,
+          functionName: "splitPosition",
+          args: [conditionId, sharesTake],
+        },
+        approvalUi,
+      );
+      await waitForTxReceipt(splitHash);
+      const have = await readShareBalance(order.positionId, account as Address);
+      if (have < takerFill) {
+        throw new Error(
+          `Minted shares aren't available yet (need ${formatToken(takerFill, decimals)}, have ${formatToken(have, decimals)}). Wait a moment and try again.`,
+        );
+      }
+      const fillHash = await fillOrderRaw(order, takerFill);
+      await waitForTxReceipt(fillHash);
+      await recordFill({ order, takerFill, sharesTake, txHash: fillHash });
+      return;
+    }
+
+    // Complementary SELL: buy the opposing leg, then merge the set to collateral.
+    const fillHash = await fillOrderRaw(order, takerFill);
+    await waitForTxReceipt(fillHash);
+    await recordFill({ order, takerFill, sharesTake, txHash: fillHash });
+    const mergeHash = await writeContract(
+      {
+        address: ctf,
+        abi: CONDITIONAL_TOKENS_ABI,
+        functionName: "mergePositions",
+        args: [conditionId, sharesTake],
+      },
+      approvalUi,
+    );
+    await waitForTxReceipt(mergeHash);
   }
 
   /** Fill a single resting order completely (used by the book "take" buttons). */
@@ -980,9 +1178,9 @@ export function MarketDetail({ id }: { id: number }) {
             mid={mid}
             account={account}
             resolved={resolved}
-            unified={false}
+            unified={isBinary}
             selectedLabel={selected.label}
-            otherLabel={null}
+            otherLabel={otherOutcome?.label ?? null}
             onTake={takeOrder}
             onPickOrder={(o, tone) => {
               setOrderType("limit");

@@ -145,9 +145,9 @@ export async function GET(
                 args: [o.hash as `0x${string}`],
               }) as Promise<boolean>,
             ]);
-            // On-chain `filled` is taker-denominated, same units we store.
-            const filled =
-              chainFilled > BigInt(o.filled) ? chainFilled : BigInt(o.filled);
+            // On-chain `filled` is taker-denominated, same units we store, and
+            // is authoritative — the optimistic client POST is just a fast path.
+            const filled = chainFilled;
             const fullyFilled = filled >= BigInt(o.takerAmount);
             const nextStatus = cancelled
               ? "Cancelled"

@@ -66,19 +66,25 @@ export async function GET(
   for (const t of trades) {
     const m = t.market;
     if (!m) continue;
-    const key = `${t.marketId}:${t.outcomeIndex}`;
     const isTaker = t.taker.toLowerCase() === lower;
-    // `t.side` is the taker's side; the maker is on the opposite side.
+    // Taker fields are the taker's perspective; maker fields (when present) are
+    // the maker's perspective on their own outcome — these differ for
+    // complementary (cross-outcome) fills. Legacy rows mirror the taker side.
+    const userOutcome = isTaker
+      ? t.outcomeIndex
+      : t.makerOutcomeIndex ?? t.outcomeIndex;
     const userSide = isTaker
       ? (t.side as "BUY" | "SELL")
-      : t.side === "BUY"
-        ? "SELL"
-        : "BUY";
+      : ((t.makerSide as "BUY" | "SELL" | null) ??
+        (t.side === "BUY" ? "SELL" : "BUY"));
 
-    const shares = BigInt(t.shares);
-    const cost = BigInt(t.cost);
+    const shares = BigInt(
+      isTaker ? t.shares : t.makerShares ?? t.shares,
+    );
+    const cost = BigInt(isTaker ? t.cost : t.makerCost ?? t.cost);
     if (shares <= 0n) continue;
 
+    const key = `${t.marketId}:${userOutcome}`;
     let acc = positions.get(key);
     if (!acc) {
       acc = {
@@ -89,10 +95,10 @@ export async function GET(
         decimals: m.decimals,
         tokenSymbol: m.tokenSymbol,
         winningOutcome: m.winningOutcome,
-        outcomeIndex: t.outcomeIndex,
+        outcomeIndex: userOutcome,
         label:
-          m.outcomes.find((o) => o.index === t.outcomeIndex)?.label ??
-          `Outcome ${t.outcomeIndex}`,
+          m.outcomes.find((o) => o.index === userOutcome)?.label ??
+          `Outcome ${userOutcome}`,
         qty: 0n,
         cost: 0n,
       };
