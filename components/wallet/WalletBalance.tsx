@@ -1,13 +1,13 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { Check, Copy, Fuel, Plus, Wallet } from "lucide-react";
+import { ArrowUpRight, Check, Copy, Fuel, Plus, Wallet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { formatUnits } from "viem";
 import { useAccount, useBalance, useChainId, useReadContracts } from "wagmi";
 import { polygon } from "wagmi/chains";
 
-import { useFundWallet } from "@/components/wallet/FundWalletModal";
+import { useWalletFunds } from "@/components/wallet/FundWalletModal";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { ERC20_ABI } from "@/lib/abi";
 import { getTokens } from "@/lib/chains";
@@ -19,7 +19,7 @@ export function WalletBalance() {
   const { ready, authenticated } = usePrivy();
   const { address } = useAccount();
   const chainId = useChainId();
-  const { open: openFund } = useFundWallet();
+  const { openFund, openWithdraw, fundGas } = useWalletFunds();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -35,7 +35,6 @@ export function WalletBalance() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  // Stablecoins shown in the wallet popover (USDC / pUSD / USDC.e).
   const stables = getTokens().filter((t) => STABLE_SYMBOLS.has(t.symbol));
 
   const { data: stableData } = useReadContracts({
@@ -65,7 +64,6 @@ export function WalletBalance() {
     return { ...t, raw, amount: Number(formatUnits(raw, t.decimals)) };
   });
 
-  // Stablecoins are ~$1 each, so the sum is a fair USD headline figure.
   const totalUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
   const polAmount = pol ? Number(pol.formatted) : 0;
   const lowGas = polAmount === 0;
@@ -174,22 +172,37 @@ export function WalletBalance() {
               className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
-              Add funds
+              Deposit
             </button>
             <button
               onClick={() => {
-                openFund();
+                openWithdraw();
+                setMenuOpen(false);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              <ArrowUpRight className="h-4 w-4" />
+              Withdraw
+            </button>
+            <button
+              onClick={() => {
+                void fundGas();
                 setMenuOpen(false);
               }}
               className={cn(
-                "inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
+                "col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
                 lowGas && "border-warning/40 text-warning hover:bg-warning/10",
               )}
             >
               <Fuel className="h-4 w-4" />
-              Top up gas
+              Top up gas (POL)
             </button>
           </div>
+
+          <p className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+            Deposits use Privy (card, exchange, or wallet). Withdrawals send
+            on-chain from your connected wallet.
+          </p>
         </div>
       )}
     </div>
