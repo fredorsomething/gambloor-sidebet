@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { maxUint256, type Address, type Hex } from "viem";
+import { type Address, type Hex } from "viem";
 import {
   useAccount,
   useWaitForTransactionReceipt,
@@ -106,7 +106,7 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
           address: token,
           abi: ERC20_ABI,
           functionName: "approve",
-          args: [escrow, maxUint256],
+          args: [escrow, acceptorStake],
         });
         setApproveHash(hash);
       } else {

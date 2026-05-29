@@ -6,7 +6,6 @@ import {
   decodeEventLog,
   getAddress,
   isAddress,
-  maxUint256,
   type Address,
   type Hex,
 } from "viem";
@@ -286,7 +285,7 @@ export function CreateBetForm() {
           address: tokenAddress as Address,
           abi: ERC20_ABI,
           functionName: "approve",
-          args: [escrow as Address, maxUint256],
+          args: [escrow as Address, yourStake],
         });
         setApproveHash(hash);
       } else {

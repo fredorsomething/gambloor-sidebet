@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   encodeFunctionData,
   formatUnits,
-  maxUint256,
   parseUnits,
   type Address,
   type Hex,
@@ -182,7 +181,7 @@ export function SwapPanel() {
       data: encodeFunctionData({
         abi: ERC20_ABI,
         functionName: "approve",
-        args: [spender, maxUint256],
+        args: [spender, needed],
       }),
     });
     // Wait for approval to mine before the swap — otherwise the swap reverts on
