@@ -10,8 +10,9 @@ export function dmPairKey(a: string, b: string): string {
 export async function createDirectMessage(args: {
   sender: string;
   recipient: string;
-  body: string;
+  body?: string;
   gifUrl?: string | null;
+  negotiationId?: number | null;
 }) {
   const sender = args.sender.toLowerCase();
   const recipient = args.recipient.toLowerCase();
@@ -23,8 +24,9 @@ export async function createDirectMessage(args: {
       pair: dmPairKey(sender, recipient),
       sender,
       recipient,
-      body: args.body,
+      body: args.body ?? "",
       gifUrl: args.gifUrl ?? null,
+      negotiationId: args.negotiationId ?? null,
     },
   });
 }

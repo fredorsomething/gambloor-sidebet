@@ -3,6 +3,7 @@ import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
+import { createDirectMessage } from "@/lib/directMessages";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -21,9 +22,8 @@ const PatchSchema = z.object({
 
 /**
  * PATCH /api/bets/[id]/negotiations/[negId]
- * - accept / decline: proposer only.
- * - withdraw: the negotiator who sent the offer.
- * Only Pending offers can change state.
+ * - accept / decline: recipient of the offer only.
+ * - withdraw: sender of the offer.
  */
 export async function PATCH(
   req: NextRequest,
@@ -45,6 +45,7 @@ export async function PATCH(
   }
   const actor = getAddress(parsed.data.actor);
   const action = parsed.data.action;
+  const actorLc = actor.toLowerCase();
 
   const negotiation = await prisma.betNegotiation.findUnique({
     where: { id: negId },
@@ -58,14 +59,15 @@ export async function PATCH(
   }
 
   const bet = negotiation.bet;
-  const isProposer = actor.toLowerCase() === bet.proposer.toLowerCase();
-  const isNegotiator = actor.toLowerCase() === negotiation.fromAddress.toLowerCase();
+  const toAddr = (negotiation.toAddress ?? bet.proposer).toLowerCase();
+  const isRecipient = actorLc === toAddr;
+  const isSender = actorLc === negotiation.fromAddress.toLowerCase();
 
-  if (action === "withdraw" && !isNegotiator) {
+  if (action === "withdraw" && !isSender) {
     return jsonErr("only the sender can withdraw this offer", 403);
   }
-  if ((action === "accept" || action === "decline") && !isProposer) {
-    return jsonErr("only the proposer can respond to this offer", 403);
+  if ((action === "accept" || action === "decline") && !isRecipient) {
+    return jsonErr("only the recipient can accept or decline this offer", 403);
   }
 
   const auth = await verifyWalletAuth({ req, address: actor });
@@ -79,13 +81,23 @@ export async function PATCH(
     data: { status: nextStatus },
   });
 
+  const notifyTarget =
+    action === "withdraw" ? toAddr : negotiation.fromAddress;
+
+  await createDirectMessage({
+    sender: actorLc,
+    recipient: notifyTarget,
+    body: "",
+    negotiationId: updated.id,
+  });
+
   if (action === "accept") {
     await notify({
       recipient: negotiation.fromAddress,
       type: "status",
       title: "Counter-offer accepted",
-      body: `Your terms on "${bet.title}" were accepted. The proposer will relaunch the bet with the agreed terms.`,
-      link: `/bets/${betId}`,
+      body: `Your terms on "${bet.title}" were accepted.`,
+      link: `/messages?with=${toAddr}&bet=${betId}`,
     });
   } else if (action === "decline") {
     await notify({
@@ -93,9 +105,16 @@ export async function PATCH(
       type: "status",
       title: "Counter-offer declined",
       body: `Your terms on "${bet.title}" were declined.`,
-      link: `/bets/${betId}`,
+      link: `/messages?with=${toAddr}&bet=${betId}`,
     });
   }
 
-  return jsonOk({ negotiation: updated });
+  return jsonOk({
+    negotiation: {
+      ...updated,
+      toAddress: updated.toAddress ?? bet.proposer,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    },
+  });
 }

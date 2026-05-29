@@ -65,25 +65,28 @@ model UsernameHistory {
 model BetNegotiation {
   id            Int      @id @default(autoincrement())
   betId         Int
-  fromAddress   String   // lowercased address of the negotiator (would-be acceptor)
+  fromAddress   String   // lowercased sender of this offer (proposer or would-be acceptor)
+  toAddress     String?  // lowercased recipient (legacy rows default to proposer in API)
 
   // Proposed stakes (wei-unit decimal strings) from the PROPOSER's perspective,
-  // mirroring how a Bet stores them. The negotiator stakes `acceptorStake`.
+  // mirroring how a Bet stores them. The would-be acceptor stakes `acceptorStake`.
   proposerStake String
   acceptorStake String
 
   terms         String?  // optional revised resolution terms
-  message       String?  // optional note to the proposer
+  message       String?  // optional note to the other party
 
   status        String   @default("Pending") // Pending | Accepted | Declined | Withdrawn
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  bet           Bet      @relation(fields: [betId], references: [id], onDelete: Cascade)
+  bet           Bet              @relation(fields: [betId], references: [id], onDelete: Cascade)
+  directMessages DirectMessage[]
 
   @@index([betId, status])
   @@index([fromAddress])
+  @@index([toAddress])
 }
 
 // Peer reputation: one vote per (voter -> target). value is +1 (rep) or -1
@@ -408,18 +411,22 @@ model Trade {
 // lowercased addresses. `pair` is the deterministic conversation key
 // (`min(addr)|max(addr)`) so a thread is easy to query regardless of direction.
 model DirectMessage {
-  id        Int       @id @default(autoincrement())
-  pair      String
-  sender    String
-  recipient String
-  body      String    @default("")
-  gifUrl    String?
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  id              Int       @id @default(autoincrement())
+  pair            String
+  sender          String
+  recipient       String
+  body            String    @default("")
+  gifUrl          String?
+  negotiationId   Int?      // structured counter-offer card (body may be empty)
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  negotiation     BetNegotiation? @relation(fields: [negotiationId], references: [id], onDelete: SetNull)
 
   @@index([pair, createdAt])
   @@index([recipient, readAt])
   @@index([sender, createdAt])
+  @@index([negotiationId])
 }
 
 // Site-wide global chat. Anyone signed in can post (rate-limited); everyone can

@@ -9,12 +9,20 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { GifPicker } from "@/components/GifPicker";
+import { NegotiationCard } from "@/components/negotiations/NegotiationCard";
+import { NegotiationCompose } from "@/components/negotiations/NegotiationCompose";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
+import { RELAUNCH_KEY } from "@/components/BetNegotiations";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
+import type { DmNegotiationBundle } from "@/lib/dmNegotiations";
 import { jsonFetch } from "@/lib/fetcher";
+import {
+  relaunchPayloadFromNegotiation,
+  type NegotiationBetContext,
+} from "@/lib/negotiations";
 import { cn, shortAddr } from "@/lib/utils";
 
 type Conversation = {
@@ -38,6 +46,13 @@ type ThreadMsg = {
   senderAvatarUrl: string | null;
   createdAt: string;
   mine: boolean;
+  negotiation: DmNegotiationBundle | null;
+};
+
+type BetContextRow = {
+  bet: NegotiationBetContext;
+  proposerStake: string;
+  acceptorStake: string;
 };
 
 function timeLabel(iso: string): string {
@@ -57,6 +72,8 @@ function MessagesInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const withParam = searchParams.get("with");
+  const betParam = searchParams.get("bet");
+  const focusBetId = betParam ? Number(betParam) : null;
   const { address } = useAccount();
   const { authenticated, getAccessToken, login, ready } = usePrivy();
   const { push } = useToast();
@@ -69,6 +86,7 @@ function MessagesInner() {
   const [draft, setDraft] = useState("");
   const [gifUrl, setGifUrl] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
+  const [offerComposeBetId, setOfferComposeBetId] = useState<number | null>(null);
 
   async function authedFetch<T>(url: string, init?: RequestInit): Promise<T> {
     const token = await getAccessToken();
@@ -94,6 +112,7 @@ function MessagesInner() {
       verified: boolean;
     };
     blockedByMe: boolean;
+    betContext: BetContextRow[];
     messages: ThreadMsg[];
   }>({
     queryKey: ["dm-thread", me, selected],
@@ -139,6 +158,59 @@ function MessagesInner() {
       push({ title: (err as Error)?.message || "Block failed", variant: "danger" }),
   });
 
+  const respondOffer = useMutation({
+    mutationFn: async (vars: {
+      betId: number;
+      negId: number;
+      action: "accept" | "decline" | "withdraw";
+    }) =>
+      authedFetch(`/api/bets/${vars.betId}/negotiations/${vars.negId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ actor: address, action: vars.action }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dm-thread", me, selected] });
+      qc.invalidateQueries({ queryKey: ["dm-convos", me] });
+    },
+    onError: (err) =>
+      push({
+        title: (err as Error)?.message || "Action failed",
+        variant: "danger",
+      }),
+  });
+
+  const sendOffer = useMutation({
+    mutationFn: async (vars: {
+      betId: number;
+      proposerStake: string;
+      acceptorStake: string;
+      terms: string;
+      message: string;
+    }) =>
+      authedFetch(`/api/bets/${vars.betId}/negotiations`, {
+        method: "POST",
+        body: JSON.stringify({
+          from: address,
+          to: selected,
+          proposerStake: vars.proposerStake,
+          acceptorStake: vars.acceptorStake,
+          terms: vars.terms || undefined,
+          message: vars.message || undefined,
+        }),
+      }),
+    onSuccess: () => {
+      setOfferComposeBetId(null);
+      qc.invalidateQueries({ queryKey: ["dm-thread", me, selected] });
+      qc.invalidateQueries({ queryKey: ["dm-convos", me] });
+      push({ title: "Offer sent", variant: "success" });
+    },
+    onError: (err) =>
+      push({
+        title: (err as Error)?.message || "Couldn't send offer",
+        variant: "danger",
+      }),
+  });
+
   const unblockUser = useMutation({
     mutationFn: async () =>
       authedFetch(`/api/messages/block`, {
@@ -158,6 +230,12 @@ function MessagesInner() {
   });
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusBetId && Number.isFinite(focusBetId)) {
+      setOfferComposeBetId(focusBetId);
+    }
+  }, [focusBetId, selected]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [threadQ.data?.messages.length, selected]);
@@ -180,9 +258,29 @@ function MessagesInner() {
   const conversations = convosQ.data?.conversations ?? [];
   const counterparty = threadQ.data?.counterparty;
   const blockedByMe = threadQ.data?.blockedByMe ?? false;
+  const betContext = threadQ.data?.betContext ?? [];
   const cpLabel = counterparty?.username
     ? `@${counterparty.username}`
     : shortAddr(selected ?? "");
+
+  const activeBetCtx =
+    betContext.find((b) => b.bet.id === (offerComposeBetId ?? focusBetId)) ??
+    betContext[0] ??
+    null;
+
+  function relaunchFrom(bundle: DmNegotiationBundle) {
+    const payload = relaunchPayloadFromNegotiation(
+      bundle.bet,
+      bundle.negotiation,
+      bundle.bet.decimals,
+    );
+    try {
+      sessionStorage.setItem(RELAUNCH_KEY, JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+    router.push("/create?type=sidebet");
+  }
 
   function submit() {
     const body = draft.trim();
@@ -327,59 +425,184 @@ function MessagesInner() {
                 </div>
               )}
 
-              <div className="flex-1 space-y-3 overflow-y-auto p-4">
-                {(threadQ.data?.messages ?? []).map((m) => (
-                  <div
-                    key={m.id}
-                    className={cn(
-                      "flex gap-2",
-                      m.mine ? "flex-row-reverse" : "flex-row",
-                    )}
-                  >
-                    <Avatar
-                      address={m.sender}
-                      url={
-                        m.mine
-                          ? myProfile?.avatarUrl
-                          : m.senderAvatarUrl ?? counterparty?.avatarUrl
-                      }
-                      size={28}
-                      className="mt-1 shrink-0"
-                    />
-                    <div
-                      className={cn(
-                        "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
-                        m.mine
-                          ? "rounded-br-sm bg-primary text-primary-foreground"
-                          : "rounded-bl-sm bg-muted text-foreground",
-                      )}
-                    >
-                      {m.gifUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={m.gifUrl}
-                          alt=""
-                          className="mb-1 max-h-48 w-full rounded-lg object-contain"
-                        />
-                      )}
-                      {m.body.trim() && (
-                        <p className="whitespace-pre-wrap break-words">
-                          {m.body}
-                        </p>
-                      )}
-                      <span
+              {betContext.length > 0 && !blockedByMe && (
+                <div className="border-b border-border bg-muted/30 px-4 py-2">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    Open sidebets with {cpLabel}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {betContext.map((b) => (
+                      <button
+                        key={b.bet.id}
+                        type="button"
+                        onClick={() =>
+                          setOfferComposeBetId(
+                            offerComposeBetId === b.bet.id ? null : b.bet.id,
+                          )
+                        }
                         className={cn(
-                          "mt-1 block text-[10px]",
-                          m.mine
-                            ? "text-primary-foreground/70"
-                            : "text-muted-foreground",
+                          "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                          offerComposeBetId === b.bet.id ||
+                            focusBetId === b.bet.id
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:bg-muted",
                         )}
                       >
-                        {timeLabel(m.createdAt)}
-                      </span>
-                    </div>
+                        {b.bet.title.slice(0, 40)}
+                        {b.bet.title.length > 40 ? "…" : ""}
+                      </button>
+                    ))}
                   </div>
-                ))}
+                </div>
+              )}
+
+              {activeBetCtx && offerComposeBetId != null && !blockedByMe && (
+                <div className="border-b border-border px-4 py-3">
+                  <NegotiationCompose
+                    tokenSym={activeBetCtx.bet.tokenSymbol || "USDC"}
+                    decimals={activeBetCtx.bet.decimals}
+                    defaultProposerStake={activeBetCtx.proposerStake}
+                    defaultAcceptorStake={activeBetCtx.acceptorStake}
+                    submitLabel="Send counter-offer"
+                    pending={sendOffer.isPending}
+                    onCancel={() => setOfferComposeBetId(null)}
+                    onSubmit={(p) =>
+                      sendOffer.mutate({
+                        betId: activeBetCtx.bet.id,
+                        ...p,
+                      })
+                    }
+                  />
+                </div>
+              )}
+
+              <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                {(threadQ.data?.messages ?? []).map((m) => {
+                  if (m.negotiation) {
+                    const bundle = m.negotiation;
+                    const n = bundle.negotiation;
+                    const b = bundle.bet;
+                    const tokenSym = b.tokenSymbol || "USDC";
+                    return (
+                      <div
+                        key={m.id}
+                        className={cn(
+                          "flex flex-col gap-1",
+                          m.mine ? "items-end" : "items-start",
+                        )}
+                      >
+                        <NegotiationCard
+                          compact
+                          n={n}
+                          betTitle={b.title}
+                          betId={b.id}
+                          decimals={b.decimals}
+                          tokenSym={tokenSym}
+                          viewerAddress={address}
+                          betProposer={b.proposer}
+                          betStatus={b.status}
+                          busy={respondOffer.isPending || sendOffer.isPending}
+                          onAccept={
+                            n.status === "Pending"
+                              ? () =>
+                                  respondOffer.mutate({
+                                    betId: b.id,
+                                    negId: n.id,
+                                    action: "accept",
+                                  })
+                              : undefined
+                          }
+                          onDecline={
+                            n.status === "Pending"
+                              ? () =>
+                                  respondOffer.mutate({
+                                    betId: b.id,
+                                    negId: n.id,
+                                    action: "decline",
+                                  })
+                              : undefined
+                          }
+                          onWithdraw={
+                            n.status === "Pending"
+                              ? () =>
+                                  respondOffer.mutate({
+                                    betId: b.id,
+                                    negId: n.id,
+                                    action: "withdraw",
+                                  })
+                              : undefined
+                          }
+                          onRelaunch={
+                            n.status === "Accepted"
+                              ? () => relaunchFrom(bundle)
+                              : undefined
+                          }
+                          onCounter={
+                            n.status === "Pending"
+                              ? () => setOfferComposeBetId(b.id)
+                              : undefined
+                          }
+                        />
+                        <span className="px-1 text-[10px] text-muted-foreground">
+                          {timeLabel(m.createdAt)}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        "flex gap-2",
+                        m.mine ? "flex-row-reverse" : "flex-row",
+                      )}
+                    >
+                      <Avatar
+                        address={m.sender}
+                        url={
+                          m.mine
+                            ? myProfile?.avatarUrl
+                            : m.senderAvatarUrl ?? counterparty?.avatarUrl
+                        }
+                        size={28}
+                        className="mt-1 shrink-0"
+                      />
+                      <div
+                        className={cn(
+                          "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
+                          m.mine
+                            ? "rounded-br-sm bg-primary text-primary-foreground"
+                            : "rounded-bl-sm bg-muted text-foreground",
+                        )}
+                      >
+                        {m.gifUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={m.gifUrl}
+                            alt=""
+                            className="mb-1 max-h-48 w-full rounded-lg object-contain"
+                          />
+                        )}
+                        {m.body.trim() && (
+                          <p className="whitespace-pre-wrap break-words">
+                            {m.body}
+                          </p>
+                        )}
+                        <span
+                          className={cn(
+                            "mt-1 block text-[10px]",
+                            m.mine
+                              ? "text-primary-foreground/70"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {timeLabel(m.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
                 {threadQ.data && threadQ.data.messages.length === 0 && (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     No messages yet. Say hi!

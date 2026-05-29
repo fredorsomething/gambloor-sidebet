@@ -178,17 +178,19 @@ export function CommentBoard({
   }
 
   const all = data?.comments ?? [];
-  const topLevel = all
-    .filter((c) => c.parentId == null)
-    .sort((a, b) => unixOf(b.createdAt) - unixOf(a.createdAt));
-  const repliesByParent = new Map<number, Comment[]>();
+  const childrenOf = new Map<number, Comment[]>();
+  const topLevel: Comment[] = [];
   for (const c of all) {
-    if (c.parentId == null) continue;
-    const arr = repliesByParent.get(c.parentId) ?? [];
+    if (c.parentId == null) {
+      topLevel.push(c);
+      continue;
+    }
+    const arr = childrenOf.get(c.parentId) ?? [];
     arr.push(c);
-    repliesByParent.set(c.parentId, arr);
+    childrenOf.set(c.parentId, arr);
   }
-  for (const arr of repliesByParent.values()) {
+  topLevel.sort((a, b) => unixOf(b.createdAt) - unixOf(a.createdAt));
+  for (const arr of childrenOf.values()) {
     arr.sort((a, b) => unixOf(a.createdAt) - unixOf(b.createdAt));
   }
 
@@ -252,10 +254,11 @@ export function CommentBoard({
       ) : (
         <ul className="space-y-4">
           {topLevel.map((c) => (
-            <CommentItem
+            <CommentNode
               key={c.id}
               comment={c}
-              replies={repliesByParent.get(c.id) ?? []}
+              childrenOf={childrenOf}
+              depth={0}
               myAddress={address}
               onLike={(id) => {
                 if (!ensureAuthed()) return;
@@ -287,9 +290,10 @@ export function CommentBoard({
   );
 }
 
-function CommentItem({
+function CommentNode({
   comment,
-  replies,
+  childrenOf,
+  depth,
   myAddress,
   onLike,
   onDelete,
@@ -299,7 +303,8 @@ function CommentItem({
   setActiveReply,
 }: {
   comment: Comment;
-  replies: Comment[];
+  childrenOf: Map<number, Comment[]>;
+  depth: number;
   myAddress?: string;
   onLike: (id: number) => void;
   onDelete: (id: number) => void;
@@ -308,6 +313,8 @@ function CommentItem({
   activeReply: number | null;
   setActiveReply: (id: number | null) => void;
 }) {
+  const children = childrenOf.get(comment.id) ?? [];
+
   return (
     <li>
       <CommentRow
@@ -322,23 +329,29 @@ function CommentItem({
 
       {activeReply === comment.id && (
         <ReplyForm
+          depth={depth}
           pending={replyPending}
           onCancel={() => setActiveReply(null)}
           onSubmit={(text, gif) => onReply(comment.id, text, gif)}
         />
       )}
 
-      {replies.length > 0 && (
+      {children.length > 0 && (
         <ul className="mt-3 space-y-3 border-l border-border pl-4">
-          {replies.map((r) => (
-            <li key={r.id}>
-              <CommentRow
-                comment={r}
-                myAddress={myAddress}
-                onLike={onLike}
-                onDelete={onDelete}
-              />
-            </li>
+          {children.map((child) => (
+            <CommentNode
+              key={child.id}
+              comment={child}
+              childrenOf={childrenOf}
+              depth={depth + 1}
+              myAddress={myAddress}
+              onLike={onLike}
+              onDelete={onDelete}
+              onReply={onReply}
+              replyPending={replyPending}
+              activeReply={activeReply}
+              setActiveReply={setActiveReply}
+            />
           ))}
         </ul>
       )}
@@ -440,10 +453,12 @@ function CommentRow({
 }
 
 function ReplyForm({
+  depth,
   pending,
   onCancel,
   onSubmit,
 }: {
+  depth: number;
   pending: boolean;
   onCancel: () => void;
   onSubmit: (text: string, gifUrl: string | null) => void;
@@ -451,9 +466,10 @@ function ReplyForm({
   const [text, setText] = useState("");
   const [gif, setGif] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
+  const indent = Math.min(depth + 1, 4) * 2.75;
 
   return (
-    <div className="ml-11 mt-2 space-y-2">
+    <div className="mt-2 space-y-2" style={{ marginLeft: `${indent}rem` }}>
       <textarea
         className="textarea min-h-[48px] text-sm"
         value={text}

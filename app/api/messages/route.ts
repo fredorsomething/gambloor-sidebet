@@ -11,6 +11,8 @@ import {
   usersWhoBlocked,
 } from "@/lib/dmBlocks";
 import { createDirectMessage, dmPairKey } from "@/lib/directMessages";
+import { loadNegotiationBundles, openBetsForDmPair } from "@/lib/dmNegotiations";
+import { negotiationPreview } from "@/lib/negotiations";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { shortAddr } from "@/lib/utils";
@@ -50,7 +52,16 @@ async function profileMap(
   return map;
 }
 
-function previewBody(body: string, gifUrl: string | null): string {
+function previewBody(
+  body: string,
+  gifUrl: string | null,
+  negotiationStatus?: string | null,
+): string {
+  if (negotiationStatus) {
+    return negotiationPreview(
+      negotiationStatus as Parameters<typeof negotiationPreview>[0],
+    );
+  }
   if (body.trim()) return body;
   if (gifUrl) return "GIF";
   return "";
@@ -99,6 +110,12 @@ export async function GET(req: NextRequest) {
     const profiles = await profileMap([other, me]);
     const blockedByMe = iBlocked.has(other);
 
+    const negIds = rows
+      .map((m) => m.negotiationId)
+      .filter((id): id is number => id != null);
+    const negotiations = await loadNegotiationBundles(negIds);
+    const betContext = await openBetsForDmPair(me, other);
+
     return jsonOk({
       counterparty: {
         address: other,
@@ -107,6 +124,7 @@ export async function GET(req: NextRequest) {
         verified: profiles[other]?.verified ?? false,
       },
       blockedByMe,
+      betContext,
       messages: rows.map((m) => ({
         id: m.id,
         body: m.body,
@@ -116,6 +134,9 @@ export async function GET(req: NextRequest) {
         senderAvatarUrl: profiles[m.sender]?.avatarUrl ?? null,
         createdAt: m.createdAt.toISOString(),
         mine: m.sender === me,
+        negotiation: m.negotiationId
+          ? negotiations[m.negotiationId] ?? null
+          : null,
       })),
     });
   }
@@ -126,6 +147,11 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "desc" },
     take: 300,
   });
+
+  const negIds = recent
+    .map((m) => m.negotiationId)
+    .filter((id): id is number => id != null);
+  const negBundles = await loadNegotiationBundles(negIds);
 
   const byPair = new Map<
     string,
@@ -143,10 +169,13 @@ export async function GET(req: NextRequest) {
 
     const existing = byPair.get(m.pair);
     const isUnread = m.recipient === me && m.readAt == null;
+    const negStatus = m.negotiationId
+      ? negBundles[m.negotiationId]?.negotiation.status
+      : null;
     if (!existing) {
       byPair.set(m.pair, {
         address: other,
-        lastBody: previewBody(m.body, m.gifUrl),
+        lastBody: previewBody(m.body, m.gifUrl, negStatus),
         lastAt: m.createdAt,
         fromMe: m.sender === me,
         unread: isUnread ? 1 : 0,

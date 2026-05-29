@@ -7,7 +7,7 @@ import { createDirectMessage } from "@/lib/directMessages";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
-import { formatToken, shortAddr } from "@/lib/utils";
+import { shortAddr } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +18,25 @@ function parseId(raw: string): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+function otherParty(
+  bet: { proposer: string },
+  from: string,
+  to: string | undefined,
+): string | null {
+  const fromLc = from.toLowerCase();
+  const proposerLc = bet.proposer.toLowerCase();
+  if (fromLc === proposerLc) {
+    if (!to || !isAddress(to)) return null;
+    const toLc = getAddress(to).toLowerCase();
+    if (toLc === proposerLc) return null;
+    return toLc;
+  }
+  return proposerLc;
+}
+
 /**
  * GET /api/bets/[id]/negotiations?viewer=0x..
- * Viewer-aware: the proposer sees every counter-offer; anyone else only sees the
- * offers they sent. Keeps negotiations private between each taker and proposer.
+ * Proposer sees every offer on the bet; others only see offers they sent or received.
  */
 export async function GET(
   req: NextRequest,
@@ -40,7 +55,16 @@ export async function GET(
   const negotiations = await prisma.betNegotiation.findMany({
     where: {
       betId: id,
-      ...(isProposer ? {} : viewer ? { fromAddress: viewer } : { id: -1 }),
+      ...(isProposer
+        ? {}
+        : viewer
+          ? {
+              OR: [
+                { fromAddress: viewer },
+                { toAddress: viewer },
+              ],
+            }
+          : { id: -1 }),
     },
     orderBy: { createdAt: "desc" },
   });
@@ -49,19 +73,25 @@ export async function GET(
     isProposer,
     proposer: bet.proposer,
     status: bet.status,
-    negotiations,
+    negotiations: negotiations.map((n) => ({
+      ...n,
+      toAddress: n.toAddress ?? bet.proposer,
+      createdAt: n.createdAt.toISOString(),
+      updatedAt: n.updatedAt.toISOString(),
+    })),
   });
 }
 
 const PostSchema = z.object({
   from: z.string().refine(isAddress, "bad address"),
+  to: z.string().refine(isAddress, "bad address").optional(),
   proposerStake: z.string().regex(DECIMAL, "proposerStake must be a uint string"),
   acceptorStake: z.string().regex(DECIMAL, "acceptorStake must be a uint string"),
   terms: z.string().max(10_000).optional(),
   message: z.string().max(1000).optional(),
 });
 
-/** POST /api/bets/[id]/negotiations — send a counter-offer to the proposer. */
+/** POST /api/bets/[id]/negotiations — send a counter-offer (taker or proposer). */
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } },
@@ -88,8 +118,15 @@ export async function POST(
   }
 
   const from = getAddress(d.from);
-  if (from.toLowerCase() === bet.proposer.toLowerCase()) {
-    return jsonErr("you can't negotiate your own bet", 400);
+  const fromLc = from.toLowerCase();
+  const toLc = otherParty(bet, fromLc, d.to);
+  if (!toLc) {
+    return jsonErr(
+      fromLc === bet.proposer.toLowerCase()
+        ? "proposer must specify the counterparty address"
+        : "invalid counterparty",
+      400,
+    );
   }
   if (BigInt(d.proposerStake) <= 0n || BigInt(d.acceptorStake) <= 0n) {
     return jsonErr("stakes must be positive", 400);
@@ -98,18 +135,23 @@ export async function POST(
   const auth = await verifyWalletAuth({ req, address: from });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
-  // Cap the number of pending offers a single taker can have open on a bet.
   const openCount = await prisma.betNegotiation.count({
-    where: { betId: id, fromAddress: from.toLowerCase(), status: "Pending" },
+    where: {
+      betId: id,
+      fromAddress: fromLc,
+      toAddress: toLc,
+      status: "Pending",
+    },
   });
   if (openCount >= 3) {
-    return jsonErr("you already have pending offers on this bet", 429);
+    return jsonErr("you already have pending offers with this person on this bet", 429);
   }
 
   const negotiation = await prisma.betNegotiation.create({
     data: {
       betId: id,
-      fromAddress: from.toLowerCase(),
+      fromAddress: fromLc,
+      toAddress: toLc,
       proposerStake: d.proposerStake,
       acceptorStake: d.acceptorStake,
       terms: d.terms?.trim() || null,
@@ -118,40 +160,35 @@ export async function POST(
     },
   });
 
-  const sym = bet.tokenSymbol || "tokens";
-  const proposerAmt = formatToken(BigInt(d.proposerStake), bet.decimals);
-  const acceptorAmt = formatToken(BigInt(d.acceptorStake), bet.decimals);
-  const fromLc = from.toLowerCase();
-
-  const negotiator = await prisma.user.findFirst({
+  const sender = await prisma.user.findFirst({
     where: { address: { equals: from, mode: "insensitive" } },
     select: { username: true },
   });
-  const negotiatorLabel = negotiator?.username
-    ? `@${negotiator.username}`
-    : shortAddr(from);
-
-  let dmBody = `Counter-offer on "${bet.title}"\n\n`;
-  dmBody += `Your stake (proposer): ${proposerAmt} ${sym}\n`;
-  dmBody += `Their stake (acceptor): ${acceptorAmt} ${sym}\n`;
-  if (d.terms?.trim()) dmBody += `\nRevised terms:\n${d.terms.trim()}\n`;
-  if (d.message?.trim()) dmBody += `\nNote: ${d.message.trim()}\n`;
-  dmBody += `\nReview the offer: /bets/${id}\n`;
-  dmBody += `Reply here to discuss or send a revised counter-offer.`;
+  const senderLabel = sender?.username ? `@${sender.username}` : shortAddr(from);
 
   const dm = await createDirectMessage({
     sender: fromLc,
-    recipient: bet.proposer,
-    body: dmBody,
+    recipient: toLc,
+    body: "",
+    negotiationId: negotiation.id,
   });
 
   await notify({
-    recipient: bet.proposer,
+    recipient: toLc,
     type: "status",
-    title: `Counter-offer from ${negotiatorLabel}`,
-    body: `New terms on "${bet.title}" — open Messages to discuss.`,
-    link: dm ? `/messages?with=${fromLc}` : `/bets/${id}`,
+    title: `Counter-offer from ${senderLabel}`,
+    body: `New terms on "${bet.title}" — open Messages to review.`,
+    link: dm ? `/messages?with=${fromLc}&bet=${id}` : `/bets/${id}`,
   });
 
-  return jsonOk({ negotiation }, { status: 201 });
+  return jsonOk(
+    {
+      negotiation: {
+        ...negotiation,
+        createdAt: negotiation.createdAt.toISOString(),
+        updatedAt: negotiation.updatedAt.toISOString(),
+      },
+    },
+    { status: 201 },
+  );
 }
