@@ -23,7 +23,7 @@ collateral (USDC or pUSD) into an on-chain escrow, and a trusted third-party
 
 ```
 ┌──────────────┐       ┌──────────────┐       ┌──────────────────┐
-│  Next.js UI  │ ───▶  │  /api/bets   │ ───▶  │  Prisma (SQLite) │
+│  Next.js UI  │ ───▶  │  /api/bets   │ ───▶  │  Prisma (Neon)   │
 │  Wagmi+viem  │       │  (Next API)  │       │  metadata cache  │
 └──────┬───────┘       └──────┬───────┘       └──────────────────┘
        │                      │
@@ -160,7 +160,7 @@ All three are 6 decimals.
 | --- | --- |
 | `npm run dev` | Next.js dev server |
 | `npm run build` | Prisma generate + Next build |
-| `npm run db:push` | Sync Prisma schema to SQLite |
+| `npm run db:push` | Sync Prisma schema to Neon Postgres |
 | `npm run db:studio` | Prisma Studio UI |
 | `npm run hh:compile` | Compile Solidity |
 | `npm run hh:test` | Run Hardhat tests |

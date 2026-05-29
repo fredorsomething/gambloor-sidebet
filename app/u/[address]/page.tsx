@@ -3,12 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
 import { isAddress } from "viem";
 import { useAccount } from "wagmi";
 
 import { Avatar } from "@/components/profile/Identity";
-import { EditProfileModal } from "@/components/profile/EditProfileModal";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,7 +54,6 @@ export default function ProfilePage() {
   const params = useParams<{ address: string }>();
   const address = params.address;
   const { address: connected } = useAccount();
-  const [editOpen, setEditOpen] = useState(false);
 
   const valid = isAddress(address);
 
@@ -117,8 +114,8 @@ export default function ProfilePage() {
             </div>
           </div>
           {isMe && (
-            <Button variant="outline" onClick={() => setEditOpen(true)}>
-              Edit profile
+            <Button variant="outline" asChild>
+              <Link href="/profile/edit">Edit profile</Link>
             </Button>
           )}
         </div>
@@ -176,18 +173,6 @@ export default function ProfilePage() {
 
       {isLoading && (
         <div className="text-center text-sm text-muted-foreground">Loading…</div>
-      )}
-
-      {editOpen && data && (
-        <EditProfileModal
-          current={{
-            address: data.user.address,
-            username: data.user.username,
-            avatarUrl: data.user.avatarUrl,
-            bio: data.user.bio,
-          }}
-          onClose={() => setEditOpen(false)}
-        />
       )}
     </div>
   );

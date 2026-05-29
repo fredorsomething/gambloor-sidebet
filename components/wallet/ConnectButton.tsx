@@ -11,7 +11,6 @@ import {
 import { polygon, polygonAmoy } from "wagmi/chains";
 
 import { Avatar } from "@/components/profile/Identity";
-import { EditProfileModal } from "@/components/profile/EditProfileModal";
 import { useWalletModal } from "@/components/wallet/WalletModal";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { cn, shortAddr } from "@/lib/utils";
@@ -30,7 +29,6 @@ export function ConnectButton() {
   const { data: profile } = useProfile(address);
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -99,15 +97,13 @@ export function ConnectButton() {
             >
               My profile
             </Link>
-            <button
-              onClick={() => {
-                setEditOpen(true);
-                setMenuOpen(false);
-              }}
-              className="block w-full rounded-lg px-3 py-2 text-left hover:bg-muted"
+            <Link
+              href="/profile/edit"
+              onClick={() => setMenuOpen(false)}
+              className="block rounded-lg px-3 py-2 hover:bg-muted"
             >
               Edit profile
-            </button>
+            </Link>
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(address);
@@ -153,12 +149,6 @@ export function ConnectButton() {
         </div>
       )}
 
-      {editOpen && (
-        <EditProfileModal
-          current={profile ?? null}
-          onClose={() => setEditOpen(false)}
-        />
-      )}
     </div>
   );
 }

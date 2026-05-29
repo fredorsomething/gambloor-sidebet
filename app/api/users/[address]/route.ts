@@ -1,15 +1,12 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { getAddress, isAddress, recoverMessageAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 
+import { verifyProfileAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { isAllowedAvatarUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { computeUserStats, type StatBet } from "@/lib/stats";
-import {
-  PROFILE_MESSAGE_TTL_MS,
-  buildProfileMessage,
-  parseProfileMessage,
-} from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +64,7 @@ const PutSchema = z.object({
     .string()
     .url()
     .max(500)
-    .refine((u) => /^https?:\/\//.test(u), "must be http(s)")
+    .refine((u) => isAllowedAvatarUrl(u), "invalid avatar url")
     .nullable()
     .optional(),
   bio: z.string().max(280).nullable().optional(),
@@ -92,33 +89,12 @@ export async function PUT(
   }
   const d = parsed.data;
 
-  // Verify the signed message proves ownership of `address`.
-  const claims = parseProfileMessage(d.message);
-  if (!claims) return jsonErr("malformed message", 400);
-  if (claims.address.toLowerCase() !== address.toLowerCase()) {
-    return jsonErr("message address mismatch", 401);
-  }
-  // Re-derive the canonical message to prevent arbitrary payloads being signed.
-  if (buildProfileMessage(address, claims.issuedAt) !== d.message) {
-    return jsonErr("message does not match canonical format", 400);
-  }
-  const issuedMs = Date.parse(claims.issuedAt);
-  if (!Number.isFinite(issuedMs) || Math.abs(Date.now() - issuedMs) > PROFILE_MESSAGE_TTL_MS) {
-    return jsonErr("signature expired, please retry", 401);
-  }
-
-  let recovered: string;
-  try {
-    recovered = await recoverMessageAddress({
-      message: d.message,
-      signature: d.signature as `0x${string}`,
-    });
-  } catch {
-    return jsonErr("invalid signature", 401);
-  }
-  if (recovered.toLowerCase() !== address.toLowerCase()) {
-    return jsonErr("signature does not match address", 401);
-  }
+  const auth = await verifyProfileAuth({
+    address,
+    message: d.message,
+    signature: d.signature,
+  });
+  if (!auth.ok) return jsonErr(auth.error, auth.status);
 
   // Enforce unique username (case-insensitive-ish: stored as provided).
   if (d.username) {
