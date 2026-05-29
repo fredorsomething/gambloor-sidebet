@@ -24,6 +24,7 @@ import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
+import { cryptoErrorSummary, formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useEscrow } from "@/lib/hooks/useEscrow";
@@ -353,9 +354,12 @@ export function CreateBetForm() {
     } catch (err: unknown) {
       setStep("idle");
       setPendingCreate(null);
-      const msg = (err as Error)?.message || "Transaction rejected";
+      const msg = cryptoErrorSummary(err, "Couldn't create bet");
       setError(msg);
-      push({ title: "Failed", description: msg, variant: "danger" });
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't create bet",
+      });
+      push({ title, description, variant: "danger" });
     }
   }
 
@@ -370,9 +374,12 @@ export function CreateBetForm() {
       } catch (err: unknown) {
         setStep("idle");
         setPendingCreate(null);
-        const msg = (err as Error)?.message || "Create rejected";
+        const msg = cryptoErrorSummary(err, "Couldn't create bet");
         setError(msg);
-        push({ title: "Create failed", description: msg, variant: "danger" });
+        const { title, description } = formatCryptoError(err, {
+          fallbackTitle: "Couldn't create bet",
+        });
+        push({ title, description, variant: "danger" });
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

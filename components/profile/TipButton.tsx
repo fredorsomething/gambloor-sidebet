@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI } from "@/lib/abi";
 import { getTokens, explorerTx } from "@/lib/chains";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
+import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { formatToken, shortAddr } from "@/lib/utils";
 
@@ -148,13 +149,10 @@ function TipModal({
       setTxHash(hash);
       push({ title: "Tip submitted", description: "Waiting for confirmation…" });
     } catch (err) {
-      const msg = (err as Error)?.message || "Transaction failed";
-      push({
-        title: msg.toLowerCase().includes("reject")
-          ? "Transaction rejected"
-          : "Tip failed",
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Tip failed",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setSending(false);
     }

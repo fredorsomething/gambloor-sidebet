@@ -12,6 +12,7 @@ import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
+import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
@@ -121,8 +122,10 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
       }
     } catch (err) {
       setAcceptStep("idle");
-      const msg = (err as Error)?.message || "Cancelled";
-      push({ title: "Transaction failed", description: msg, variant: "danger" });
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't accept bet",
+      });
+      push({ title, description, variant: "danger" });
     }
   }
 
@@ -142,8 +145,10 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
         setAcceptHash(hash);
       } catch (err) {
         setAcceptStep("idle");
-        const msg = (err as Error)?.message || "Cancelled";
-        push({ title: "Accept failed", description: msg, variant: "danger" });
+        const { title, description } = formatCryptoError(err, {
+          fallbackTitle: "Couldn't accept bet",
+        });
+        push({ title, description, variant: "danger" });
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,8 +180,10 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
       setCancelHash(hash);
       push({ title: "Cancel submitted" });
     } catch (err) {
-      const msg = (err as Error)?.message || "Cancel rejected";
-      push({ title: "Cancel failed", description: msg, variant: "danger" });
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't cancel bet",
+      });
+      push({ title, description, variant: "danger" });
     } finally {
       setCancelBusy(false);
     }
@@ -206,8 +213,10 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
       setSettleHash(hash);
       push({ title: "Settle submitted" });
     } catch (err) {
-      const msg = (err as Error)?.message || "Settle rejected";
-      push({ title: "Settle failed", description: msg, variant: "danger" });
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't settle bet",
+      });
+      push({ title, description, variant: "danger" });
     } finally {
       setSettleBusy(false);
     }

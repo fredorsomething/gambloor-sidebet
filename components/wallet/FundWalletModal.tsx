@@ -23,6 +23,7 @@ import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI } from "@/lib/abi";
 import { explorerTx, getTokens } from "@/lib/chains";
+import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { logWalletNotification } from "@/lib/hooks/useNotifications";
@@ -76,10 +77,12 @@ export function FundWalletProvider({ children }: { children: React.ReactNode }) 
         },
       });
     } catch (err) {
-      const msg = (err as Error)?.message ?? "Could not open gas funding";
-      if (!msg.toLowerCase().includes("closed")) {
-        push({ title: msg, variant: "danger" });
-      }
+      const raw = (err as Error)?.message ?? "";
+      if (raw.toLowerCase().includes("closed")) return;
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't open funding",
+      });
+      push({ title, description, variant: "danger" });
     }
   }, [address, privyFundWallet, push]);
 
@@ -154,16 +157,16 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
       });
       onClose();
     } catch (err) {
-      const msg = (err as Error)?.message ?? "Funding was cancelled";
-      const lc = msg.toLowerCase();
-      const userClosed = lc.includes("closed") || lc.includes("cancel") || lc.includes("exited");
+      const raw = (err as Error)?.message ?? "";
+      const lc = raw.toLowerCase();
+      const userClosed =
+        lc.includes("closed") || lc.includes("cancel") || lc.includes("exited");
       if (!userClosed) {
         console.error("Privy fundWallet failed", err);
-        push({
-          title: "Couldn't start funding",
-          description: msg,
-          variant: "danger",
+        const { title, description } = formatCryptoError(err, {
+          fallbackTitle: "Couldn't start funding",
         });
+        push({ title, description, variant: "danger" });
       }
     } finally {
       setPending(null);
@@ -380,14 +383,10 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
       setTxHash(hash);
       push({ title: "Withdrawal submitted", description: "Waiting for confirmation…" });
     } catch (err) {
-      const msg = (err as Error)?.message || "Transaction failed";
-      push({
-        title: msg.toLowerCase().includes("reject")
-          ? "Transaction rejected"
-          : "Withdrawal failed",
-        description: msg.length < 160 ? msg : undefined,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Withdrawal failed",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setSending(false);
     }

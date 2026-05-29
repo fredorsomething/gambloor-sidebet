@@ -8,6 +8,7 @@ import { formatUnits, type Address } from "viem";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { EXCHANGE_ABI } from "@/lib/abi";
+import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { jsonFetch } from "@/lib/fetcher";
@@ -140,11 +141,10 @@ export function MarketPortfolio({
       query.refetch();
       onChanged?.();
     } catch (err) {
-      push({
-        title: "Cancel failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't cancel order",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setCancelling(null);
     }

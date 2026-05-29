@@ -25,6 +25,7 @@ import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
 import { ERC20_ABI } from "@/lib/abi";
 import { explorerTx } from "@/lib/chains";
+import { formatCryptoError } from "@/lib/cryptoErrors";
 import { jsonFetch } from "@/lib/fetcher";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
@@ -46,11 +47,19 @@ import {
 } from "@/lib/zerox";
 
 const SLIPPAGE_BPS = 100;
+/** Leave headroom on native POL so 0x swap value + gas does not exceed balance. */
+const POL_GAS_RESERVE = parseUnits("0.08", 18);
 
 export function SwapPanel() {
   const { authenticated, login } = usePrivy();
   const { address } = useAccount();
-  const { sendTx: sendRawTx } = useTxSender();
+  const { sendTx } = useTxSender();
+  /** Swaps always prompt via Privy for embedded wallets (overrides global showWalletUIs: false). */
+  const sendSwapTx = useCallback(
+    (tx: Parameters<typeof sendTx>[0]) =>
+      sendTx(tx, { showWalletUIs: true }),
+    [sendTx],
+  );
   const { push } = useToast();
   const ensurePolygon = useEnsurePolygon();
 
@@ -78,6 +87,12 @@ export function SwapPanel() {
   }, [amount, sellAsset.decimals]);
 
   const balance = useTokenBalance(address, sellAsset);
+  const spendableBalance =
+    sellAsset.symbol === "POL"
+      ? balance > POL_GAS_RESERVE
+        ? balance - POL_GAS_RESERVE
+        : 0n
+      : balance;
   const waitTx = useWaitForTransactionReceipt({ hash: txHash });
 
   const flip = () => {
@@ -111,11 +126,10 @@ export function SwapPanel() {
       setPrice(data);
     } catch (err) {
       setPrice(null);
-      push({
-        title: "Could not load quote",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't load quote",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setPriceLoading(false);
     }
@@ -152,7 +166,7 @@ export function SwapPanel() {
     if (!address) return;
     const allowance = await readAllowance(token, spender, address);
     if (allowance >= needed) return;
-    const hash = await sendRawTx({
+    const hash = await sendSwapTx({
       to: token,
       data: encodeFunctionData({
         abi: ERC20_ABI,
@@ -160,10 +174,8 @@ export function SwapPanel() {
         args: [spender, maxUint256],
       }),
     });
-    // Embedded (managed) wallets auto-sign without a prompt, so the approval and
-    // the swap fire back-to-back. We must wait for the approval to be mined —
-    // otherwise the swap's gas estimation runs against a 0 allowance, reverts,
-    // and the whole thing fails silently. Block until the new allowance lands.
+    // Wait for approval to mine before the swap — otherwise the swap reverts on
+    // zero allowance when gas estimation runs against the old state.
     await waitForApproval(token, spender, address, needed, hash);
   }
 
@@ -173,7 +185,7 @@ export function SwapPanel() {
     const usdce = usdceAddress();
     if (wrapping) {
       await ensureApproval(usdce, COLLATERAL_ONRAMP, sellAmountWei);
-      const hash = await sendRawTx({
+      const hash = await sendSwapTx({
         to: COLLATERAL_ONRAMP,
         data: encodeFunctionData({
           abi: WRAP_ABI,
@@ -184,7 +196,7 @@ export function SwapPanel() {
       setTxHash(hash);
     } else {
       await ensureApproval(sellAsset.address!, COLLATERAL_OFFRAMP, sellAmountWei);
-      const hash = await sendRawTx({
+      const hash = await sendSwapTx({
         to: COLLATERAL_OFFRAMP,
         data: encodeFunctionData({
           abi: WRAP_ABI,
@@ -223,12 +235,10 @@ export function SwapPanel() {
       await ensureApproval(sellAsset.address, spender, sellAmountWei);
     }
 
-    const hash = await sendRawTx({
+    const hash = await sendSwapTx({
       to: quote.transaction.to as Address,
       data: quote.transaction.data as Hex,
       value: BigInt(quote.transaction.value || "0"),
-      // Use 0x's gas estimate so we don't rely on the embedded wallet's own
-      // eth_estimateGas, which can be flaky and stall the auto-signed tx.
       gas: quote.transaction.gas ? BigInt(quote.transaction.gas) : undefined,
     });
     setTxHash(hash);
@@ -245,8 +255,15 @@ export function SwapPanel() {
       push({ title: "Enter an amount", variant: "danger" });
       return;
     }
-    if (sellAmountWei > balance) {
-      push({ title: "Insufficient balance", variant: "danger" });
+    if (sellAmountWei > spendableBalance) {
+      push({
+        title: "Insufficient balance",
+        description:
+          sellAsset.symbol === "POL"
+            ? "Keep some POL for network fees, or enter a smaller amount."
+            : undefined,
+        variant: "danger",
+      });
       return;
     }
     if (sellSymbol === buySymbol) {
@@ -259,14 +276,10 @@ export function SwapPanel() {
       if (wrapMode) await executeWrap();
       else await executeSwap();
     } catch (err) {
-      const msg = (err as Error).message || "Transaction failed";
-      push({
-        title: msg.toLowerCase().includes("reject")
-          ? "Transaction rejected"
-          : "Swap failed",
-        description: msg,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Swap failed",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setSubmitting(false);
     }
@@ -302,10 +315,12 @@ export function SwapPanel() {
               type="button"
               className="font-medium text-primary hover:underline"
               onClick={() =>
-                setAmount(formatUnits(balance, sellAsset.decimals))
+                setAmount(
+                  formatUnits(spendableBalance, sellAsset.decimals),
+                )
               }
             >
-              Max · {formatToken(balance, sellAsset.decimals, 4)}
+              Max · {formatToken(spendableBalance, sellAsset.decimals, 4)}
             </button>
           </div>
           <div className="flex items-center gap-2">

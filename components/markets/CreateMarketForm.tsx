@@ -19,6 +19,7 @@ import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { CONDITIONAL_TOKENS_ABI } from "@/lib/abi";
+import { cryptoErrorSummary, formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { getMarketCollateralToken } from "@/lib/chains";
@@ -193,9 +194,12 @@ export function CreateMarketForm() {
       });
     } catch (err: unknown) {
       setStep("idle");
-      const msg = (err as Error)?.message || "Transaction rejected";
+      const msg = cryptoErrorSummary(err, "Couldn't create market");
       setError(msg);
-      push({ title: "Failed", description: msg, variant: "danger" });
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't create market",
+      });
+      push({ title, description, variant: "danger" });
     }
   }
 

@@ -35,6 +35,7 @@ import {
   EXCHANGE_ABI,
 } from "@/lib/abi";
 import { exchangeDomain, ORDER_EIP712_TYPES, randomSalt } from "@/lib/clob";
+import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { jsonFetch } from "@/lib/fetcher";
@@ -256,11 +257,10 @@ export function MarketDetail({ id }: { id: number }) {
       push({ title: `${sym} approved`, variant: "success" });
       approvalReads.refetch();
     } catch (err) {
-      push({
-        title: "Approval failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Approval failed",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setApprovingCollateral(false);
     }
@@ -279,11 +279,10 @@ export function MarketDetail({ id }: { id: number }) {
       push({ title: "Shares approved for trading", variant: "success" });
       approvalReads.refetch();
     } catch (err) {
-      push({
-        title: "Approval failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Approval failed",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setApprovingShares(false);
     }
@@ -308,11 +307,10 @@ export function MarketDetail({ id }: { id: number }) {
       setShares("");
       query.refetch();
     } catch (err) {
-      push({
-        title: "Mint failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Mint failed",
       });
+      push({ title, description, variant: "danger" });
     }
   }
 
@@ -331,11 +329,10 @@ export function MarketDetail({ id }: { id: number }) {
       setShares("");
       query.refetch();
     } catch (err) {
-      push({
-        title: "Merge failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Merge failed",
       });
+      push({ title, description, variant: "danger" });
     }
   }
 
@@ -351,11 +348,10 @@ export function MarketDetail({ id }: { id: number }) {
       push({ title: "Redeemed winning shares", variant: "success" });
       query.refetch();
     } catch (err) {
-      push({
-        title: "Redeem failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Redeem failed",
       });
+      push({ title, description, variant: "danger" });
     }
   }
 
@@ -468,11 +464,10 @@ export function MarketDetail({ id }: { id: number }) {
       push({ title: "Order filled", variant: "success" });
       query.refetch();
     } catch (err) {
-      push({
-        title: "Fill failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Fill failed",
       });
+      push({ title, description, variant: "danger" });
     }
   }
 
@@ -520,11 +515,10 @@ export function MarketDetail({ id }: { id: number }) {
       setShares("");
       query.refetch();
     } catch (err) {
-      push({
-        title: "Market order failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Order failed",
       });
+      push({ title, description, variant: "danger" });
       query.refetch();
     }
   }
@@ -681,11 +675,10 @@ export function MarketDetail({ id }: { id: number }) {
         });
       }
     } catch (err) {
-      push({
-        title: "Action failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Action failed",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setSubmitting(false);
     }
@@ -1749,11 +1742,10 @@ function CoverEditor({
       push({ title: "Cover updated", variant: "success" });
       onDone();
     } catch (err) {
-      push({
-        title: "Cover update failed",
-        description: (err as Error).message,
-        variant: "danger",
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Cover update failed",
       });
+      push({ title, description, variant: "danger" });
     } finally {
       setBusy(false);
     }
