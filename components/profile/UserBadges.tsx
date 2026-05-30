@@ -1,42 +1,10 @@
 "use client";
 
-import { ShieldCheck, ShieldAlert, Star, Scale, User as UserIcon } from "lucide-react";
-
+import { BADGE_VISUAL } from "@/lib/profileBadgeMeta";
 import type { BadgeKind } from "@/lib/badges";
 import { cn } from "@/lib/utils";
 
 export type { BadgeKind };
-
-const BADGE_META: Record<
-  BadgeKind,
-  { label: string; icon: typeof UserIcon; className: string }
-> = {
-  User: {
-    label: "User",
-    icon: UserIcon,
-    className: "border-border bg-muted/40 text-muted-foreground",
-  },
-  Admin: {
-    label: "Admin",
-    icon: ShieldAlert,
-    className: "border-danger/50 bg-danger/15 text-danger",
-  },
-  Staff: {
-    label: "Staff",
-    icon: ShieldCheck,
-    className: "border-primary/40 bg-primary/10 text-primary",
-  },
-  Trusted: {
-    label: "Trusted",
-    icon: Star,
-    className: "border-warning/40 bg-warning/10 text-warning",
-  },
-  Resolver: {
-    label: "Resolver",
-    icon: Scale,
-    className: "border-success/40 bg-success/10 text-success",
-  },
-};
 
 /** Every account shows "User" by default; richer badges are layered in later. */
 export function UserBadges({
@@ -49,7 +17,7 @@ export function UserBadges({
   return (
     <div className={cn("flex flex-wrap items-center justify-center gap-2", className)}>
       {badges.map((b) => {
-        const meta = BADGE_META[b];
+        const meta = BADGE_VISUAL[b];
         const Icon = meta.icon;
         return (
           <span

@@ -13,6 +13,7 @@ import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { PnlChart } from "@/components/profile/PnlChart";
 import { ProfileBalances } from "@/components/profile/ProfileBalances";
 import { ProfileActivity } from "@/components/profile/ProfileActivity";
+import { ProfileBadgesCosmetics } from "@/components/profile/ProfileBadgesCosmetics";
 import { ProfileComments } from "@/components/profile/ProfileComments";
 import { ProfileSocialLinks } from "@/components/profile/ProfileSocialLinks";
 import { RepWidget } from "@/components/profile/RepWidget";
@@ -169,8 +170,19 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
-      <div className="card p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="card relative p-6">
+        {isMe && (
+          <ProfileBadgesCosmetics
+            address={address}
+            badges={(data?.user.badges ?? ["User"]) as BadgeKind[]}
+          />
+        )}
+        <div
+          className={cn(
+            "flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between",
+            isMe && "pt-8 sm:pt-0",
+          )}
+        >
           <div className="flex items-center gap-4">
             <Avatar
               address={address}

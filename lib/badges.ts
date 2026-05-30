@@ -1,6 +1,12 @@
 import { isAdminAddress } from "@/lib/admin";
 
-export type BadgeKind = "User" | "Admin" | "Staff" | "Trusted" | "Resolver";
+export type BadgeKind =
+  | "User"
+  | "Admin"
+  | "Staff"
+  | "Trusted"
+  | "Resolver"
+  | "Supporter";
 
 /** Badges an admin can assign (Admin is always derived from the admin wallet). */
 export const ASSIGNABLE_BADGES: BadgeKind[] = [
@@ -10,11 +16,14 @@ export const ASSIGNABLE_BADGES: BadgeKind[] = [
   "Resolver",
 ];
 
+const PERSISTABLE_BADGES: BadgeKind[] = [...ASSIGNABLE_BADGES, "Supporter"];
+
 const DISPLAY_ORDER: BadgeKind[] = [
   "Admin",
   "Staff",
   "Resolver",
   "Trusted",
+  "Supporter",
   "User",
 ];
 
@@ -27,7 +36,7 @@ export function resolveDisplayBadges(
   if (isAdminAddress(address)) set.add("Admin");
   for (const raw of stored ?? []) {
     if (
-      ASSIGNABLE_BADGES.includes(raw as BadgeKind) &&
+      PERSISTABLE_BADGES.includes(raw as BadgeKind) &&
       raw !== "User"
     ) {
       set.add(raw as BadgeKind);
@@ -41,7 +50,7 @@ export function sanitizeStoredBadges(input: string[] | undefined): string[] {
   const set = new Set<string>(["User"]);
   if (!input) return ["User"];
   for (const raw of input) {
-    if (ASSIGNABLE_BADGES.includes(raw as BadgeKind) && raw !== "User") {
+    if (PERSISTABLE_BADGES.includes(raw as BadgeKind) && raw !== "User") {
       set.add(raw);
     }
   }

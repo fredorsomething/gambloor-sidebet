@@ -120,6 +120,21 @@ model ProfileComment {
   @@index([parentId])
 }
 
+// On-chain badge purchases (e.g. Supporter). One credit per transfer log.
+model BadgePurchase {
+  id        Int      @id @default(autoincrement())
+  address   String // buyer (lowercase)
+  badge     String // e.g. Supporter
+  txHash    String
+  logIndex  Int
+  amount    String // wei string
+  token     String // token contract (lowercase)
+  createdAt DateTime @default(now())
+
+  @@unique([txHash, logIndex])
+  @@index([address])
+}
+
 // Discussion comments attached to a sidebet or a market. `subjectType` selects
 // the parent ("bet" | "market") and `subjectId` is that row's primary key.
 // Anyone signed in can comment; authors can delete their own.
