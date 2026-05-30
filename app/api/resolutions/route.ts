@@ -203,13 +203,19 @@ export async function POST(req: NextRequest) {
 
     if (state.consensus === "unanimous" && state.agreedOutcome != null) {
       await autoApproveUnanimousBet(d.subjectId, state.agreedOutcome);
-      void tryAutoSettleBet(d.subjectId)
-        .then((result) => {
-          if (result.ok) {
-            console.log(`auto-settle triggered for bet #${d.subjectId}: ${result.hash}`);
-          }
-        })
-        .catch((err) => console.error("auto-settle failed", err));
+      const settleResult = await tryAutoSettleBet(d.subjectId).catch((err) => {
+        console.error("auto-settle failed", err);
+        return { ok: false as const, betId: d.subjectId, reason: "auto-settle error" };
+      });
+      if (settleResult.ok) {
+        console.log(
+          `auto-settle triggered for bet #${d.subjectId}: ${settleResult.hash}`,
+        );
+      } else if (settleResult.reason !== "SETTLER_PRIVATE_KEY not configured") {
+        console.warn(
+          `auto-settle skipped for bet #${d.subjectId}: ${settleResult.reason}`,
+        );
+      }
       await notify({
         recipient: bet.settler.toLowerCase(),
         type: "resolution_verified",
@@ -218,7 +224,12 @@ export async function POST(req: NextRequest) {
         link: subject.link,
       });
       return jsonOk(
-        { proposal, unanimous: true, agreedOutcome: state.agreedOutcome },
+        {
+          proposal,
+          unanimous: true,
+          agreedOutcome: state.agreedOutcome,
+          autoSettle: settleResult,
+        },
         { status: prior ? 200 : 201 },
       );
     }

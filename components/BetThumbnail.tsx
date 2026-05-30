@@ -7,6 +7,8 @@ type Props = {
   className?: string;
   /** When true, render a generated gradient tile (with initials) if no image. */
   fallback?: boolean;
+  /** Full-width banner for link embed cards. */
+  variant?: "square" | "banner";
 };
 
 /** Square thumbnails for cards, lists, and detail headers. */
@@ -16,7 +18,7 @@ const sizes = {
   lg: "h-44 w-44 sm:h-52 sm:w-52",
 };
 
-function gradientFor(title: string): string {
+export function gradientFor(title: string): string {
   let hash = 0;
   for (let i = 0; i < title.length; i++) {
     hash = (hash * 31 + title.charCodeAt(i)) % 360;
@@ -32,26 +34,35 @@ export function BetThumbnail({
   size = "md",
   className,
   fallback = false,
+  variant = "square",
 }: Props) {
   if (!imageUrl && !fallback) return null;
 
+  const isBanner = variant === "banner";
   const wrapperClass = cn(
-    "aspect-square shrink-0 overflow-hidden rounded-xl bg-muted ring-1 ring-border",
-    sizes[size],
+    isBanner
+      ? "h-full w-full overflow-hidden bg-muted"
+      : "aspect-square shrink-0 overflow-hidden rounded-xl bg-muted ring-1 ring-border",
+    !isBanner && sizes[size],
     className,
   );
 
   if (!imageUrl) {
     const initials = title.trim().slice(0, 2).toUpperCase() || "?";
+    const initialsClass = isBanner
+      ? "text-3xl"
+      : size === "lg"
+        ? "text-3xl"
+        : size === "md"
+          ? "text-lg"
+          : "text-sm";
     return (
       <div
         className={wrapperClass}
         style={{ backgroundImage: gradientFor(title) }}
       >
         <div className="flex h-full w-full items-center justify-center font-bold text-white/90">
-          <span className={size === "lg" ? "text-3xl" : size === "md" ? "text-lg" : "text-sm"}>
-            {initials}
-          </span>
+          <span className={initialsClass}>{initials}</span>
         </div>
       </div>
     );

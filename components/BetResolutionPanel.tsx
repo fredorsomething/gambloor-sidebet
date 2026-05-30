@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { jsonFetch } from "@/lib/fetcher";
 import type { BetResolutionConsensus } from "@/lib/betResolution";
-import { usePlatformSettings } from "@/lib/hooks/usePlatformSettings";
 import { cn } from "@/lib/utils";
 
 type Declaration = {
@@ -49,8 +48,6 @@ export function BetResolutionPanel({
   const isAcceptor =
     !!me && !!acceptor && me === acceptor.toLowerCase();
   const isParty = isProposer || isAcceptor;
-  const platformQ = usePlatformSettings();
-  const platformFeePct = ((platformQ.data?.sidebetFeeBps ?? 0) / 100).toFixed(2);
 
   const { data } = useQuery<ResolutionPayload>({
     queryKey: ["resolution", "bet", betId],
@@ -93,9 +90,8 @@ export function BetResolutionPanel({
 
         <p className="text-sm text-muted-foreground">
           When both sides declare the same winning outcome, the settler can
-          finalize payout on-chain. A {platformFeePct}% platform fee on the pool
-          is deducted before the winner is paid when configured. If you
-          disagree, an admin reviews before payout.
+          finalize payout on-chain. If you disagree, an admin reviews before
+          payout.
         </p>
 
       <div className="grid gap-2 sm:grid-cols-2">
@@ -124,7 +120,7 @@ export function BetResolutionPanel({
               <span className="font-medium text-foreground">
                 {outcomes[state.agreedOutcome] ?? `Outcome ${state.agreedOutcome}`}
               </span>
-              . The settler confirms payout on-chain ({platformFeePct}% platform fee when set).
+              . The settler confirms payout on-chain.
             </span>
           </p>
         </div>
@@ -334,8 +330,8 @@ function DeclareModal({
 
         <p className="mt-1 text-sm text-muted-foreground">
           Tell the other side which outcome you believe won. Matching declarations
-          let the settler confirm payout on-chain (platform fee still applies).
-          Conflicting ones go to admin review.
+          let the settler confirm payout on-chain. Conflicting ones go to admin
+          review.
         </p>
 
         <div className="mt-4 space-y-2">

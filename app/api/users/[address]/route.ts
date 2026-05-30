@@ -4,6 +4,7 @@ import { getAddress, isAddress } from "viem";
 
 import { resolveDisplayBadges } from "@/lib/badges";
 import { verifyWalletAuth } from "@/lib/auth";
+import { syncUserParticipantBets } from "@/lib/betSync";
 import { prisma } from "@/lib/db";
 import { isAllowedAvatarUrl } from "@/lib/profile";
 import { getProfileViewCount } from "@/lib/profileViews";
@@ -45,6 +46,8 @@ export async function GET(
 
   // Match by address case-insensitively so no on-chain activity is ever missed
   // due to checksum casing differences. Identity is the wallet, not the name.
+  await syncUserParticipantBets(address);
+
   const bets = await prisma.bet.findMany({
     where: {
       OR: [

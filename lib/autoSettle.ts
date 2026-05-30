@@ -18,9 +18,12 @@ import { isAdminAddress, ADMIN_ADDRESS } from "@/lib/admin";
 import { SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { loadBetResolutionState } from "@/lib/betResolution";
 import { prisma } from "@/lib/db";
-import { notifyMany } from "@/lib/notifications";
 import { readBetV2 } from "@/lib/onchain";
-import { syncBetOnchain } from "@/lib/betSync";
+import {
+  applyBetOnchainSync,
+  persistKnownSettlement,
+  readBetV2Settled,
+} from "@/lib/betSync";
 
 const RPC =
   process.env.POLYGON_RPC_URL?.trim() ||
@@ -70,6 +73,22 @@ export async function tryAutoSettleBet(
 ): Promise<AutoSettleResult> {
   const bet = await prisma.bet.findUnique({ where: { id: betId } });
   if (!bet) return { ok: false, betId, reason: "bet not found" };
+
+  const onchain = await readBetV2(
+    bet.chainId,
+    getAddress(bet.escrowAddress) as Address,
+    BigInt(bet.onchainId),
+  );
+  if (!onchain) {
+    return { ok: false, betId, reason: "on-chain read failed" };
+  }
+  if (onchain.status === "Settled" || onchain.status === "Refunded") {
+    if (bet.status !== "Settled" && bet.status !== "Refunded") {
+      await applyBetOnchainSync(bet, onchain, { notify: true });
+    }
+    return { ok: true, hash: "0x" as Hex, betId };
+  }
+
   if (bet.status !== "Matched") {
     return { ok: false, betId, reason: `status is ${bet.status}` };
   }
@@ -87,14 +106,6 @@ export async function tryAutoSettleBet(
     return { ok: false, betId, reason: "SETTLER_PRIVATE_KEY not configured" };
   }
 
-  const onchain = await readBetV2(
-    bet.chainId,
-    getAddress(bet.escrowAddress) as Address,
-    BigInt(bet.onchainId),
-  );
-  if (!onchain) {
-    return { ok: false, betId, reason: "on-chain read failed" };
-  }
   if (onchain.status !== "Matched") {
     return { ok: false, betId, reason: `on-chain status is ${onchain.status}` };
   }
@@ -108,16 +119,12 @@ export async function tryAutoSettleBet(
       args: [BigInt(bet.onchainId), winningOutcome],
     });
     await signer.publicClient.waitForTransactionReceipt({ hash });
-    await syncBetOnchain(bet, { force: true });
 
-    const recipients = [bet.proposer, bet.acceptor].filter(Boolean) as string[];
-    if (recipients.length > 0) {
-      await notifyMany(recipients, {
-        type: "status",
-        title: "Sidebet settled",
-        body: `Both sides agreed — payout finalized on-chain for "${bet.title}".`,
-        link: `/bets/${bet.id}`,
-      }).catch(() => {});
+    const onchainAfter = await readBetV2Settled(bet);
+    if (onchainAfter) {
+      await applyBetOnchainSync(bet, onchainAfter, { notify: true });
+    } else {
+      await persistKnownSettlement(bet, winningOutcome, { notify: true });
     }
 
     console.log(

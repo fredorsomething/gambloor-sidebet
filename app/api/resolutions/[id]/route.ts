@@ -4,10 +4,10 @@ import { z } from "zod";
 
 import { isAdminAddress } from "@/lib/admin";
 import { verifyWalletAuth } from "@/lib/auth";
+import { applyBetOnchainSync } from "@/lib/betSync";
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
 import { readBetV2 } from "@/lib/onchain";
-import { reconcileSettledBetProposals } from "@/lib/resolutionReconcile";
 import { loadSubject, type SubjectType } from "@/lib/resolutionSubject";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
@@ -58,7 +58,6 @@ export async function POST(
   if (proposal.subjectType === "bet") {
     const bet = await prisma.bet.findUnique({
       where: { id: proposal.subjectId },
-      select: { chainId: true, escrowAddress: true, onchainId: true },
     });
     if (bet) {
       const onchain = await readBetV2(
@@ -66,17 +65,8 @@ export async function POST(
         getAddress(bet.escrowAddress) as `0x${string}`,
         BigInt(bet.onchainId),
       ).catch(() => null);
-      if (onchain?.status === "Settled") {
-        await prisma.bet
-          .update({
-            where: { id: proposal.subjectId },
-            data: { status: "Settled", winningOutcome: onchain.winningOutcome },
-          })
-          .catch(() => {});
-        await reconcileSettledBetProposals(
-          proposal.subjectId,
-          onchain.winningOutcome,
-        );
+      if (onchain?.status === "Settled" || onchain?.status === "Refunded") {
+        await applyBetOnchainSync(bet, onchain);
         const refreshed = await prisma.resolutionProposal.findUnique({
           where: { id },
         });

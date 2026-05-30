@@ -223,10 +223,10 @@ export async function resolveLinkPreview(
     });
     const pnl = computeUserStats(bets as StatBet[], address).pnl;
     const slug = user?.username ?? address;
-    const joined = user?.createdAt ? formatJoinDate(user.createdAt) : null;
-    const subtitle = joined
-      ? `PnL ${formatUsd(pnl)} · Joined ${joined}`
-      : `PnL ${formatUsd(pnl)}`;
+    const joinedFull = user?.createdAt ? formatJoinDate(user.createdAt) : null;
+    const joinedShort = user?.createdAt ? formatJoinDateShort(user.createdAt) : null;
+    // Meta description only — PnL is rendered on the OG card, not duplicated here.
+    const subtitle = joinedShort ? `Joined ${joinedShort}` : undefined;
 
     return {
       kind: "profile",
@@ -238,7 +238,7 @@ export async function resolveLinkPreview(
       username: user?.username ?? null,
       verified: user?.verified ?? false,
       pnl,
-      joinedAt: joined ?? undefined,
+      joinedAt: joinedFull ?? undefined,
     };
   }
 
@@ -319,15 +319,19 @@ function formatStake(wei: bigint, decimals: number, symbol: string | null): stri
   return symbol ? `${formatted} ${symbol}` : formatted;
 }
 
-function formatUsd(n: number): string {
-  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
-  return `${sign}$${Math.abs(n).toLocaleString(undefined, {
-    maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 2,
-  })}`;
+function formatJoinDate(d: Date): string {
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
-function formatJoinDate(d: Date): string {
-  return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+function formatJoinDateShort(d: Date): string {
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 /** Split message into alternating text / url segments for rendering. */

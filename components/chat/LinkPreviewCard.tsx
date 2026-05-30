@@ -7,8 +7,7 @@ import { BetThumbnail } from "@/components/BetThumbnail";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { jsonFetch } from "@/lib/fetcher";
-import type { LinkPreviewData } from "@/lib/linkPreview";
-import { normalizePreviewUrl } from "@/lib/linkPreview";
+import { normalizePreviewUrl, type LinkPreviewData } from "@/lib/linkPreview";
 import { cn } from "@/lib/utils";
 
 function pnlClass(n: number) {
@@ -35,22 +34,46 @@ export function LinkPreviewCard({ url }: { url: string }) {
   if (isError) return null;
   if (isLoading) {
     return (
-      <div className="mt-2 h-[4.5rem] animate-pulse rounded-lg border border-border bg-muted/40" />
+      <div className="mt-2 h-[8.5rem] animate-pulse rounded-lg border border-border bg-muted/40" />
     );
   }
 
   const p = data?.preview;
   if (!p) return null;
 
+  const isVisualCard = p.kind === "bet" || p.kind === "market";
+
   return (
     <Link
       href={p.url}
-      className="mt-2 flex overflow-hidden rounded-lg border border-border bg-muted/25 transition-colors hover:bg-muted/45"
+      className={cn(
+        "mt-2 overflow-hidden rounded-lg border border-border bg-muted/25 transition-colors hover:bg-muted/45",
+        isVisualCard ? "flex flex-col" : "flex",
+      )}
     >
-      <PreviewThumb preview={p} />
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-2">
-        <PreviewMeta preview={p} />
-      </div>
+      {isVisualCard ? (
+        <>
+          <div className="relative h-28 w-full shrink-0 border-b border-border bg-muted">
+            <BetThumbnail
+              imageUrl={p.imageUrl}
+              title={p.title}
+              variant="banner"
+              fallback
+              className="!h-full !w-full"
+            />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-2">
+            <PreviewMeta preview={p} />
+          </div>
+        </>
+      ) : (
+        <>
+          <PreviewThumb preview={p} />
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-2">
+            <PreviewMeta preview={p} />
+          </div>
+        </>
+      )}
     </Link>
   );
 }
@@ -107,11 +130,15 @@ function PreviewMeta({ preview: p }: { preview: LinkPreviewData }) {
           badgeSize={14}
           className="text-sm font-semibold"
         />
-        <span className={cn("text-xs font-semibold tabular-nums", pnlClass(p.pnl ?? 0))}>
-          {pnlLabel(p.pnl ?? 0)} PnL
-        </span>
         {p.joinedAt && (
-          <span className="text-xs text-muted-foreground">Joined {p.joinedAt}</span>
+          <span className="text-xs text-muted-foreground">
+            Date joined: {p.joinedAt}
+          </span>
+        )}
+        {p.pnl != null && (
+          <span className={cn("text-xs font-semibold tabular-nums", pnlClass(p.pnl))}>
+            {pnlLabel(p.pnl)} PnL
+          </span>
         )}
       </>
     );

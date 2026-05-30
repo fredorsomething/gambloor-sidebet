@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { formatUnits, getAddress, isAddress } from "viem";
 
 import { prisma } from "@/lib/db";
+import { syncUserParticipantBets } from "@/lib/betSync";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { SCALE } from "@/lib/exchange/units";
 import { replay, userLegs } from "@/lib/exchange/userStats";
@@ -35,6 +36,8 @@ export async function GET(
   if (!isAddress(handle)) return jsonErr("bad address", 400);
   const address = getAddress(handle);
   const lower = address.toLowerCase();
+
+  await syncUserParticipantBets(address);
 
   const events: PnlEvent[] = [];
 

@@ -16,8 +16,12 @@ export async function buildMetadataForPath(path: string): Promise<Metadata> {
   const imagePath = openGraphImagePath(preview.url);
   const imageUrl = absoluteUrl(imagePath);
   const description =
-    preview.subtitle ??
-    (preview.kind === "site" ? "Peer-to-peer sidebets on Polygon." : "Sidebet");
+    preview.kind === "profile"
+      ? (preview.subtitle ?? "Sidebet profile")
+      : (preview.subtitle ??
+        (preview.kind === "site"
+          ? "Peer-to-peer sidebets on Polygon."
+          : "Sidebet"));
 
   return {
     title: `${preview.title} — Sidebet`,

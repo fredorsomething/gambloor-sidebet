@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
+import { FeeBadge } from "@/components/FeeBadge";
 import { Identity } from "@/components/profile/Identity";
 import { BetDetailLive } from "@/components/BetDetailLive";
 import { BetMatchup } from "@/components/BetMatchup";
@@ -80,6 +81,7 @@ export default async function BetDetailPage({
         <div className="flex items-center gap-2">
           <TypeTag kind="sidebet" />
           <LiveBetStatusBadge id={bet.id} initialStatus={bet.status} />
+          <FeeBadge feeBps={bet.feeBps} />
           <span className="text-xs text-muted-foreground">
             #{bet.onchainId} on chain {bet.chainId}
           </span>
@@ -126,7 +128,7 @@ export default async function BetDetailPage({
 
         {!showMatchup && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-2">
               <Stat
                 label="Proposer stake"
                 value={
@@ -153,7 +155,6 @@ export default async function BetDetailPage({
                   </>
                 }
               />
-              <Stat label="Settler fee" value={`${(bet.feeBps / 100).toFixed(2)}%`} />
             </div>
             {endDateSecs > 0 && (
               <div className="pt-1 text-xs text-muted-foreground">
@@ -189,7 +190,6 @@ export default async function BetDetailPage({
             subjectType="bet"
             subjectId={bet.id}
             settler={bet.settler}
-            feeBps={bet.feeBps}
           />
 
           <section className="card p-5">

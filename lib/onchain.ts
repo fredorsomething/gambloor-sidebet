@@ -14,7 +14,8 @@ import {
 } from "@/lib/abi";
 
 const polygonRpc =
-  process.env.NEXT_PUBLIC_POLYGON_RPC ||
+  process.env.POLYGON_RPC_URL?.trim() ||
+  process.env.NEXT_PUBLIC_POLYGON_RPC?.trim() ||
   "https://polygon-bor-rpc.publicnode.com";
 
 const client: PublicClient = createPublicClient({

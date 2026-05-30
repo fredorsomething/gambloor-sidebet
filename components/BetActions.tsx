@@ -246,7 +246,6 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settleWait.isSuccess]);
 
-  const feePct = (bet.feeBps / 100).toFixed(2);
   const payout = (pool * BigInt(10000 - bet.feeBps)) / 10000n;
 
   if (!account) {
@@ -348,7 +347,7 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3">
           <div>
             <div className="label">You stake</div>
             <div className="mt-0.5 inline-flex items-center font-mono text-base font-bold">
@@ -370,10 +369,6 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
                 className="ml-1 text-xs font-normal text-muted-foreground"
               />
             </div>
-          </div>
-          <div className="col-span-2 sm:col-span-1">
-            <div className="label">Settler fee</div>
-            <div className="mt-0.5 font-mono text-base">{feePct}%</div>
           </div>
         </div>
 
@@ -442,20 +437,11 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
               <span className="font-medium text-foreground">
                 {outcomes[lockedOutcome]}
               </span>
-              . Confirm payout — pool of{" "}
-              <span className="font-mono">
-                {formatToken(pool, decimals)} {tokenSym}
-              </span>{" "}
-              pays the winning side less your {feePct}% fee.
+              . Confirm payout.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Read the terms carefully and declare the winning outcome. The pool of{" "}
-              <span className="font-mono">
-                {formatToken(pool, decimals)} {tokenSym}
-              </span>{" "}
-              pays the winning side less your {feePct}% fee. If you pick an outcome
-              nobody backed, both sides are refunded (no fee).
+              Read the terms and declare the winning outcome.
             </p>
           )}
         </div>

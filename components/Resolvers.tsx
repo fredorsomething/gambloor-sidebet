@@ -30,12 +30,10 @@ export function Resolvers({
   subjectType,
   subjectId,
   settler,
-  feeBps,
 }: {
   subjectType: "bet" | "market";
   subjectId: number;
   settler: string;
-  feeBps: number;
 }) {
   const { address } = useAccount();
 
@@ -82,14 +80,13 @@ export function Resolvers({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        The resolver declares the winning outcome and earns the settlement fee.
-        Picked when the {subjectType === "bet" ? "bet" : "market"} was created.
+        The resolver declares the winning outcome. Picked when the{" "}
+        {subjectType === "bet" ? "bet" : "market"} was created.
       </p>
 
       <ResolverRow
         address={settler}
         verified={isApproved(settler)}
-        feeBps={feeBps}
         primary
       />
 
@@ -138,13 +135,11 @@ export function Resolvers({
 function ResolverRow({
   address,
   verified,
-  feeBps,
   primary,
   added,
 }: {
   address: string;
   verified?: boolean;
-  feeBps?: number;
   primary?: boolean;
   added?: boolean;
 }) {
@@ -152,11 +147,6 @@ function ResolverRow({
     <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-3">
       <Identity address={address} size={28} weight="semibold" />
       <div className="flex shrink-0 items-center gap-2">
-        {feeBps != null && primary && (
-          <span className="text-xs text-muted-foreground">
-            {(feeBps / 100).toFixed(2)}% fee
-          </span>
-        )}
         {added ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
             <Plus className="h-3 w-3" />

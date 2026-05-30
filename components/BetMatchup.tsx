@@ -128,8 +128,6 @@ export function BetMatchup({
             {formatToken(poolWei, bet.decimals)}
             <TokenSymbol symbol={symbol} size={12} />
           </span>
-          <span className="mx-1.5 text-border">·</span>
-          Settler fee {(bet.feeBps / 100).toFixed(2)}%
         </div>
       </div>
 

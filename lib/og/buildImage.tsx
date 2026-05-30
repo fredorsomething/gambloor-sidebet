@@ -74,30 +74,179 @@ function truncate(text: string, max: number): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
-function Thumb({
+function heroSrc(
+  preview: LinkPreviewData,
+  thumbDataUrl?: string | null,
+): string | null {
+  if (thumbDataUrl) return thumbDataUrl;
+  if (!preview.imageUrl) return null;
+  return preview.imageUrl.startsWith("http")
+    ? preview.imageUrl
+    : absoluteUrl(preview.imageUrl);
+}
+
+function HeroImage({
+  preview,
+  thumbDataUrl,
+  height,
+  fontSize = 64,
+}: {
+  preview: LinkPreviewData;
+  thumbDataUrl?: string | null;
+  height: number;
+  fontSize?: number;
+}) {
+  const src = heroSrc(preview, thumbDataUrl);
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={1200}
+        height={height}
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: colorFromSeed(preview.title),
+        fontSize,
+        fontWeight: 700,
+        color: "rgba(255,255,255,0.92)",
+      }}
+    >
+      {initialsFor(preview)}
+    </div>
+  );
+}
+
+function OgHeader({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 32,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={absoluteUrl("/favicon.png")}
+          alt=""
+          width={40}
+          height={40}
+          style={{ borderRadius: 10 }}
+        />
+        <span style={{ fontSize: 28, fontWeight: 700, color: C.text }}>
+          sidebet.lol
+        </span>
+      </div>
+      <span style={{ fontSize: 22, color: C.muted }}>{label}</span>
+    </div>
+  );
+}
+
+function renderBetMarketOgCard(
+  preview: LinkPreviewData,
+  options: OgCardOptions = {},
+): ImageResponse {
+  const label = kindLabel(preview);
+
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          background: C.bg,
+          padding: 48,
+          fontFamily:
+            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+        }}
+      >
+        <OgHeader label={label} />
+
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            flexDirection: "column",
+            background: C.card,
+            border: `2px solid ${C.border}`,
+            borderRadius: 24,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              height: 300,
+              display: "flex",
+              overflow: "hidden",
+              borderBottom: `2px solid ${C.border}`,
+            }}
+          >
+            <HeroImage
+              preview={preview}
+              thumbDataUrl={options.thumbDataUrl}
+              height={300}
+              fontSize={80}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              padding: "28px 36px 32px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 40,
+                fontWeight: 700,
+                color: C.text,
+                lineHeight: 1.15,
+              }}
+            >
+              {truncate(preview.title, 80)}
+            </span>
+            {preview.subtitle && (
+              <span style={{ fontSize: 26, color: C.muted }}>
+                {truncate(preview.subtitle, 70)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    ),
+    { ...OG_SIZE },
+  );
+}
+
+function ProfileThumb({
   preview,
   thumbDataUrl,
 }: {
   preview: LinkPreviewData;
   thumbDataUrl?: string | null;
 }) {
-  if (thumbDataUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={thumbDataUrl}
-        alt=""
-        width={200}
-        height={200}
-        style={{ objectFit: "cover" }}
-      />
-    );
-  }
-
-  if (preview.imageUrl) {
-    const src = preview.imageUrl.startsWith("http")
-      ? preview.imageUrl
-      : absoluteUrl(preview.imageUrl);
+  const src = heroSrc(preview, thumbDataUrl);
+  if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
@@ -110,11 +259,6 @@ function Thumb({
     );
   }
 
-  const seed =
-    preview.kind === "profile"
-      ? preview.username ?? preview.address ?? preview.title
-      : preview.title;
-
   return (
     <div
       style={{
@@ -123,7 +267,9 @@ function Thumb({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: colorFromSeed(seed),
+        backgroundColor: colorFromSeed(
+          preview.username ?? preview.address ?? preview.title,
+        ),
         fontSize: 64,
         fontWeight: 700,
         color: "rgba(255,255,255,0.92)",
@@ -134,7 +280,7 @@ function Thumb({
   );
 }
 
-export function renderOgCard(
+function renderProfileOgCard(
   preview: LinkPreviewData,
   options: OgCardOptions = {},
 ): ImageResponse {
@@ -155,29 +301,7 @@ export function renderOgCard(
             'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 40,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={absoluteUrl("/favicon.png")}
-              alt=""
-              width={40}
-              height={40}
-              style={{ borderRadius: 10 }}
-            />
-            <span style={{ fontSize: 28, fontWeight: 700, color: C.text }}>
-              sidebet.lol
-            </span>
-          </div>
-          <span style={{ fontSize: 22, color: C.muted }}>{label}</span>
-        </div>
+        <OgHeader label={label} />
 
         <div
           style={{
@@ -205,7 +329,7 @@ export function renderOgCard(
               flexShrink: 0,
             }}
           >
-            <Thumb preview={preview} thumbDataUrl={options.thumbDataUrl} />
+            <ProfileThumb preview={preview} thumbDataUrl={options.thumbDataUrl} />
           </div>
 
           <div
@@ -228,12 +352,6 @@ export function renderOgCard(
               {truncate(preview.title, 80)}
             </span>
 
-            {preview.subtitle && (
-              <span style={{ fontSize: 28, color: C.muted }}>
-                {truncate(preview.subtitle, 60)}
-              </span>
-            )}
-
             {pnl && (
               <span
                 style={{
@@ -245,16 +363,24 @@ export function renderOgCard(
                 {pnl}
               </span>
             )}
-
-            {preview.kind === "profile" && preview.joinedAt && (
-              <span style={{ fontSize: 24, color: C.muted }}>
-                Joined {preview.joinedAt}
-              </span>
-            )}
           </div>
         </div>
       </div>
     ),
     { ...OG_SIZE },
   );
+}
+
+export function renderOgCard(
+  preview: LinkPreviewData,
+  options: OgCardOptions = {},
+): ImageResponse {
+  if (preview.kind === "bet" || preview.kind === "market") {
+    return renderBetMarketOgCard(preview, options);
+  }
+  if (preview.kind === "profile") {
+    return renderProfileOgCard(preview, options);
+  }
+
+  return renderBetMarketOgCard(preview, options);
 }
