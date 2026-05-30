@@ -130,6 +130,8 @@ const SITE_PAGE_LABELS: Record<string, string> = {
   "/me": "My positions",
   "/swap": "Swap tokens",
   "/how-it-works": "How it works",
+  "/terms": "Terms of Service",
+  "/privacy": "Privacy Policy",
   "/messages": "Messages",
 };
 
