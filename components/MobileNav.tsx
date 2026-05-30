@@ -19,6 +19,7 @@ import { useAccount } from "wagmi";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { isAdminAddress } from "@/lib/admin";
+import { lockBodyScroll } from "@/lib/bodyScrollLock";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -48,13 +49,8 @@ export function MobileNav() {
 
   // Lock body scroll while the drawer is open.
   useEffect(() => {
-    if (open) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = prev;
-      };
-    }
+    if (!open) return;
+    return lockBodyScroll();
   }, [open]);
 
   return (

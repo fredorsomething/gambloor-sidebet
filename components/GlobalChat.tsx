@@ -19,6 +19,7 @@ import { GifPicker } from "@/components/GifPicker";
 import { RichMessageBody } from "@/components/chat/RichMessageBody";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
+import { lockBodyScroll } from "@/lib/bodyScrollLock";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
 
@@ -36,6 +37,7 @@ type ChatMessage = {
 
 type ChatResponse = { messages: ChatMessage[]; online: number };
 
+const CHAT_WIDTH_PX = 320;
 const LAST_READ_KEY = "sb_chat_last_read_id";
 
 function readLastReadId(): number | null {
@@ -111,6 +113,12 @@ export function GlobalChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  function scrollChatToBottom(behavior: ScrollBehavior = "auto") {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }
+
   useEffect(() => {
     try {
       if (localStorage.getItem("sb_chat_open") === "1") setOpen(true);
@@ -130,11 +138,9 @@ export function GlobalChat() {
 
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(min-width: 768px)").matches) return;
+    return lockBodyScroll();
   }, [open]);
 
   const chatQ = useQuery<ChatResponse>({
@@ -182,11 +188,11 @@ export function GlobalChat() {
     if (!el) return;
     const nearBottom =
       el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (nearBottom) scrollChatToBottom("smooth");
   }, [messages.length, open]);
 
   useEffect(() => {
-    if (open) bottomRef.current?.scrollIntoView();
+    if (open) scrollChatToBottom();
   }, [open]);
 
   const send = useMutation({
@@ -304,7 +310,10 @@ export function GlobalChat() {
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] md:flex-row"
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex items-center",
+          "max-md:inset-0 max-md:h-[100dvh] max-md:max-h-[100dvh]",
+        )}
         role="dialog"
         aria-modal="true"
         aria-label="Global chat"
@@ -319,9 +328,10 @@ export function GlobalChat() {
 
         <aside
           className={cn(
-            "relative z-10 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full flex-col bg-card/95 shadow-2xl backdrop-blur-sm",
-            "md:w-[320px] md:max-w-[320px] md:border-r md:border-border",
+            "relative z-10 flex min-h-0 max-h-screen flex-col border-r border-border bg-card/95 shadow-2xl backdrop-blur-sm",
+            "max-md:h-full max-md:max-h-[100dvh] max-md:w-full max-md:border-r-0",
           )}
+          style={{ width: CHAT_WIDTH_PX }}
         >
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">

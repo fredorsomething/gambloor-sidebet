@@ -48,9 +48,14 @@
     --bronze: 26 62% 56%;
   }
 
-  html,
+  html {
+    min-height: 100%;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+
   body {
-    height: 100%;
+    min-height: 100%;
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
   }
