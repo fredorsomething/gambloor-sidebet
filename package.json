@@ -19,7 +19,9 @@
     "hh:compile": "hardhat compile",
     "hh:test": "hardhat test",
     "hh:deploy": "hardhat run scripts/deploy.ts --network polygon",
-    "settlers:sync": "hardhat run scripts/syncSettlers.ts --network polygon"
+    "settlers:sync": "hardhat run scripts/syncSettlers.ts --network polygon",
+    "auto-settle": "tsx scripts/autoSettleBets.ts",
+    "escrow:set-fee-recipient": "hardhat run scripts/setPlatformFeeRecipient.ts --network polygon"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

@@ -196,6 +196,7 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
             nonce: bet.nonce,
             proposerStake: bet.proposerStake || bet.amount,
             acceptorStake: bet.acceptorStake || bet.amount,
+            acceptDeadline: createParams.acceptDeadline,
           }),
         });
 
@@ -228,9 +229,9 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
     >
       <h3 className="text-sm font-semibold">Publish locked-in terms</h3>
       <p className="text-sm text-muted-foreground">
-        Counter-offer terms are saved on this sidebet. Cancel the old on-chain
-        offer (if any), then publish a new escrow deposit with the agreed stakes
-        — same page, no duplicate listing.
+        Agreed terms are saved on this sidebet. Confirm below to swap in the new
+        on-chain stakes — this listing stays the same; your wallet may ask for
+        one or two confirmations.
       </p>
       <div className="flex flex-wrap gap-4 text-sm">
         <span>
@@ -256,8 +257,8 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
               ? "Confirm in wallet…"
               : "Saving…"
           : needsCancel
-            ? "Cancel old offer & publish new stakes"
-            : "Publish new on-chain offer"}
+            ? "Publish agreed stakes"
+            : "Publish on-chain offer"}
       </Button>
     </section>
   );

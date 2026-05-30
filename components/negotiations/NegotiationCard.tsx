@@ -67,6 +67,9 @@ export function NegotiationCard({
     Withdrawn: "bg-muted text-muted-foreground",
   };
 
+  const negotiationBetOpen =
+    betStatus === "Open" || !!escrowRevisionNeeded;
+
   return (
     <div
       className={
@@ -136,7 +139,7 @@ export function NegotiationCard({
         <p className="text-sm text-muted-foreground">“{n.message}”</p>
       )}
 
-      {n.status === "Pending" && betStatus === "Open" && (
+      {n.status === "Pending" && negotiationBetOpen && (
         <div className="flex flex-wrap justify-end gap-2">
           {isRecipient && onDecline && onAccept && (
             <>
@@ -158,7 +161,7 @@ export function NegotiationCard({
 
       {n.status === "Accepted" &&
         isProposer &&
-        betStatus === "Open" &&
+        negotiationBetOpen &&
         escrowRevisionNeeded &&
         onLockInEscrow && (
           <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
@@ -176,7 +179,7 @@ export function NegotiationCard({
 
       {n.status === "Accepted" &&
         isProposer &&
-        betStatus === "Open" &&
+        negotiationBetOpen &&
         !escrowRevisionNeeded && (
           <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm text-muted-foreground">
             <p>Locked-in terms are live on-chain for this sidebet.</p>
@@ -214,7 +217,7 @@ export function NegotiationCard({
           </div>
         )}
 
-      {n.status === "Pending" && isRecipient && onCounter && betStatus === "Open" && (
+      {n.status === "Pending" && isRecipient && onCounter && negotiationBetOpen && (
         <div className="border-t border-border pt-2">
           <Button variant="outline" size="sm" onClick={onCounter} disabled={busy}>
             Send counter-offer

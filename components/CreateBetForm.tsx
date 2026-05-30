@@ -25,6 +25,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { cryptoErrorSummary, formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { usePlatformSettings } from "@/lib/hooks/usePlatformSettings";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useEscrow } from "@/lib/hooks/useEscrow";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
@@ -74,9 +75,12 @@ export function CreateBetForm() {
   const [yourStakeStr, setYourStakeStr] = useState("");
   const [theirStakeStr, setTheirStakeStr] = useState("");
 
+  const platformQ = usePlatformSettings();
+  const platformFeeBps = platformQ.data?.sidebetFeeBps ?? 0;
+
   // Settler + end date
   const [settler, setSettler] = useState("");
-  const [settlerFeeBps, setSettlerFeeBps] = useState(200);
+  const [settlerFeeBps, setSettlerFeeBps] = useState(0);
   const [endDate, setEndDate] = useState(""); // yyyy-mm-dd
 
   const [step, setStep] = useState<Step>("idle");
@@ -88,6 +92,12 @@ export function CreateBetForm() {
       setTokenAddress(tokens[0].address as Address);
     }
   }, [chainId, tokens, tokenAddress]);
+
+  useEffect(() => {
+    if (platformQ.data != null && !settler) {
+      setSettlerFeeBps(platformFeeBps);
+    }
+  }, [platformFeeBps, platformQ.data, settler]);
 
   const decimals = tokenMeta?.decimals ?? 6;
   const live = useTokenInfo({
@@ -677,8 +687,8 @@ export function CreateBetForm() {
           Escrow: <span className="font-mono">{shortAddr(escrow ?? "")}</span>
         </div>
         <div>
-          Settler fee: <b>{(settlerFeeBps / 100).toFixed(2)}%</b> of the pool
-          (set by the settler). Winner takes the pool less this fee. If the
+          Platform fee: <b>{(settlerFeeBps / 100).toFixed(2)}%</b> of the pool
+          (to admin). Winner takes the pool less this fee. If the
           winning outcome is one nobody backed, both stakes are refunded.
         </div>
         <div>

@@ -16,10 +16,16 @@ import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
+import {
+  betAcceptor,
+  betHasAcceptor,
+  resolveBetStatus,
+} from "@/lib/betStatus";
+import { isAdminAddress } from "@/lib/admin";
+import { settlerMaySettle } from "@/lib/betResolution";
 import { formatToken, shortAddr } from "@/lib/utils";
-import type { BetRow, GetBetResponse } from "@/lib/types";
+import type { BetResolutionSummary, BetRow, GetBetResponse } from "@/lib/types";
 
-const ZERO = "0x0000000000000000000000000000000000000000";
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 
 type Props = {
@@ -27,10 +33,11 @@ type Props = {
   /** Live on-chain snapshot from the bet endpoint; the source of truth for
    *  status/acceptor so stale off-chain data never shows the wrong action. */
   onchain?: GetBetResponse["onchain"];
+  resolution?: BetResolutionSummary;
   onTxConfirmed?: () => void;
 };
 
-export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
+export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
   const { address: account } = useAccount();
   const { push } = useToast();
   const ensurePolygon = useEnsurePolygon();
@@ -39,17 +46,11 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
   const isProposer = me === bet.proposer.toLowerCase();
   const isSettler = me === bet.settler.toLowerCase();
 
-  // Prefer on-chain truth over the indexed snapshot (which can lag behind).
-  const rawStatus = onchain?.status ?? bet.status;
-  const acceptorAddr =
-    onchain?.acceptor && onchain.acceptor !== ZERO
-      ? onchain.acceptor
-      : bet.acceptor;
-  const hasAcceptor = !!acceptorAddr && acceptorAddr.toLowerCase() !== ZERO;
-  // Once a taker exists the bet is matched — never allow cancel/take again, even
-  // if the indexed status hasn't caught up to the chain yet.
-  const status = rawStatus === "Open" && hasAcceptor ? "Matched" : rawStatus;
-  const isAcceptor = !!me && hasAcceptor && me === acceptorAddr!.toLowerCase();
+  const acceptorAddr = betAcceptor(bet, onchain);
+  const hasAcceptor = betHasAcceptor(bet, onchain);
+  const status = resolveBetStatus(bet, onchain);
+  const isAcceptor =
+    !!me && hasAcceptor && me === acceptorAddr!.toLowerCase();
 
   // A still-open offer with no taker is "expired" once its accept window passes.
   // New bets carry a 1-week acceptDeadline; older ones fall back to created+1wk.
@@ -196,10 +197,26 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelWait.isSuccess]);
 
+  const settleGate = resolution
+    ? settlerMaySettle({
+        proposer: resolution.proposer,
+        acceptor: resolution.acceptor,
+        consensus: resolution.consensus,
+        agreedOutcome: resolution.agreedOutcome,
+        verifiedOutcome: resolution.verifiedOutcome,
+      })
+    : { allowed: true as const };
+
+  const lockedOutcome = settleGate.requiredOutcome;
+
   // -------- settle: pick the winning outcome --------
   const [winningOutcome, setWinningOutcome] = useState<number>(
-    bet.proposerOutcome ?? 0,
+    lockedOutcome ?? bet.proposerOutcome ?? 0,
   );
+
+  useEffect(() => {
+    if (lockedOutcome != null) setWinningOutcome(lockedOutcome);
+  }, [lockedOutcome]);
   async function onSettle() {
     setSettleBusy(true);
     try {
@@ -374,6 +391,19 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
     );
   }
 
+  // Proposer is refreshing on-chain stakes after a negotiated lock-in.
+  if (status === "Open" && isProposer && bet.escrowRevisionNeeded) {
+    return (
+      <div className="card p-5 space-y-2 ring-1 ring-[hsl(var(--warning))]/30">
+        <h3 className="font-semibold">Publish agreed stakes</h3>
+        <p className="text-sm text-muted-foreground">
+          Negotiated terms are saved on this sidebet. Use the panel above to
+          publish the updated on-chain offer — same listing, no duplicate.
+        </p>
+      </div>
+    );
+  }
+
   // Open + I'm the proposer => can cancel.
   if (status === "Open" && isProposer) {
     return (
@@ -398,20 +428,44 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
 
   // Matched + I'm the settler => can settle by picking the winning outcome.
   if (status === "Matched" && isSettler) {
+    const unanimous = resolution?.consensus === "unanimous";
+    const outcomeLocked = lockedOutcome != null;
+
     return (
       <div className="card p-5 space-y-4">
         <LowGasBanner />
         <div>
-          <h3 className="font-semibold">Settle market</h3>
-          <p className="text-sm text-muted-foreground">
-            Read the terms carefully and declare the winning outcome. The pool of{" "}
-            <span className="font-mono">
-              {formatToken(pool, decimals)} {tokenSym}
-            </span>{" "}
-            pays the winning side less your {feePct}% fee. If you pick an outcome
-            nobody backed, both sides are refunded (no fee).
-          </p>
+          <h3 className="font-semibold">Settle bet</h3>
+          {unanimous && lockedOutcome != null ? (
+            <p className="text-sm text-muted-foreground">
+              Both parties declared{" "}
+              <span className="font-medium text-foreground">
+                {outcomes[lockedOutcome]}
+              </span>
+              . Confirm payout — pool of{" "}
+              <span className="font-mono">
+                {formatToken(pool, decimals)} {tokenSym}
+              </span>{" "}
+              pays the winning side less your {feePct}% fee.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Read the terms carefully and declare the winning outcome. The pool of{" "}
+              <span className="font-mono">
+                {formatToken(pool, decimals)} {tokenSym}
+              </span>{" "}
+              pays the winning side less your {feePct}% fee. If you pick an outcome
+              nobody backed, both sides are refunded (no fee).
+            </p>
+          )}
         </div>
+
+        {!settleGate.allowed && settleGate.reason && (
+          <p className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-muted-foreground">
+            {settleGate.reason}
+          </p>
+        )}
+
         <div className="grid grid-cols-1 gap-2">
           {outcomes.map((label, i) => {
             const backedBy =
@@ -423,7 +477,11 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
             return (
               <label
                 key={i}
-                className={`flex items-center justify-between gap-2 rounded-md border p-3 cursor-pointer text-sm ${
+                className={`flex items-center justify-between gap-2 rounded-md border p-3 text-sm ${
+                  outcomeLocked
+                    ? "cursor-default opacity-90"
+                    : "cursor-pointer"
+                } ${
                   winningOutcome === i
                     ? "border-[hsl(var(--primary))]/60 bg-[hsl(var(--primary))]/10"
                     : "border-border"
@@ -434,6 +492,7 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
                     type="radio"
                     name="winningOutcome"
                     checked={winningOutcome === i}
+                    disabled={outcomeLocked}
                     onChange={() => setWinningOutcome(i)}
                   />
                   <span className="font-medium">{label}</span>
@@ -445,11 +504,17 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
         </div>
         <Button
           onClick={onSettle}
-          disabled={settleBusy || settleWait.isLoading}
+          disabled={
+            !settleGate.allowed || settleBusy || settleWait.isLoading
+          }
           size="lg"
           className="w-full"
         >
-          {settleWait.isLoading ? "Settling…" : "Declare winning outcome"}
+          {settleWait.isLoading
+            ? "Settling…"
+            : unanimous
+              ? "Confirm payout"
+              : "Declare winning outcome"}
         </Button>
       </div>
     );
@@ -457,14 +522,40 @@ export function BetActions({ bet, onchain, onTxConfirmed }: Props) {
 
   // Matched + waiting on settler.
   if (status === "Matched") {
+    const unanimous = resolution?.consensus === "unanimous";
+    const disputed = resolution?.consensus === "disputed";
     return (
-      <div className="card p-5 text-sm">
+      <div className="card p-5 text-sm space-y-2">
         <h3 className="font-semibold">Awaiting settlement</h3>
-        <p className="text-muted-foreground mt-1">
-          Both sides are funded. Settler{" "}
-          <span className="font-mono">{shortAddr(bet.settler)}</span> will declare
-          the winning outcome.
-        </p>
+        {unanimous && resolution?.agreedOutcome != null ? (
+          <p className="text-muted-foreground">
+            Both sides agreed on{" "}
+            <span className="font-medium text-foreground">
+              {outcomes[resolution.agreedOutcome]}
+            </span>
+            .{" "}
+            {isAdminAddress(bet.settler)
+              ? "Payout is being finalized automatically."
+              : (
+                <>
+                  Settler{" "}
+                  <span className="font-mono">{shortAddr(bet.settler)}</span> can
+                  finalize payout.
+                </>
+              )}
+          </p>
+        ) : disputed ? (
+          <p className="text-muted-foreground">
+            The parties declared different outcomes. An admin must verify the
+            result before the settler can pay out.
+          </p>
+        ) : (
+          <p className="text-muted-foreground">
+            Both sides are funded. Declare the winning outcome above to settle
+            faster, or wait for settler{" "}
+            <span className="font-mono">{shortAddr(bet.settler)}</span>.
+          </p>
+        )}
       </div>
     );
   }

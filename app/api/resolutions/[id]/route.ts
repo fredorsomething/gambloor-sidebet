@@ -100,6 +100,37 @@ export async function POST(
     },
   });
 
+  // Disputed sidebet: approving one party's call rejects the other declaration.
+  if (approved && proposal.subjectType === "bet") {
+    await prisma.resolutionProposal.updateMany({
+      where: {
+        subjectType: "bet",
+        subjectId: proposal.subjectId,
+        id: { not: id },
+        status: { in: ["Pending", "Approved"] },
+      },
+      data: {
+        status: "Rejected",
+        reviewedBy: admin.toLowerCase(),
+        reviewNote:
+          "Rejected: admin verified a different outcome for this bet.",
+      },
+    });
+    const bet = await prisma.bet.findUnique({
+      where: { id: proposal.subjectId },
+      select: { settler: true, title: true },
+    });
+    if (bet) {
+      await notify({
+        recipient: bet.settler.toLowerCase(),
+        type: "resolution_verified",
+        title: "Outcome verified — ready to settle",
+        body: `An admin verified the outcome for "${bet.title}". You can finalize payout on-chain.`,
+        link: `/bets/${proposal.subjectId}`,
+      });
+    }
+  }
+
   const subject = await loadSubject(
     proposal.subjectType as SubjectType,
     proposal.subjectId,

@@ -8,6 +8,7 @@ export async function GET() {
   const settings = await getPlatformSettings();
   return jsonOk({
     allowMarketCreation: settings.allowMarketCreation,
+    sidebetFeeBps: settings.sidebetFeeBps,
     updatedAt: settings.updatedAt,
   });
 }

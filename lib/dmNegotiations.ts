@@ -96,7 +96,9 @@ export async function openBetsForDmPair(me: string, other: string) {
         { fromAddress: me, bet: { proposer: other } },
         { fromAddress: other, bet: { proposer: me } },
       ],
-      bet: { status: "Open" },
+      bet: {
+        OR: [{ status: "Open" }, { escrowRevisionNeeded: true }],
+      },
     },
     include: {
       bet: {
@@ -149,10 +151,9 @@ export async function openBetsForDmPair(me: string, other: string) {
   // Also include open bets where one party is proposer and they messaged
   const directBets = await prisma.bet.findMany({
     where: {
-      status: "Open",
-      OR: [
-        { proposer: me, /* taker could message proposer */ },
-        { proposer: other },
+      AND: [
+        { OR: [{ status: "Open" }, { escrowRevisionNeeded: true }] },
+        { OR: [{ proposer: me }, { proposer: other }] },
       ],
     },
     select: {

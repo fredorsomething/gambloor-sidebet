@@ -163,8 +163,10 @@ export default function HowItWorksPage() {
             </div>
             <p className="text-sm text-muted-foreground">
               Admins approve new markets and maintain the roster of trusted
-              settlers. Anyone can propose a resolution for a bet or market; a
-              verifier reviews it before the outcome is finalized on-chain.
+              settlers. On sidebets, both bettors declare the winning outcome —
+              if they agree, payout is immediate; if they disagree, a verifier
+              reviews before settlement. Markets still use admin verification
+              before payout.
             </p>
           </div>
         </div>

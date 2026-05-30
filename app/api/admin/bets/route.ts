@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { requireAdmin } from "@/lib/adminAuth";
+import { loadBetResolutionState } from "@/lib/betResolution";
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
@@ -41,51 +42,48 @@ export async function GET(req: NextRequest) {
     take: 100,
   });
 
-  // Attach the latest resolution proposal per bet (single query).
-  const ids = bets.map((b) => b.id);
-  const proposals = ids.length
-    ? await prisma.resolutionProposal.findMany({
-        where: { subjectType: "bet", subjectId: { in: ids } },
-        orderBy: { createdAt: "desc" },
-      })
-    : [];
-  const latestBySubject = new Map<number, (typeof proposals)[number]>();
-  for (const p of proposals) {
-    if (!latestBySubject.has(p.subjectId)) latestBySubject.set(p.subjectId, p);
-  }
+  const items = await Promise.all(
+    bets.map(async (b) => {
+      const outcomes = Array.isArray(b.outcomes)
+        ? (b.outcomes as unknown as string[])
+        : [];
+      const resolution = await loadBetResolutionState(b);
+      const label = (idx: number) =>
+        outcomes[idx] ?? `Outcome ${idx}`;
 
-  const items = bets.map((b) => {
-    const outcomes = Array.isArray(b.outcomes)
-      ? (b.outcomes as unknown as string[])
-      : [];
-    const p = latestBySubject.get(b.id);
-    return {
-      id: b.id,
-      title: b.title,
-      description: b.description,
-      status: b.status,
-      proposer: b.proposer,
-      acceptor: b.acceptor,
-      settler: b.settler,
-      outcomes,
-      winningOutcome: b.winningOutcome,
-      winner: b.winner,
-      winningLabel:
-        b.winningOutcome != null ? (outcomes[b.winningOutcome] ?? null) : null,
-      createdAt: b.createdAt,
-      proposal: p
-        ? {
-            id: p.id,
-            status: p.status,
-            proposedBy: p.proposedBy,
-            proposedOutcome: p.proposedOutcome,
-            proposedLabel:
-              outcomes[p.proposedOutcome] ?? `Outcome ${p.proposedOutcome}`,
-            note: p.note,
-          }
-        : null,
-    };
-  });
+      return {
+        id: b.id,
+        title: b.title,
+        description: b.description,
+        status: b.status,
+        proposer: b.proposer,
+        acceptor: b.acceptor,
+        settler: b.settler,
+        outcomes,
+        winningOutcome: b.winningOutcome,
+        winner: b.winner,
+        winningLabel:
+          b.winningOutcome != null ? (outcomes[b.winningOutcome] ?? null) : null,
+        createdAt: b.createdAt,
+        resolution: {
+          consensus: resolution.consensus,
+          agreedOutcome: resolution.agreedOutcome,
+          proposer: resolution.proposer
+            ? {
+                ...resolution.proposer,
+                proposedLabel: label(resolution.proposer.proposedOutcome),
+              }
+            : null,
+          acceptor: resolution.acceptor
+            ? {
+                ...resolution.acceptor,
+                proposedLabel: label(resolution.acceptor.proposedOutcome),
+              }
+            : null,
+        },
+      };
+    }),
+  );
 
   return jsonOk({ bets: items });
 }

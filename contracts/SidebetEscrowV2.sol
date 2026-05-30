@@ -60,6 +60,8 @@ contract SidebetEscrowV2 is ReentrancyGuard {
     uint256 public constant MAX_FEE_BPS = 1000; // 10%
 
     address public owner;
+    /// @notice Receives the platform fee (bps of pool) on every settled bet.
+    address public platformFeeRecipient;
 
     // Approved settler registry: address => fee (bps). approved == fee tracked separately.
     mapping(address => bool) public isApprovedSettler;
@@ -70,6 +72,7 @@ contract SidebetEscrowV2 is ReentrancyGuard {
 
     event SettlerUpdated(address indexed settler, bool approved, uint16 feeBps);
     event OwnerTransferred(address indexed previousOwner, address indexed newOwner);
+    event PlatformFeeRecipientUpdated(address indexed previous, address indexed current);
 
     event BetCreated(
         uint256 indexed id,
@@ -95,9 +98,12 @@ contract SidebetEscrowV2 is ReentrancyGuard {
         _;
     }
 
-    constructor() {
+    constructor(address platformFeeRecipient_) {
+        require(platformFeeRecipient_ != address(0), "BAD_FEE_RECIPIENT");
         owner = msg.sender;
+        platformFeeRecipient = platformFeeRecipient_;
         emit OwnerTransferred(address(0), msg.sender);
+        emit PlatformFeeRecipientUpdated(address(0), platformFeeRecipient_);
     }
 
     // ---------- owner / settler registry ----------
@@ -106,6 +112,13 @@ contract SidebetEscrowV2 is ReentrancyGuard {
         require(newOwner != address(0), "BAD_OWNER");
         emit OwnerTransferred(owner, newOwner);
         owner = newOwner;
+    }
+
+    /// @notice Update the wallet that receives platform fees on settlement.
+    function setPlatformFeeRecipient(address recipient) external onlyOwner {
+        require(recipient != address(0), "BAD_FEE_RECIPIENT");
+        emit PlatformFeeRecipientUpdated(platformFeeRecipient, recipient);
+        platformFeeRecipient = recipient;
     }
 
     /// @notice Approve/disapprove a settler and set their fee (bps of pool).
@@ -223,13 +236,13 @@ contract SidebetEscrowV2 is ReentrancyGuard {
         if (winningOutcome == b.proposerOutcome) {
             uint256 fee = (pool * b.feeBps) / 10000;
             uint256 payout = pool - fee;
-            if (fee > 0) _send(b.token, b.settler, fee);
+            if (fee > 0) _send(b.token, platformFeeRecipient, fee);
             _send(b.token, b.proposer, payout);
             emit BetSettled(id, winningOutcome, b.proposer, payout, fee);
         } else if (winningOutcome == b.acceptorOutcome) {
             uint256 fee = (pool * b.feeBps) / 10000;
             uint256 payout = pool - fee;
-            if (fee > 0) _send(b.token, b.settler, fee);
+            if (fee > 0) _send(b.token, platformFeeRecipient, fee);
             _send(b.token, b.acceptor, payout);
             emit BetSettled(id, winningOutcome, b.acceptor, payout, fee);
         } else {

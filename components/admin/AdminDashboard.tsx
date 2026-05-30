@@ -15,13 +15,14 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isAddress } from "viem";
 
 import { ASSIGNABLE_BADGES, type BadgeKind } from "@/lib/badges";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { jsonFetch } from "@/lib/fetcher";
+import { DEFAULT_SIDEBET_FEE_BPS } from "@/lib/settlers";
 import type { ListMarketsResponse, MarketRow } from "@/lib/types";
 import { cn, shortAddr } from "@/lib/utils";
 
@@ -45,6 +46,8 @@ type AdminBetProposal = {
   note: string | null;
 };
 
+type AdminBetDeclaration = AdminBetProposal & { proposedLabel: string };
+
 type AdminBetRow = {
   id: number;
   title: string;
@@ -57,7 +60,12 @@ type AdminBetRow = {
   winningOutcome: number | null;
   winner: string | null;
   winningLabel: string | null;
-  proposal: AdminBetProposal | null;
+  resolution: {
+    consensus: "none" | "partial" | "unanimous" | "disputed";
+    agreedOutcome: number | null;
+    proposer: AdminBetDeclaration | null;
+    acceptor: AdminBetDeclaration | null;
+  };
 };
 
 type ResolutionItem = {
@@ -180,6 +188,7 @@ export function AdminDashboard({ address }: { address: string }) {
 
   const platformQ = useQuery<{
     allowMarketCreation: boolean;
+    sidebetFeeBps: number;
     updatedAt: string;
     updatedBy?: string | null;
   }>({
@@ -190,10 +199,22 @@ export function AdminDashboard({ address }: { address: string }) {
   });
 
   const updatePlatform = useMutation({
-    mutationFn: (allowMarketCreation: boolean) =>
-      adminPatch(`/api/admin/settings?address=${address}`, { allowMarketCreation }),
-    onSuccess: () => {
-      push({ title: "Settings saved", variant: "success" });
+    mutationFn: (body: {
+      allowMarketCreation?: boolean;
+      sidebetFeeBps?: number;
+    }) => adminPatch(`/api/admin/settings?address=${address}`, body),
+    onSuccess: (data: {
+      feeSync?: { onChainSynced: boolean; onChainError?: string };
+    }) => {
+      if (data?.feeSync && !data.feeSync.onChainSynced && data.feeSync.onChainError) {
+        push({
+          title: "Fee saved in app",
+          description: `On-chain sync pending: ${data.feeSync.onChainError}. Run npm run settlers:sync or set DEPLOYER_PRIVATE_KEY.`,
+          variant: "default",
+        });
+      } else {
+        push({ title: "Settings saved", variant: "success" });
+      }
       void qc.invalidateQueries({ queryKey: ["platform-settings"] });
     },
     onError: (e) => push({ title: (e as Error).message, variant: "danger" }),
@@ -479,10 +500,12 @@ export function AdminDashboard({ address }: { address: string }) {
       {tab === "settings" && (
         <SettingsPanel
           allowMarketCreation={platformQ.data?.allowMarketCreation ?? false}
+          sidebetFeeBps={platformQ.data?.sidebetFeeBps ?? 0}
           updatedAt={platformQ.data?.updatedAt}
           loading={platformQ.isLoading}
           saving={updatePlatform.isPending}
-          onToggle={(v) => updatePlatform.mutate(v)}
+          onToggle={(v) => updatePlatform.mutate({ allowMarketCreation: v })}
+          onSaveFee={(bps) => updatePlatform.mutate({ sidebetFeeBps: bps })}
         />
       )}
     </div>
@@ -502,17 +525,35 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
 
 function SettingsPanel({
   allowMarketCreation,
+  sidebetFeeBps,
   updatedAt,
   loading,
   saving,
   onToggle,
+  onSaveFee,
 }: {
   allowMarketCreation: boolean;
+  sidebetFeeBps: number;
   updatedAt?: string;
   loading: boolean;
   saving: boolean;
   onToggle: (allow: boolean) => void;
+  onSaveFee: (feeBps: number) => void;
 }) {
+  const [feePct, setFeePct] = useState(() => (sidebetFeeBps / 100).toFixed(2));
+
+  useEffect(() => {
+    setFeePct((sidebetFeeBps / 100).toFixed(2));
+  }, [sidebetFeeBps]);
+
+  const feePresets = [0, 0.5, 1, 1.5, 2];
+
+  function saveFee() {
+    const pct = Number.parseFloat(feePct);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 10) return;
+    onSaveFee(Math.round(pct * 100));
+  }
+
   return (
     <section className="card p-5 space-y-4">
       <div className="flex items-center gap-2">
@@ -520,54 +561,120 @@ function SettingsPanel({
         <h2 className="font-semibold">Platform settings</h2>
       </div>
       <p className="text-sm text-muted-foreground">
-        Control what users can do on the site. Sidebets are always available;
-        prediction markets (order books) can be paused while the CLOB is still
-        in development.
+        Control site-wide options. Sidebet fees apply to new bets only — existing
+        matched bets keep the fee snapshotted at creation.
       </p>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Allow users to create markets</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              When off, users cannot submit new prediction markets. Existing
-              markets stay browsable and tradeable. Admins can still create
-              markets for testing.
-            </p>
-            {updatedAt && (
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Last updated {new Date(updatedAt).toLocaleString()}
+        <>
+          <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+            <div>
+              <p className="font-medium">Sidebet platform fee</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Percent of the total pool charged on settlement. Start at 0% for
+                launch, then raise when ready. Syncs to the escrow contract for
+                new bets using the default settler.
               </p>
-            )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {feePresets.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    setFeePct(p.toFixed(p % 1 === 0 ? 0 : 1));
+                    onSaveFee(Math.round(p * 100));
+                  }}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                    Math.round(sidebetFeeBps) === Math.round(p * 100)
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-muted",
+                  )}
+                >
+                  {p}%
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="w-28 space-y-1">
+                <label className="label" htmlFor="sidebet-fee-pct">
+                  Custom %
+                </label>
+                <input
+                  id="sidebet-fee-pct"
+                  className="input w-full font-mono"
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.01}
+                  value={feePct}
+                  disabled={saving}
+                  onChange={(e) => setFeePct(e.target.value)}
+                />
+              </div>
+              <Button size="sm" disabled={saving} onClick={saveFee}>
+                {saving ? "Saving…" : "Apply fee"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Current:{" "}
+              <span className="font-mono font-medium text-foreground">
+                {(sidebetFeeBps / 100).toFixed(2)}%
+              </span>{" "}
+              ({sidebetFeeBps} bps)
+            </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={allowMarketCreation}
-            disabled={saving}
-            onClick={() => onToggle(!allowMarketCreation)}
-            className={cn(
-              "relative h-7 w-12 shrink-0 rounded-full transition-colors",
-              allowMarketCreation ? "bg-primary" : "bg-muted-foreground/30",
-              saving && "opacity-60",
-            )}
-          >
-            <span
-              className={cn(
-                "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform",
-                allowMarketCreation ? "left-[22px]" : "left-0.5",
+
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">Allow users to create markets</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                When off, users cannot submit new prediction markets. Existing
+                markets stay browsable and tradeable. Admins can still create
+                markets for testing.
+              </p>
+              {updatedAt && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Last updated {new Date(updatedAt).toLocaleString()}
+                </p>
               )}
-            />
-          </button>
-        </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={allowMarketCreation}
+              disabled={saving}
+              onClick={() => onToggle(!allowMarketCreation)}
+              className={cn(
+                "relative h-7 w-12 shrink-0 rounded-full transition-colors",
+                allowMarketCreation ? "bg-primary" : "bg-muted-foreground/30",
+                saving && "opacity-60",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform",
+                  allowMarketCreation ? "left-[22px]" : "left-0.5",
+                )}
+              />
+            </button>
+          </div>
+        </>
       )}
 
       <p className="text-xs text-muted-foreground">
-        Status:{" "}
+        Markets:{" "}
         <span className={allowMarketCreation ? "text-success" : "text-warning"}>
-          {allowMarketCreation ? "Market creation enabled" : "Market creation disabled"}
+          {allowMarketCreation ? "creation enabled" : "creation disabled"}
+        </span>
+        {" · "}
+        Sidebet fee:{" "}
+        <span className="font-mono text-foreground">
+          {(sidebetFeeBps / 100).toFixed(2)}%
         </span>
       </p>
     </section>
@@ -693,6 +800,54 @@ const BET_STATUS_STYLE: Record<string, string> = {
   Refunded: "bg-warning/15 text-warning",
 };
 
+function DeclarationRow({
+  role,
+  decl,
+  onReview,
+  reviewing,
+  showActions,
+}: {
+  role: string;
+  decl: AdminBetDeclaration;
+  onReview: (proposalId: number, action: "approve" | "reject") => void;
+  reviewing: boolean;
+  showActions: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="flex flex-wrap items-center gap-x-2">
+        <span className="text-xs font-medium text-muted-foreground">{role}</span>
+        <span className="font-medium">{decl.proposedLabel}</span>
+        <span className="text-xs text-muted-foreground">({decl.status})</span>
+      </p>
+      {decl.note && (
+        <p className="text-xs text-muted-foreground">{decl.note}</p>
+      )}
+      {showActions && decl.status === "Pending" && (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            disabled={reviewing}
+            className="gap-1"
+            onClick={() => onReview(decl.id, "approve")}
+          >
+            <Gavel className="h-4 w-4" /> Verify this outcome
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={reviewing}
+            className="gap-1"
+            onClick={() => onReview(decl.id, "reject")}
+          >
+            <X className="h-4 w-4" /> Reject
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BetsPanel({
   bets,
   loading,
@@ -711,7 +866,7 @@ function BetsPanel({
   const [description, setDescription] = useState("");
 
   const pendingCount = bets.filter(
-    (b) => b.proposal?.status === "Pending",
+    (b) => b.resolution.consensus === "disputed",
   ).length;
 
   if (loading) {
@@ -733,8 +888,8 @@ function BetsPanel({
             </span>
           </>
         )}
-        . Settlement is on-chain by each bet&apos;s settler; verifying a proposal
-        here reviews the proposed outcome (and reconciles bets already settled).
+        . When both bettors disagree, verify one outcome here so the settler can
+        pay out on-chain. Unanimous agreements settle without admin review.
       </p>
 
       {bets.map((b) => (
@@ -779,50 +934,41 @@ function BetsPanel({
             </p>
           )}
 
-          {b.proposal && (
+          {(b.resolution.proposer || b.resolution.acceptor) && (
             <div
               className={cn(
-                "rounded-lg border p-3 text-sm",
-                b.proposal.status === "Pending"
+                "rounded-lg border p-3 text-sm space-y-2",
+                b.resolution.consensus === "disputed"
                   ? "border-warning/40 bg-warning/10"
-                  : b.proposal.status === "Approved"
+                  : b.resolution.consensus === "unanimous"
                     ? "border-success/40 bg-success/10"
                     : "border-border bg-muted/30",
               )}
             >
-              <p className="flex flex-wrap items-center gap-x-2">
-                <span className="font-medium">
-                  Proposed outcome: {b.proposal.proposedLabel}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  ({b.proposal.status}) by {shortAddr(b.proposal.proposedBy)}
-                </span>
-              </p>
-              {b.proposal.note && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {b.proposal.note}
-                </p>
+              {b.resolution.consensus === "unanimous" &&
+                b.resolution.agreedOutcome != null && (
+                  <p className="font-medium text-success">
+                    Unanimous: {b.outcomes[b.resolution.agreedOutcome]} — no
+                    admin action needed
+                  </p>
+                )}
+              {b.resolution.proposer && (
+                <DeclarationRow
+                  role="Proposer"
+                  decl={b.resolution.proposer}
+                  onReview={onReview}
+                  reviewing={reviewing}
+                  showActions={b.resolution.consensus === "disputed"}
+                />
               )}
-              {b.proposal.status === "Pending" && (
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    size="sm"
-                    disabled={reviewing}
-                    className="gap-1"
-                    onClick={() => onReview(b.proposal!.id, "approve")}
-                  >
-                    <Gavel className="h-4 w-4" /> Verify
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    disabled={reviewing}
-                    className="gap-1"
-                    onClick={() => onReview(b.proposal!.id, "reject")}
-                  >
-                    <X className="h-4 w-4" /> Reject
-                  </Button>
-                </div>
+              {b.resolution.acceptor && (
+                <DeclarationRow
+                  role="Acceptor"
+                  decl={b.resolution.acceptor}
+                  onReview={onReview}
+                  reviewing={reviewing}
+                  showActions={b.resolution.consensus === "disputed"}
+                />
               )}
             </div>
           )}
@@ -897,7 +1043,7 @@ function UsersPanel({
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [verified, setVerified] = useState(false);
   const [badges, setBadges] = useState<Set<string>>(new Set(["User"]));
-  const [settlerFee, setSettlerFee] = useState("200");
+  const [settlerFee, setSettlerFee] = useState(String(DEFAULT_SIDEBET_FEE_BPS));
   const [settlerBusy, setSettlerBusy] = useState(false);
 
   const activeSettler = selected
@@ -1069,7 +1215,7 @@ function UsersPanel({
                     void onToggleSettler(
                       selected.address,
                       true,
-                      Number(settlerFee) || 200,
+                      Number(settlerFee) || DEFAULT_SIDEBET_FEE_BPS,
                     ).finally(() => setSettlerBusy(false));
                   }}
                 >
@@ -1094,7 +1240,7 @@ function SettlersPanel({
   onRevoke: (address: string) => Promise<void>;
 }) {
   const [addr, setAddr] = useState("");
-  const [fee, setFee] = useState("200");
+  const [fee, setFee] = useState(String(DEFAULT_SIDEBET_FEE_BPS));
 
   return (
     <div className="space-y-4">
@@ -1109,7 +1255,7 @@ function SettlersPanel({
         </div>
         <Button
           disabled={!isAddress(addr)}
-          onClick={() => void onAdd(addr, Number(fee) || 200).then(() => setAddr(""))}
+          onClick={() => void onAdd(addr, Number(fee) || DEFAULT_SIDEBET_FEE_BPS).then(() => setAddr(""))}
           className="gap-1"
         >
           <Scale className="h-4 w-4" /> Add settler
@@ -1229,30 +1375,44 @@ function ResolutionsPanel({
   if (items.length === 0) {
     return <p className="card p-6 text-sm text-muted-foreground">No resolutions waiting.</p>;
   }
+  const markets = items.filter((r) => r.subjectType === "market");
+  const betDisputes = items.filter((r) => r.subjectType === "bet");
   return (
-    <div className="space-y-2">
-      {items.map((r) => (
-        <div key={r.id} className="card space-y-3 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium uppercase">{r.subjectType}</span>
-            {r.subjectLink ? (
-              <Link href={r.subjectLink} className="font-medium hover:text-primary">{r.subjectTitle}</Link>
-            ) : (
-              <span className="font-medium">{r.subjectTitle}</span>
-            )}
+    <div className="space-y-4">
+      {betDisputes.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Sidebet disputes also appear on the Bets tab with both parties&apos;
+          declarations. Entries below are individual pending proposals.
+        </p>
+      )}
+      <div className="space-y-2">
+        {[...markets, ...betDisputes].map((r) => (
+          <div key={r.id} className="card space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium uppercase">{r.subjectType}</span>
+              {r.subjectLink ? (
+                <Link href={r.subjectLink} className="font-medium hover:text-primary">{r.subjectTitle}</Link>
+              ) : (
+                <span className="font-medium">{r.subjectTitle}</span>
+              )}
+            </div>
+            <p className="text-sm">
+              {r.subjectType === "bet" ? "Declared" : "Proposed"} outcome:{" "}
+              <span className="font-semibold text-success">{r.outcomeLabel}</span>
+              <span className="text-muted-foreground"> by {shortAddr(r.proposedBy)}</span>
+            </p>
+            {r.note && <p className="rounded-lg bg-muted/40 p-2 text-sm text-muted-foreground">{r.note}</p>}
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => onReview(r.id, "approve")} disabled={pending} className="gap-1">
+                <Gavel className="h-4 w-4" /> Verify
+              </Button>
+              <Button size="sm" variant="danger" onClick={() => onReview(r.id, "reject")} disabled={pending} className="gap-1">
+                <X className="h-4 w-4" /> Reject
+              </Button>
+            </div>
           </div>
-          <p className="text-sm">Outcome: <span className="font-semibold text-success">{r.outcomeLabel}</span></p>
-          {r.note && <p className="rounded-lg bg-muted/40 p-2 text-sm text-muted-foreground">{r.note}</p>}
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => onReview(r.id, "approve")} disabled={pending} className="gap-1">
-              <Gavel className="h-4 w-4" /> Verify
-            </Button>
-            <Button size="sm" variant="danger" onClick={() => onReview(r.id, "reject")} disabled={pending} className="gap-1">
-              <X className="h-4 w-4" /> Reject
-            </Button>
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

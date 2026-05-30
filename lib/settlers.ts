@@ -1,6 +1,11 @@
 import { getAddress } from "viem";
 
+import { isAdminAddress } from "@/lib/admin";
 import { prisma } from "@/lib/db";
+import { getPlatformSettings } from "@/lib/platformSettings";
+
+/** Launch default; live fee is controlled in Platform Settings (admin). */
+export const DEFAULT_SIDEBET_FEE_BPS = 0;
 
 export type ApprovedSettlerInfo = {
   address: string;
@@ -10,10 +15,13 @@ export type ApprovedSettlerInfo = {
 
 /** Approved settlers joined with their profile username (for the dropdown). */
 export async function listApprovedSettlers(): Promise<ApprovedSettlerInfo[]> {
-  const settlers = await prisma.approvedSettler.findMany({
-    where: { approved: true },
-    orderBy: { createdAt: "asc" },
-  });
+  const [settlers, platform] = await Promise.all([
+    prisma.approvedSettler.findMany({
+      where: { approved: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    getPlatformSettings(),
+  ]);
 
   if (settlers.length === 0) return [];
 
@@ -28,7 +36,7 @@ export async function listApprovedSettlers(): Promise<ApprovedSettlerInfo[]> {
   return settlers.map((s) => ({
     address: s.address,
     username: s.username ?? usernameByAddr.get(s.address.toLowerCase()) ?? null,
-    feeBps: s.feeBps,
+    feeBps: isAdminAddress(s.address) ? platform.sidebetFeeBps : s.feeBps,
   }));
 }
 

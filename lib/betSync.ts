@@ -16,6 +16,18 @@ const TERMINAL = new Set(["Settled", "Cancelled", "Refunded"]);
 const lastSync = new Map<number, number>();
 const SYNC_THROTTLE_MS = 8_000;
 
+/** Wrongly synced to Cancelled while swapping in negotiated on-chain stakes. */
+async function healEscrowRevisionStatus(bet: Bet): Promise<Bet> {
+  if (!bet.escrowRevisionNeeded || bet.status !== "Cancelled") return bet;
+  try {
+    await prisma.bet.update({ where: { id: bet.id }, data: { status: "Open" } });
+    bet.status = "Open";
+  } catch (err) {
+    console.warn("escrow revision status heal failed", err);
+  }
+  return bet;
+}
+
 /**
  * Opportunistically sync a single bet's mutable on-chain state (status,
  * acceptor, winner) into the DB. Lightweight (no notifications) and safe to call
@@ -25,6 +37,11 @@ export async function syncBetOnchain(
   bet: Bet,
   opts: { force?: boolean } = {},
 ): Promise<Bet> {
+  // Old onchainId is intentionally cancelled during negotiated escrow refresh;
+  // syncing it would mark the indexed bet Cancelled before the new offer lands.
+  if (bet.escrowRevisionNeeded) {
+    return healEscrowRevisionStatus(bet);
+  }
   if (TERMINAL.has(bet.status)) return bet;
 
   const now = Date.now();

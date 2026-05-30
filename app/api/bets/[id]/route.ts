@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAddress } from "viem";
 
+import { loadBetResolutionState } from "@/lib/betResolution";
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
 import { reconcileSettledBetProposals } from "@/lib/resolutionReconcile";
@@ -21,6 +22,15 @@ export async function GET(
   const bet = await prisma.bet.findUnique({ where: { id } });
   if (!bet) return jsonErr("not found", 404);
 
+  if (bet.escrowRevisionNeeded && bet.status === "Cancelled") {
+    try {
+      await prisma.bet.update({ where: { id }, data: { status: "Open" } });
+      bet.status = "Open";
+    } catch (err) {
+      console.warn("escrow revision status heal failed", err);
+    }
+  }
+
   // Opportunistic sync from chain (SidebetEscrowV2).
   const onchain = await readBetV2(
     bet.chainId,
@@ -28,7 +38,7 @@ export async function GET(
     BigInt(bet.onchainId),
   );
 
-  if (onchain) {
+  if (onchain && !bet.escrowRevisionNeeded) {
     const updates: Record<string, unknown> = {};
     if (onchain.status !== bet.status) updates.status = onchain.status;
     if (
@@ -109,5 +119,22 @@ export async function GET(
     }
   }
 
-  return jsonOk({ bet, onchain });
+  const resolution =
+    bet.status === "Matched" || bet.status === "Settled"
+      ? await loadBetResolutionState(bet)
+      : null;
+
+  return jsonOk({
+    bet,
+    onchain,
+    resolution: resolution
+      ? {
+          proposer: resolution.proposer,
+          acceptor: resolution.acceptor,
+          consensus: resolution.consensus,
+          agreedOutcome: resolution.agreedOutcome,
+          verifiedOutcome: resolution.verifiedOutcome,
+        }
+      : undefined,
+  });
 }

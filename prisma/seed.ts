@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { getAddress } from "viem";
 
 import { ADMIN_ADDRESS, ADMIN_USERNAME } from "../lib/admin";
+import { DEFAULT_SIDEBET_FEE_BPS } from "../lib/settlers";
 
 const prisma = new PrismaClient();
 
@@ -12,10 +13,23 @@ async function main() {
 
   await prisma.approvedSettler.upsert({
     where: { address },
-    update: { approved: true },
-    create: { address, feeBps: 200, approved: true },
+    update: { approved: true, feeBps: DEFAULT_SIDEBET_FEE_BPS },
+    create: { address, feeBps: DEFAULT_SIDEBET_FEE_BPS, approved: true },
   });
-  console.log(`Seeded approved settler ${address} at 200 bps (2%).`);
+  console.log(
+    `Seeded approved settler ${address} at ${DEFAULT_SIDEBET_FEE_BPS} bps.`,
+  );
+
+  await prisma.platformSettings.upsert({
+    where: { id: 1 },
+    update: { sidebetFeeBps: DEFAULT_SIDEBET_FEE_BPS },
+    create: {
+      id: 1,
+      allowMarketCreation: false,
+      sidebetFeeBps: DEFAULT_SIDEBET_FEE_BPS,
+    },
+  });
+  console.log(`Seeded platform sidebet fee at ${DEFAULT_SIDEBET_FEE_BPS} bps.`);
 
   await prisma.user.upsert({
     where: { address },

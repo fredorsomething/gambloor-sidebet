@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/adminAuth";
 import { sanitizeStoredBadges } from "@/lib/badges";
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { DEFAULT_SIDEBET_FEE_BPS } from "@/lib/settlers";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
 const PostSchema = z.object({
   admin: z.string().refine(isAddress, "bad admin"),
   address: z.string().refine(isAddress, "bad address"),
-  feeBps: z.number().int().min(0).max(2000).default(200),
+  feeBps: z.number().int().min(0).max(2000).default(DEFAULT_SIDEBET_FEE_BPS),
   approved: z.boolean().default(true),
 });
 

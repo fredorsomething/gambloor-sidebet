@@ -206,6 +206,13 @@ export type BetStatusName = (typeof BET_STATUS)[BetStatusCode];
 export const SIDEBET_ESCROW_V2_ABI = [
   {
     type: "function",
+    name: "owner",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
     name: "nextBetId",
     stateMutability: "view",
     inputs: [],
@@ -217,6 +224,20 @@ export const SIDEBET_ESCROW_V2_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "platformFeeRecipient",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "setPlatformFeeRecipient",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "recipient", type: "address" }],
+    outputs: [],
   },
   {
     type: "function",

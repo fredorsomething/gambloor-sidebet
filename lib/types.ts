@@ -48,8 +48,29 @@ export type ListBetsResponse = {
   total: number;
 };
 
+export type BetResolutionSummary = {
+  proposer: {
+    id: number;
+    proposedOutcome: number;
+    status: string;
+    note: string | null;
+    proposedBy: string;
+  } | null;
+  acceptor: {
+    id: number;
+    proposedOutcome: number;
+    status: string;
+    note: string | null;
+    proposedBy: string;
+  } | null;
+  consensus: "none" | "partial" | "unanimous" | "disputed";
+  agreedOutcome: number | null;
+  verifiedOutcome: number | null;
+};
+
 export type GetBetResponse = {
   bet: BetRow;
+  resolution?: BetResolutionSummary;
   onchain: {
     proposer: string;
     acceptor: string;

@@ -7,6 +7,7 @@ import { sanitizeStoredBadges } from "@/lib/badges";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { DEFAULT_SIDEBET_FEE_BPS } from "@/lib/settlers";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
     await prisma.approvedSettler.upsert({
       where: { address: addr },
       update: { approved: true },
-      create: { address: addr, feeBps: 200, approved: true },
+      create: { address: addr, feeBps: DEFAULT_SIDEBET_FEE_BPS, approved: true },
     });
     const user = await prisma.user.findUnique({
       where: { address: addr },

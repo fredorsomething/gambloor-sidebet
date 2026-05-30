@@ -6,9 +6,10 @@ import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { Identity } from "@/components/profile/Identity";
 import { BetDetailLive } from "@/components/BetDetailLive";
+import { BetMatchup } from "@/components/BetMatchup";
 import { Comments } from "@/components/Comments";
 import { LiveBetStatusBadge } from "@/components/LiveBetStatusBadge";
-import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
+import { BetResolutionPanel } from "@/components/BetResolutionPanel";
 import { Resolvers } from "@/components/Resolvers";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
@@ -19,6 +20,7 @@ import {
   fromNowUnix,
   shortAddr,
 } from "@/lib/utils";
+import { betShowMatchup } from "@/lib/betStatus";
 import type { GetBetResponse } from "@/lib/types";
 
 async function fetchBet(id: string): Promise<GetBetResponse | null> {
@@ -51,6 +53,7 @@ export default async function BetDetailPage({
   const endDateSecs = bet.estimatedEndDate
     ? Math.floor(new Date(bet.estimatedEndDate).getTime() / 1000)
     : 0;
+  const showMatchup = betShowMatchup(bet);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -90,7 +93,7 @@ export default async function BetDetailPage({
           </div>
         </div>
 
-        {outcomes.length > 0 && (
+        {!showMatchup && outcomes.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
             {outcomes.map((o, i) => (
               <span
@@ -111,53 +114,56 @@ export default async function BetDetailPage({
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
-          <Stat
-            label="Proposer stake"
-            value={
-              <>
-                {formatToken(proposerStake, bet.decimals)}{" "}
-                <TokenSymbol symbol={tokenSym} size={13} />
-              </>
-            }
-          />
-          <Stat
-            label="Acceptor stake"
-            value={
-              <>
-                {formatToken(acceptorStake, bet.decimals)}{" "}
-                <TokenSymbol symbol={tokenSym} size={13} />
-              </>
-            }
-          />
-          <Stat
-            label="Total pool"
-            value={
-              <>
-                {pool} <TokenSymbol symbol={tokenSym} size={13} />
-              </>
-            }
-          />
-          <Stat label="Settler fee" value={`${(bet.feeBps / 100).toFixed(2)}%`} />
-        </div>
-        {endDateSecs > 0 && (
-          <div className="pt-1 text-xs text-muted-foreground">
-            Estimated end: {formatTimestamp(endDateSecs)} ({fromNowUnix(endDateSecs)})
-          </div>
+        {!showMatchup && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+              <Stat
+                label="Proposer stake"
+                value={
+                  <>
+                    {formatToken(proposerStake, bet.decimals)}{" "}
+                    <TokenSymbol symbol={tokenSym} size={13} />
+                  </>
+                }
+              />
+              <Stat
+                label="Acceptor stake"
+                value={
+                  <>
+                    {formatToken(acceptorStake, bet.decimals)}{" "}
+                    <TokenSymbol symbol={tokenSym} size={13} />
+                  </>
+                }
+              />
+              <Stat
+                label="Total pool"
+                value={
+                  <>
+                    {pool} <TokenSymbol symbol={tokenSym} size={13} />
+                  </>
+                }
+              />
+              <Stat label="Settler fee" value={`${(bet.feeBps / 100).toFixed(2)}%`} />
+            </div>
+            {endDateSecs > 0 && (
+              <div className="pt-1 text-xs text-muted-foreground">
+                Estimated end: {formatTimestamp(endDateSecs)} ({fromNowUnix(endDateSecs)})
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Primary action up top so taking the bet is obvious without scrolling. */}
+      <BetMatchup id={bet.id} initial={data} />
+
       <BetDetailLive id={bet.id} initial={data} />
 
       {bet.status !== "Cancelled" && bet.status !== "Refunded" && (
-        <ProposeResolutionButton
-          subjectType="bet"
-          subjectId={bet.id}
+        <BetResolutionPanel
+          betId={bet.id}
           outcomes={outcomes}
-          participants={[bet.proposer, bet.acceptor, bet.settler].filter(
-            (a): a is string => !!a,
-          )}
+          proposer={bet.proposer}
+          acceptor={bet.acceptor}
           settled={bet.status === "Settled"}
         />
       )}
@@ -261,50 +267,6 @@ export default async function BetDetailPage({
           </section>
         </aside>
       </div>
-
-      {(bet.status === "Matched" || bet.acceptor) && (
-        <section className="card p-6">
-          <h2 className="mb-4 text-sm font-semibold">The bet</h2>
-          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-            <div className="flex flex-1 flex-col items-center gap-2 text-center sm:items-start sm:text-left">
-              <span className="label">Proposer</span>
-              <Identity address={bet.proposer} size={28} weight="semibold" />
-              {outcomes[bet.proposerOutcome] && (
-                <span className="text-xs text-muted-foreground">
-                  backs {outcomes[bet.proposerOutcome]}
-                </span>
-              )}
-            </div>
-            <div className="shrink-0 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-              vs
-            </div>
-            {bet.acceptor && (
-              <div className="flex flex-1 flex-col items-center gap-2 text-center sm:items-end sm:text-right">
-                <span className="label">Acceptor</span>
-                <Identity address={bet.acceptor} size={28} weight="semibold" />
-                {outcomes[bet.acceptorOutcome] && (
-                  <span className="text-xs text-muted-foreground">
-                    backs {outcomes[bet.acceptorOutcome]}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          {endDateSecs > 0 && (
-            <div className="mt-5 border-t border-border pt-4 text-center text-sm">
-              <span className="text-muted-foreground">
-                {bet.status === "Matched" ? "Time until settlement" : "Estimated end"}
-              </span>
-              <div className="mt-1 text-lg font-semibold">
-                {fromNowUnix(endDateSecs)}
-              </div>
-              <div className="mt-0.5 text-xs text-muted-foreground">
-                {formatTimestamp(endDateSecs)}
-              </div>
-            </div>
-          )}
-        </section>
-      )}
     </div>
   );
 }

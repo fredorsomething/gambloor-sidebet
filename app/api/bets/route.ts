@@ -173,6 +173,8 @@ export async function GET(req: NextRequest) {
 
   const where: Record<string, unknown> = {};
   if (q.chainId) where.chainId = q.chainId;
+
+  let statusFilter: Record<string, unknown> | null = null;
   if (q.status) {
     const statuses = q.status
       .split(",")
@@ -184,22 +186,46 @@ export async function GET(req: NextRequest) {
     if (invalid.length) {
       return jsonErr(`invalid status: ${invalid.join(", ")}`);
     }
-    where.status =
-      statuses.length === 1 ? statuses[0] : { in: statuses };
+    if (statuses.length === 1 && statuses[0] === "Open") {
+      // Keep negotiated escrow refreshes visible even if the old on-chain id was
+      // briefly synced to Cancelled mid-revision.
+      statusFilter = {
+        OR: [{ status: "Open" }, { escrowRevisionNeeded: true }],
+      };
+    } else {
+      statusFilter = {
+        status: statuses.length === 1 ? statuses[0] : { in: statuses },
+      };
+    }
   }
+
   if (q.who && isAddress(q.who)) {
     const addr = getAddress(q.who);
     const role = q.role ?? "any";
-    if (role === "proposer") where.proposer = addr;
-    else if (role === "acceptor") where.acceptor = addr;
-    else if (role === "settler") where.settler = addr;
-    else
-      where.OR = [
-        { proposer: addr },
-        { acceptor: addr },
-        { settler: addr },
-      ];
-  } else {
+    const participantFilter =
+      role === "proposer"
+        ? { proposer: addr }
+        : role === "acceptor"
+          ? { acceptor: addr }
+          : role === "settler"
+            ? { settler: addr }
+            : {
+                OR: [
+                  { proposer: addr },
+                  { acceptor: addr },
+                  { settler: addr },
+                ],
+              };
+    if (statusFilter) {
+      where.AND = [statusFilter, participantFilter];
+    } else {
+      Object.assign(where, participantFilter);
+    }
+  } else if (statusFilter) {
+    Object.assign(where, statusFilter);
+  }
+
+  if (!q.who || !isAddress(q.who)) {
     // Public feed: hide open offers that expired without a taker. New bets carry
     // a 1-week acceptDeadline; older ones fall back to created + 1 week. Personal
     // ("who") views still show them so the proposer can reclaim their stake.

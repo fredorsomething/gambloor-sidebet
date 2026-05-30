@@ -143,7 +143,9 @@ export function BetNegotiations({ bet }: { bet: BetRow }) {
 
   const showSendBox = !!me && !isProposer && bet.status === "Open";
   if (!me) return null;
-  if (bet.status !== "Open") return null;
+  const showNegotiationUi =
+    bet.status === "Open" || bet.escrowRevisionNeeded;
+  if (!showNegotiationUi) return null;
   if (negotiations.length === 0 && !showSendBox) return null;
 
   return (

@@ -62,7 +62,8 @@ export async function canProposeResolution(
   if (subjectType === "bet") {
     const bet = await prisma.bet.findUnique({ where: { id: subjectId } });
     if (!bet) return false;
-    return [bet.proposer, bet.acceptor, bet.settler]
+    // Only the two bettors declare outcomes; the settler finalizes on-chain.
+    return [bet.proposer, bet.acceptor]
       .filter(Boolean)
       .some((x) => x!.toLowerCase() === a);
   }

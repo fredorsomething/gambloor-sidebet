@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BetActions } from "@/components/BetActions";
 import { BetNegotiations } from "@/components/BetNegotiations";
 import { ReviseBetEscrow } from "@/components/ReviseBetEscrow";
+import { resolveBetStatus } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import type { GetBetResponse } from "@/lib/types";
 
@@ -40,9 +41,12 @@ export function BetDetailLive({
       <BetActions
         bet={data.bet}
         onchain={data.onchain}
+        resolution={data.resolution}
         onTxConfirmed={() => void q.refetch()}
       />
-      {data.bet.status === "Open" && <BetNegotiations bet={data.bet} />}
+      {resolveBetStatus(data.bet, data.onchain) === "Open" && (
+        <BetNegotiations bet={data.bet} />
+      )}
     </div>
   );
 }

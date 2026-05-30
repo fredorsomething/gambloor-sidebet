@@ -25,6 +25,7 @@ const ReviseSchema = z.object({
   nonce: z.string().min(1).max(80),
   proposerStake: z.string().regex(DECIMAL),
   acceptorStake: z.string().regex(DECIMAL),
+  acceptDeadline: z.number().int().positive().optional(),
 });
 
 /**
@@ -89,6 +90,9 @@ export async function POST(
       status: "Open",
       acceptor: null,
       escrowRevisionNeeded: false,
+      ...(d.acceptDeadline != null
+        ? { acceptDeadline: BigInt(d.acceptDeadline) }
+        : {}),
     },
   });
 

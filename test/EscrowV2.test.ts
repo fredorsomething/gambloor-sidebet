@@ -4,8 +4,11 @@ import { getAddress, parseUnits, zeroHash } from "viem";
 
 async function setup() {
   const [owner, proposer, acceptor, settler] = await hre.viem.getWalletClients();
+  const platformFeeRecipient = owner.account.address;
   const token = await hre.viem.deployContract("MockERC20", []);
-  const escrow = await hre.viem.deployContract("SidebetEscrowV2", []);
+  const escrow = await hre.viem.deployContract("SidebetEscrowV2", [
+    platformFeeRecipient,
+  ]);
 
   // Fund proposer + acceptor.
   const amt = parseUnits("1000", 6);
@@ -19,7 +22,7 @@ async function setup() {
   // Approve the settler at 2%.
   await escrow.write.setSettler([settler.account.address, true, 200]);
 
-  return { owner, proposer, acceptor, settler, token, escrow };
+  return { owner, proposer, acceptor, settler, platformFeeRecipient, token, escrow };
 }
 
 describe("SidebetEscrowV2", () => {
@@ -44,8 +47,9 @@ describe("SidebetEscrowV2", () => {
     ).to.be.rejected;
   });
 
-  it("pays the proposer (asymmetric stakes) less the fee", async () => {
-    const { proposer, acceptor, settler, token, escrow } = await setup();
+  it("pays the proposer less the fee and routes fee to platform recipient", async () => {
+    const { owner, proposer, acceptor, settler, platformFeeRecipient, token, escrow } =
+      await setup();
     const pStake = parseUnits("100", 6);
     const aStake = parseUnits("300", 6);
 
@@ -55,6 +59,7 @@ describe("SidebetEscrowV2", () => {
     );
     await escrow.write.acceptBet([1n], { account: acceptor.account });
 
+    const feeBefore = (await token.read.balanceOf([platformFeeRecipient])) as bigint;
     const before = (await token.read.balanceOf([proposer.account.address])) as bigint;
     await escrow.write.settleBet([1n, 0], { account: settler.account }); // proposer outcome wins
 
@@ -64,8 +69,13 @@ describe("SidebetEscrowV2", () => {
     const after = (await token.read.balanceOf([proposer.account.address])) as bigint;
     expect(after - before).to.equal(payout);
 
+    const feeAfter = (await token.read.balanceOf([platformFeeRecipient])) as bigint;
+    expect(feeAfter - feeBefore).to.equal(fee);
+
     const settlerBal = await token.read.balanceOf([settler.account.address]);
-    expect(settlerBal).to.equal(fee);
+    expect(settlerBal).to.equal(0n);
+
+    expect(getAddress(platformFeeRecipient)).to.equal(getAddress(owner.account.address));
   });
 
   it("refunds both when the winning outcome is unbacked (3 outcomes)", async () => {
@@ -103,5 +113,27 @@ describe("SidebetEscrowV2", () => {
     );
     await escrow.write.cancelBet([1n], { account: proposer.account });
     expect(await token.read.balanceOf([proposer.account.address])).to.equal(before);
+  });
+
+  it("lets the owner update the platform fee recipient", async () => {
+    const { owner, proposer, acceptor, settler, token, escrow } = await setup();
+    const newRecipient = acceptor.account.address;
+    await escrow.write.setPlatformFeeRecipient([newRecipient], {
+      account: owner.account,
+    });
+    expect(await escrow.read.platformFeeRecipient()).to.equal(getAddress(newRecipient));
+
+    const pStake = parseUnits("50", 6);
+    await escrow.write.createBet(
+      [settler.account.address, token.address, pStake, pStake, 0, 1, 2, 0n, 0n, zeroHash],
+      { account: proposer.account },
+    );
+    await escrow.write.acceptBet([1n], { account: acceptor.account });
+
+    const before = (await token.read.balanceOf([newRecipient])) as bigint;
+    await escrow.write.settleBet([1n, 0], { account: settler.account });
+    const fee = (pStake * 2n * 200n) / 10000n;
+    const after = (await token.read.balanceOf([newRecipient])) as bigint;
+    expect(after - before).to.equal(fee);
   });
 });

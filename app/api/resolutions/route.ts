@@ -4,8 +4,14 @@ import { z } from "zod";
 
 import { isAdminAddress, ADMIN_ADDRESS } from "@/lib/admin";
 import { verifyWalletAuth } from "@/lib/auth";
+import {
+  autoApproveUnanimousBet,
+  betPartyRole,
+  loadBetResolutionState,
+} from "@/lib/betResolution";
+import { tryAutoSettleBet } from "@/lib/autoSettle";
 import { prisma } from "@/lib/db";
-import { notify } from "@/lib/notifications";
+import { notify, notifyMany } from "@/lib/notifications";
 import {
   canProposeResolution,
   loadSubject,
@@ -34,6 +40,19 @@ export async function GET(req: NextRequest) {
     if (!parsedType.success || !Number.isInteger(subjectId) || subjectId <= 0) {
       return jsonErr("bad subject", 400);
     }
+    if (parsedType.data === "bet") {
+      const bet = await prisma.bet.findUnique({ where: { id: subjectId } });
+      if (!bet) return jsonErr("not found", 404);
+      const state = await loadBetResolutionState(bet);
+      return jsonOk({
+        proposer: state.proposer,
+        acceptor: state.acceptor,
+        consensus: state.consensus,
+        agreedOutcome: state.agreedOutcome,
+        verifiedOutcome: state.verifiedOutcome,
+      });
+    }
+
     const proposal = await prisma.resolutionProposal.findFirst({
       where: { subjectType: parsedType.data, subjectId },
       orderBy: { createdAt: "desc" },
@@ -118,7 +137,119 @@ export async function POST(req: NextRequest) {
     return jsonErr("only participants can propose a resolution", 403);
   }
 
-  // Block duplicate pending proposals for the same subject.
+  const outcomeLabel =
+    subject.outcomes[d.proposedOutcome] ?? `Outcome ${d.proposedOutcome}`;
+
+  // Sidebets: each bettor declares independently; unanimous = auto-approve.
+  if (d.subjectType === "bet") {
+    const bet = await prisma.bet.findUnique({ where: { id: d.subjectId } });
+    if (!bet) return jsonErr("subject not found", 404);
+    if (bet.status !== "Matched") {
+      return jsonErr("bet must be matched before declaring an outcome", 409);
+    }
+    const role = betPartyRole(bet, proposer);
+    if (!role) {
+      return jsonErr("only the proposer or acceptor can declare an outcome", 403);
+    }
+
+    const prior = await prisma.resolutionProposal.findFirst({
+      where: {
+        subjectType: "bet",
+        subjectId: d.subjectId,
+        proposedBy: proposer.toLowerCase(),
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const proposal = prior
+      ? await prisma.resolutionProposal.update({
+          where: { id: prior.id },
+          data: {
+            proposedOutcome: d.proposedOutcome,
+            note: d.note ?? null,
+            status: "Pending",
+            reviewedBy: null,
+            reviewNote: null,
+          },
+        })
+      : await prisma.resolutionProposal.create({
+          data: {
+            subjectType: "bet",
+            subjectId: d.subjectId,
+            proposedBy: proposer.toLowerCase(),
+            proposedOutcome: d.proposedOutcome,
+            note: d.note ?? null,
+            status: "Pending",
+          },
+        });
+
+    // Changing one side's call invalidates any prior auto-approval on the other.
+    await prisma.resolutionProposal.updateMany({
+      where: {
+        subjectType: "bet",
+        subjectId: d.subjectId,
+        proposedBy: { not: proposer.toLowerCase() },
+        status: "Approved",
+        reviewedBy: "system",
+      },
+      data: {
+        status: "Pending",
+        reviewedBy: null,
+        reviewNote: null,
+      },
+    });
+
+    const state = await loadBetResolutionState(bet);
+
+    if (state.consensus === "unanimous" && state.agreedOutcome != null) {
+      await autoApproveUnanimousBet(d.subjectId, state.agreedOutcome);
+      void tryAutoSettleBet(d.subjectId)
+        .then((result) => {
+          if (result.ok) {
+            console.log(`auto-settle triggered for bet #${d.subjectId}: ${result.hash}`);
+          }
+        })
+        .catch((err) => console.error("auto-settle failed", err));
+      await notify({
+        recipient: bet.settler.toLowerCase(),
+        type: "resolution_verified",
+        title: "Both sides agree — settling",
+        body: `Proposer and acceptor declared "${outcomeLabel}" for ${subject.title}. Payout is being finalized on-chain.`,
+        link: subject.link,
+      });
+      return jsonOk(
+        { proposal, unanimous: true, agreedOutcome: state.agreedOutcome },
+        { status: prior ? 200 : 201 },
+      );
+    }
+
+    if (state.consensus === "disputed") {
+      await notify({
+        recipient: ADMIN_ADDRESS.toLowerCase(),
+        type: "resolution_proposed",
+        title: "Disputed sidebet outcome",
+        body: `Proposer and acceptor disagree on "${subject.title}" — review required.`,
+        link: "/admin",
+      });
+      return jsonOk({ proposal, disputed: true }, { status: prior ? 200 : 201 });
+    }
+
+    const other =
+      role === "proposer" ? bet.acceptor?.toLowerCase() : bet.proposer.toLowerCase();
+    if (other) {
+      await notify({
+        recipient: other,
+        type: "resolution_proposed",
+        title: "Outcome declared on your bet",
+        body: `${shortAddr(proposer)} declared "${outcomeLabel}" for ${subject.title}. Declare yours to agree and settle faster.`,
+        link: subject.link,
+      });
+    }
+
+    return jsonOk({ proposal }, { status: prior ? 200 : 201 });
+  }
+
+  // Markets: single proposal queue for admin review.
   const existing = await prisma.resolutionProposal.findFirst({
     where: {
       subjectType: d.subjectType,
@@ -141,10 +272,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const outcomeLabel =
-    subject.outcomes[d.proposedOutcome] ?? `Outcome ${d.proposedOutcome}`;
-
-  // Notify the admin/verifier.
   await notify({
     recipient: ADMIN_ADDRESS.toLowerCase(),
     type: "resolution_proposed",
