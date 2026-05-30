@@ -1,0 +1,23 @@
+name: Auto-settle cron
+
+on:
+  schedule:
+    # Every 5 minutes — backup when inline settle misses a bet.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  auto-settle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger auto-settle
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET not set in repo secrets — skipping"
+            exit 0
+          fi
+          curl -fsS \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "https://sidebet.lol/api/cron/auto-settle"
