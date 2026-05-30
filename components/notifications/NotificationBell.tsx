@@ -136,7 +136,7 @@ export function NotificationBell() {
           <MobileBottomSheet open={open} onClose={() => setOpen(false)}>
             {panelContent}
           </MobileBottomSheet>
-          <div className="absolute right-0 top-full z-50 mt-2 hidden w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl animate-in fade-in slide-in-from-top-1 md:block">
+          <div className="absolute right-0 top-full z-[120] mt-2 hidden w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl animate-in fade-in slide-in-from-top-1 md:block">
             {panelContent}
           </div>
         </>

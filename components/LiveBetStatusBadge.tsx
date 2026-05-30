@@ -4,13 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/ui/badge";
 import type { BetStatusName } from "@/lib/abi";
+import { resolveBetStatus } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import type { GetBetResponse } from "@/lib/types";
 
 /**
- * Status badge that stays in sync with the live bet state. Shares the
- * ["bet", id] react-query cache with BetDetailLive, so once a match/settle is
- * picked up by the polling sync the badge updates without a page reload.
+ * Status badge that stays in sync with the live bet state. Uses on-chain
+ * acceptor/status (via resolveBetStatus) so "Open" never sticks after a match.
  */
 export function LiveBetStatusBadge({
   id,
@@ -22,7 +22,12 @@ export function LiveBetStatusBadge({
   const { data } = useQuery<GetBetResponse>({
     queryKey: ["bet", id],
     queryFn: () => jsonFetch(`/api/bets/${id}`),
-    refetchInterval: 5_000,
+    refetchInterval: 3_000,
   });
-  return <StatusBadge status={data?.bet.status ?? initialStatus} />;
+
+  const status = data
+    ? resolveBetStatus(data.bet, data.onchain)
+    : initialStatus;
+
+  return <StatusBadge status={status} />;
 }

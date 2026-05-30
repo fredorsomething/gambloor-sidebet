@@ -64,7 +64,7 @@ export function MobileNav() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[70]">
+        <div className="fixed inset-0 z-[150]">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50 animate-in fade-in"

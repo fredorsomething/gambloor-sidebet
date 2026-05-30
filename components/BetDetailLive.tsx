@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { BetActions } from "@/components/BetActions";
 import { BetNegotiations } from "@/components/BetNegotiations";
@@ -12,9 +12,6 @@ import type { GetBetResponse } from "@/lib/types";
 /**
  * Polls the bet endpoint so the action UI always reflects the latest on-chain
  * status (via the API's opportunistic sync) without a full reload.
- *
- * Renders BetActions directly rather than via a render-prop, because this is
- * mounted from a Server Component and functions cannot cross the RSC boundary.
  */
 export function BetDetailLive({
   id,
@@ -23,26 +20,38 @@ export function BetDetailLive({
   id: number;
   initial: GetBetResponse;
 }) {
+  const qc = useQueryClient();
   const q = useQuery<GetBetResponse>({
     queryKey: ["bet", id],
     queryFn: () => jsonFetch(`/api/bets/${id}`),
     initialData: initial,
-    refetchInterval: 5_000,
+    refetchInterval: (query) => {
+      const d = query.state.data ?? initial;
+      const status = resolveBetStatus(d.bet, d.onchain);
+      return status === "Open" || status === "Matched" ? 2_000 : 5_000;
+    },
   });
 
   const data = q.data ?? initial;
+
+  function onBetUpdated() {
+    void q.refetch();
+    void qc.invalidateQueries({ queryKey: ["feed", "bets"] });
+    void qc.invalidateQueries({ queryKey: ["feed"] });
+  }
+
   return (
     <div className="space-y-4">
       <ReviseBetEscrow
         bet={data.bet}
         onchain={data.onchain}
-        onDone={() => void q.refetch()}
+        onDone={onBetUpdated}
       />
       <BetActions
         bet={data.bet}
         onchain={data.onchain}
         resolution={data.resolution}
-        onTxConfirmed={() => void q.refetch()}
+        onTxConfirmed={onBetUpdated}
       />
       {resolveBetStatus(data.bet, data.onchain) === "Open" && (
         <BetNegotiations bet={data.bet} />

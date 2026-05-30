@@ -37,7 +37,6 @@ type ChatMessage = {
 
 type ChatResponse = { messages: ChatMessage[]; online: number };
 
-const CHAT_WIDTH_PX = 320;
 const LAST_READ_KEY = "sb_chat_last_read_id";
 
 function readLastReadId(): number | null {
@@ -311,7 +310,7 @@ export function GlobalChat() {
     <>
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex items-center",
+          "fixed inset-y-0 left-0 z-50 flex h-full",
           "max-md:inset-0 max-md:h-[100dvh] max-md:max-h-[100dvh]",
         )}
         role="dialog"
@@ -328,10 +327,9 @@ export function GlobalChat() {
 
         <aside
           className={cn(
-            "relative z-10 flex min-h-0 max-h-screen flex-col border-r border-border bg-card/95 shadow-2xl backdrop-blur-sm",
-            "max-md:h-full max-md:max-h-[100dvh] max-md:w-full max-md:border-r-0",
+            "relative z-10 flex h-full min-h-0 flex-col border-r border-border bg-card/95 shadow-2xl backdrop-blur-sm",
+            "w-[320px] max-md:w-full max-md:border-r-0",
           )}
-          style={{ width: CHAT_WIDTH_PX }}
         >
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">

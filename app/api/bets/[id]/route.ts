@@ -40,7 +40,15 @@ export async function GET(
 
   if (onchain && !bet.escrowRevisionNeeded) {
     const updates: Record<string, unknown> = {};
-    if (onchain.status !== bet.status) updates.status = onchain.status;
+    let syncedStatus = onchain.status;
+    if (
+      syncedStatus === "Open" &&
+      onchain.acceptor &&
+      onchain.acceptor !== ZERO
+    ) {
+      syncedStatus = "Matched";
+    }
+    if (syncedStatus !== bet.status) updates.status = syncedStatus;
     if (
       onchain.acceptor &&
       onchain.acceptor !== ZERO &&

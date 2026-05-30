@@ -551,7 +551,7 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
           </p>
         ) : (
           <p className="text-muted-foreground">
-            Both sides are funded. Declare the winning outcome above to settle
+            Both sides are funded. Declare the winning outcome below to settle
             faster, or wait for settler{" "}
             <span className="font-mono">{shortAddr(bet.settler)}</span>.
           </p>

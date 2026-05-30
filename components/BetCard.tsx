@@ -5,6 +5,7 @@ import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { Identity } from "@/components/profile/Identity";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
+import { resolveBetStatus } from "@/lib/betStatus";
 import { formatToken, fromNowUnix } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
 
@@ -22,7 +23,8 @@ function outcomePillClass(outcomes: string[], i: number): string {
 }
 
 function statusLabel(bet: BetRow): React.ReactNode {
-  switch (bet.status) {
+  const resolved = resolveBetStatus(bet);
+  switch (resolved) {
     case "Matched":
       return <span className="text-warning">Matched</span>;
     case "Settled":
@@ -37,6 +39,7 @@ function statusLabel(bet: BetRow): React.ReactNode {
 }
 
 export function BetCard({ bet }: { bet: BetRow }) {
+  const status = resolveBetStatus(bet);
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
   const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
   const poolWei = proposerStake + acceptorStake;
@@ -46,10 +49,10 @@ export function BetCard({ bet }: { bet: BetRow }) {
   const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
   const proposerPick = outcomes[bet.proposerOutcome];
   const acceptorPick = outcomes[bet.acceptorOutcome];
-  const isOpen = bet.status === "Open";
-  const isMatched = bet.status === "Matched";
-  const isSettled = bet.status === "Settled";
-  const isRefunded = bet.status === "Refunded";
+  const isOpen = status === "Open";
+  const isMatched = status === "Matched";
+  const isSettled = status === "Settled";
+  const isRefunded = status === "Refunded";
   const winIdx = bet.winningOutcome;
   const winLabel = winIdx != null ? outcomes[winIdx] : undefined;
   const endDateSecs = bet.estimatedEndDate
@@ -199,7 +202,7 @@ export function BetCard({ bet }: { bet: BetRow }) {
         ) : (
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <Identity address={bet.proposer} size={20} link={false} />
-            <span>{isOpen ? "Open" : bet.status}</span>
+            <span>{isOpen ? "Open" : status}</span>
           </div>
         )}
         {endDateSecs > 0 && !isSettled && !isRefunded && (

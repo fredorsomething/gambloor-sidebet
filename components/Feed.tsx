@@ -30,7 +30,7 @@ export function Feed() {
       jsonFetch(
         `/api/bets?status=Open,Matched,Settled,Refunded&take=100`,
       ),
-    refetchInterval: 8_000,
+    refetchInterval: 4_000,
   });
   const marketsQ = useQuery<ListMarketsResponse>({
     queryKey: ["feed", "markets"],

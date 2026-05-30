@@ -116,7 +116,7 @@ export function NavLinks() {
         </button>
 
         {actionsOpen && (
-          <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card p-1 shadow-xl animate-in fade-in slide-in-from-top-1">
+          <div className="absolute right-0 top-full z-[120] mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card p-1 shadow-xl animate-in fade-in slide-in-from-top-1">
             {ACTIONS.map((a) => {
               const Icon = a.icon;
               const active = pathname.startsWith(a.href);

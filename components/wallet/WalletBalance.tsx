@@ -281,7 +281,7 @@ export function WalletBalance() {
           >
             {menuContent}
           </MobileBottomSheet>
-          <div className="absolute right-0 top-full z-50 mt-2 hidden w-72 overflow-hidden rounded-xl border border-border bg-card shadow-xl animate-in fade-in slide-in-from-top-1 md:block">
+          <div className="absolute right-0 top-full z-[120] mt-2 hidden w-72 overflow-hidden rounded-xl border border-border bg-card shadow-xl animate-in fade-in slide-in-from-top-1 md:block">
             {menuContent}
           </div>
         </>

@@ -10,7 +10,7 @@ import { BetDetailLive } from "@/components/BetDetailLive";
 import { BetMatchup } from "@/components/BetMatchup";
 import { Comments } from "@/components/Comments";
 import { LiveBetStatusBadge } from "@/components/LiveBetStatusBadge";
-import { BetResolutionPanel } from "@/components/BetResolutionPanel";
+import { BetResolutionLive } from "@/components/BetResolutionLive";
 import { Resolvers } from "@/components/Resolvers";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
@@ -168,15 +168,7 @@ export default async function BetDetailPage({
 
       <BetDetailLive id={bet.id} initial={data} />
 
-      {bet.status !== "Cancelled" && bet.status !== "Refunded" && (
-        <BetResolutionPanel
-          betId={bet.id}
-          outcomes={outcomes}
-          proposer={bet.proposer}
-          acceptor={bet.acceptor}
-          settled={bet.status === "Settled"}
-        />
-      )}
+      <BetResolutionLive id={bet.id} initial={data} />
 
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
         <div className="space-y-6">

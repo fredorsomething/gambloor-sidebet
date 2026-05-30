@@ -56,7 +56,7 @@ export function BetResolutionPanel({
     queryKey: ["resolution", "bet", betId],
     queryFn: () =>
       jsonFetch(`/api/resolutions?subjectType=bet&subjectId=${betId}`),
-    refetchInterval: 15_000,
+    refetchInterval: 8_000,
     enabled: !settled && !!acceptor,
   });
 

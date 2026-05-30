@@ -95,7 +95,7 @@ export function BetMatchup({
     queryKey: ["bet", id],
     queryFn: () => jsonFetch(`/api/bets/${id}`),
     initialData: initial,
-    refetchInterval: 5_000,
+    refetchInterval: 3_000,
   });
 
   const payload = data ?? initial;

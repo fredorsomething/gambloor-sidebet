@@ -14,7 +14,20 @@ const TERMINAL = new Set(["Settled", "Cancelled", "Refunded"]);
 // no matter how many list/feed requests arrive — keeps RPC usage bounded while
 // still letting status (e.g. Open -> Matched) propagate to the UI quickly.
 const lastSync = new Map<number, number>();
-const SYNC_THROTTLE_MS = 8_000;
+const SYNC_THROTTLE_MS = 2_000;
+
+function chainStatusFromOnchain(
+  onchain: NonNullable<Awaited<ReturnType<typeof readBetV2>>>,
+): string {
+  if (
+    onchain.status === "Open" &&
+    onchain.acceptor &&
+    onchain.acceptor !== ZERO
+  ) {
+    return "Matched";
+  }
+  return onchain.status;
+}
 
 /** Wrongly synced to Cancelled while swapping in negotiated on-chain stakes. */
 async function healEscrowRevisionStatus(bet: Bet): Promise<Bet> {
@@ -45,7 +58,7 @@ export async function syncBetOnchain(
   if (TERMINAL.has(bet.status)) return bet;
 
   const now = Date.now();
-  if (!opts.force) {
+  if (!opts.force && bet.status !== "Open" && bet.status !== "Matched") {
     const last = lastSync.get(bet.id) ?? 0;
     if (now - last < SYNC_THROTTLE_MS) return bet;
   }
@@ -59,7 +72,8 @@ export async function syncBetOnchain(
   if (!onchain) return bet;
 
   const updates: Record<string, unknown> = {};
-  if (onchain.status !== bet.status) updates.status = onchain.status;
+  const syncedStatus = chainStatusFromOnchain(onchain);
+  if (syncedStatus !== bet.status) updates.status = syncedStatus;
   if (
     onchain.acceptor &&
     onchain.acceptor !== ZERO &&
@@ -97,12 +111,13 @@ export async function syncBetOnchain(
   return bet;
 }
 
-/** Sync many bets in parallel (terminal ones skipped, capped to bound RPC). */
-export async function syncBetsOnchain(bets: Bet[], cap = 40): Promise<Bet[]> {
+/** Sync many bets in parallel (terminal skipped; Open/Matched always refreshed). */
+export async function syncBetsOnchain(bets: Bet[], cap = 60): Promise<Bet[]> {
   let budget = cap;
   return Promise.all(
     bets.map((b) => {
-      if (TERMINAL.has(b.status) || budget <= 0) return b;
+      if (TERMINAL.has(b.status)) return b;
+      if (budget <= 0) return b;
       budget -= 1;
       return syncBetOnchain(b);
     }),
