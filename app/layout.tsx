@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: "Sidebet — P2P bets on Polygon",
   description:
-    "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon. Funds escrowed on-chain, resolved by a trusted settler.",
+    "Create and find peer-to-peer side-bets with 0 fees.",
   icons: {
     icon: "/favicon.png",
     apple: "/favicon.png",
@@ -36,14 +36,14 @@ export const metadata: Metadata = {
     type: "website",
     title: "Sidebet — P2P bets on Polygon",
     description:
-      "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon.",
+      "Cool ass gambling site",
     images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Sidebet" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Sidebet — P2P bets on Polygon",
     description:
-      "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon.",
+      "Create and find peer-to-peer side-bets with 0 fees.",
     images: ["/opengraph-image"],
   },
 };
