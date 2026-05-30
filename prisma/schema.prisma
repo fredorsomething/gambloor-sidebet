@@ -571,3 +571,11 @@ model DmBlock {
   @@index([blocker])
   @@index([blocked])
 }
+
+// Singleton platform flags (row id=1). Admins toggle without redeploy.
+model PlatformSettings {
+  id                  Int      @id @default(1)
+  allowMarketCreation Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+  updatedBy           String?
+}

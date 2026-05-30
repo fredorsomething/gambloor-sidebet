@@ -2,11 +2,13 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
+import { isAdminAddress } from "@/lib/admin";
 import {
   getMarketCollateralToken,
   getTokenByAddress,
 } from "@/lib/chains";
 import { prisma } from "@/lib/db";
+import { getPlatformSettings } from "@/lib/platformSettings";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { getApprovedSettler } from "@/lib/settlers";
@@ -65,6 +67,11 @@ export async function POST(req: NextRequest) {
     return jsonErr(parsed.error.errors.map((e) => e.message).join(", "));
   }
   const d = parsed.data;
+
+  const platform = await getPlatformSettings();
+  if (!platform.allowMarketCreation && !isAdminAddress(d.creator)) {
+    return jsonErr("Market creation is temporarily disabled", 403);
+  }
 
   if (d.outcomes.length !== d.positionIds.length) {
     return jsonErr("outcomes and positionIds length mismatch", 400);

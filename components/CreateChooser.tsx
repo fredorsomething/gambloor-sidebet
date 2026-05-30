@@ -1,11 +1,12 @@
 "use client";
 
 import { Swords, BarChart3 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ChainGuard } from "@/components/ChainGuard";
 import { CreateBetForm } from "@/components/CreateBetForm";
 import { CreateMarketForm } from "@/components/markets/CreateMarketForm";
+import { usePlatformSettings } from "@/lib/hooks/usePlatformSettings";
 import { cn } from "@/lib/utils";
 
 type CreateType = "sidebet" | "market";
@@ -37,15 +38,38 @@ export function CreateChooser({
 }: {
   defaultType?: CreateType;
 }) {
-  const [type, setType] = useState<CreateType>(defaultType);
-  const active = OPTIONS.find((o) => o.id === type)!;
+  const platformQ = usePlatformSettings();
+  const allowMarket = platformQ.data?.allowMarketCreation ?? false;
+  const visibleOptions = useMemo(
+    () => (allowMarket ? OPTIONS : OPTIONS.filter((o) => o.id === "sidebet")),
+    [allowMarket],
+  );
+  const initialType: CreateType =
+    defaultType === "market" && !allowMarket ? "sidebet" : defaultType;
+  const [type, setType] = useState<CreateType>(initialType);
+  const effectiveType =
+    type === "market" && !allowMarket ? "sidebet" : type;
+  const active =
+    visibleOptions.find((o) => o.id === effectiveType) ?? visibleOptions[0]!;
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {OPTIONS.map((o) => {
+      {!allowMarket && defaultType === "market" && (
+        <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+          Prediction market creation is temporarily paused while we improve the
+          order book. You can still propose sidebets.
+        </div>
+      )}
+
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-3",
+          visibleOptions.length > 1 && "sm:grid-cols-2",
+        )}
+      >
+        {visibleOptions.map((o) => {
           const Icon = o.icon;
-          const selected = type === o.id;
+          const selected = effectiveType === o.id;
           return (
             <button
               key={o.id}
@@ -84,7 +108,7 @@ export function CreateChooser({
           {type === "sidebet" ? "Propose a sidebet" : "Create a market"}
         </h2>
         <p className="mb-4 text-sm text-muted-foreground">{active.description}</p>
-        {type === "sidebet" ? (
+        {effectiveType === "sidebet" ? (
           <ChainGuard>
             <CreateBetForm />
           </ChainGuard>

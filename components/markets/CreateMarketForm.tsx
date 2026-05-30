@@ -24,6 +24,7 @@ import {
   computeQuestionId,
 } from "@/lib/clob";
 import { jsonFetch } from "@/lib/fetcher";
+import { usePlatformSettings } from "@/lib/hooks/usePlatformSettings";
 
 type Step = "idle" | "submitting" | "done";
 
@@ -55,6 +56,8 @@ export function CreateMarketForm() {
   const { address: account } = useAccount();
   const { getAccessToken } = usePrivy();
   const chainId = useChainId() || POLYGON_CHAIN_ID;
+  const platformQ = usePlatformSettings();
+  const allowMarketCreation = platformQ.data?.allowMarketCreation ?? false;
 
   const marketToken = getMarketCollateralToken();
   const tokenAddress = marketToken.address;
@@ -124,6 +127,10 @@ export function CreateMarketForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!allowMarketCreation) {
+      setError("Market creation is temporarily disabled");
+      return;
+    }
     const v = validate();
     if (v) {
       setError(v);
@@ -224,6 +231,15 @@ export function CreateMarketForm() {
       push({ title: "Couldn't create market", description: msg, variant: "danger" });
       setStep("idle");
     }
+  }
+
+  if (!platformQ.isLoading && !allowMarketCreation) {
+    return (
+      <div className="card p-6 text-sm text-muted-foreground">
+        Market creation is temporarily disabled while we improve the order
+        book. You can still propose sidebets from the create page.
+      </div>
+    );
   }
 
   return (
@@ -345,7 +361,7 @@ export function CreateMarketForm() {
       )}
 
       <div className="flex items-center justify-end">
-        <Button type="submit" size="lg" disabled={isBusy}>
+        <Button type="submit" size="lg" disabled={isBusy || !allowMarketCreation}>
           {step === "submitting" && "Submitting…"}
           {step === "done" && "Done"}
           {step === "idle" && "Create market"}

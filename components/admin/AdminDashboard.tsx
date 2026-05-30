@@ -7,6 +7,7 @@ import {
   Gavel,
   MessageCircleOff,
   Scale,
+  Settings,
   ShieldCheck,
   Store,
   Trash2,
@@ -32,7 +33,8 @@ type Tab =
   | "settlers"
   | "chat"
   | "resolutions"
-  | "resolvers";
+  | "resolvers"
+  | "settings";
 
 type AdminBetProposal = {
   id: number;
@@ -102,6 +104,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "chat", label: "Chat" },
   { id: "resolutions", label: "Resolutions" },
   { id: "resolvers", label: "Resolver requests" },
+  { id: "settings", label: "Settings" },
 ];
 
 function authHeaders(token: string) {
@@ -173,6 +176,27 @@ export function AdminDashboard({ address }: { address: string }) {
     queryKey: ["admin", "settlers", address],
     enabled: tab === "settlers" || tab === "overview" || tab === "users",
     queryFn: () => adminFetch<{ settlers: SettlerRow[] }>("/api/admin/settlers"),
+  });
+
+  const platformQ = useQuery<{
+    allowMarketCreation: boolean;
+    updatedAt: string;
+    updatedBy?: string | null;
+  }>({
+    queryKey: ["platform-settings"],
+    queryFn: () => jsonFetch("/api/platform/settings"),
+    enabled: tab === "settings",
+    staleTime: 30_000,
+  });
+
+  const updatePlatform = useMutation({
+    mutationFn: (allowMarketCreation: boolean) =>
+      adminPatch(`/api/admin/settings?address=${address}`, { allowMarketCreation }),
+    onSuccess: () => {
+      push({ title: "Settings saved", variant: "success" });
+      void qc.invalidateQueries({ queryKey: ["platform-settings"] });
+    },
+    onError: (e) => push({ title: (e as Error).message, variant: "danger" }),
   });
 
   const mutesQ = useQuery<{ mutes: ChatMuteRow[] }>({
@@ -451,6 +475,16 @@ export function AdminDashboard({ address }: { address: string }) {
           }}
         />
       )}
+
+      {tab === "settings" && (
+        <SettingsPanel
+          allowMarketCreation={platformQ.data?.allowMarketCreation ?? false}
+          updatedAt={platformQ.data?.updatedAt}
+          loading={platformQ.isLoading}
+          saving={updatePlatform.isPending}
+          onToggle={(v) => updatePlatform.mutate(v)}
+        />
+      )}
     </div>
   );
 }
@@ -463,6 +497,80 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
       </p>
       <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
     </div>
+  );
+}
+
+function SettingsPanel({
+  allowMarketCreation,
+  updatedAt,
+  loading,
+  saving,
+  onToggle,
+}: {
+  allowMarketCreation: boolean;
+  updatedAt?: string;
+  loading: boolean;
+  saving: boolean;
+  onToggle: (allow: boolean) => void;
+}) {
+  return (
+    <section className="card p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Settings className="h-5 w-5 text-muted-foreground" />
+        <h2 className="font-semibold">Platform settings</h2>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Control what users can do on the site. Sidebets are always available;
+        prediction markets (order books) can be paused while the CLOB is still
+        in development.
+      </p>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Allow users to create markets</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              When off, users cannot submit new prediction markets. Existing
+              markets stay browsable and tradeable. Admins can still create
+              markets for testing.
+            </p>
+            {updatedAt && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Last updated {new Date(updatedAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={allowMarketCreation}
+            disabled={saving}
+            onClick={() => onToggle(!allowMarketCreation)}
+            className={cn(
+              "relative h-7 w-12 shrink-0 rounded-full transition-colors",
+              allowMarketCreation ? "bg-primary" : "bg-muted-foreground/30",
+              saving && "opacity-60",
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform",
+                allowMarketCreation ? "left-[22px]" : "left-0.5",
+              )}
+            />
+          </button>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        Status:{" "}
+        <span className={allowMarketCreation ? "text-success" : "text-warning"}>
+          {allowMarketCreation ? "Market creation enabled" : "Market creation disabled"}
+        </span>
+      </p>
+    </section>
   );
 }
 

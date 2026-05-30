@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { Identity } from "@/components/profile/Identity";
-import { TokenSymbol } from "@/components/ui/TokenIcon";
+import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
 import { formatToken, fromNowUnix } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
@@ -178,12 +178,23 @@ export function BetCard({ bet }: { bet: BetRow }) {
 
       <div className="mt-auto border-t border-border px-4 py-3">
         {(isMatched || isSettled || isRefunded) && bet.acceptor ? (
-          <div className="flex items-center justify-between gap-2">
-            <Identity address={bet.proposer} size={22} link={false} />
-            <span className="text-[10px] font-medium uppercase text-muted-foreground">
-              vs
+          <div className="flex items-center justify-between gap-3">
+            <VsPlayer
+              address={bet.proposer}
+              stake={proposerStake}
+              decimals={bet.decimals}
+              symbol={sym}
+            />
+            <span className="shrink-0 text-xl font-bold uppercase tracking-tight text-foreground">
+              VS
             </span>
-            <Identity address={bet.acceptor} size={22} link={false} />
+            <VsPlayer
+              address={bet.acceptor}
+              stake={acceptorStake}
+              decimals={bet.decimals}
+              symbol={sym}
+              align="end"
+            />
           </div>
         ) : (
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -201,5 +212,33 @@ export function BetCard({ bet }: { bet: BetRow }) {
         )}
       </div>
     </Link>
+  );
+}
+
+function VsPlayer({
+  address,
+  stake,
+  decimals,
+  symbol,
+  align = "start",
+}: {
+  address: string;
+  stake: bigint;
+  decimals: number;
+  symbol: string;
+  align?: "start" | "end";
+}) {
+  return (
+    <div
+      className={`flex min-w-0 flex-1 flex-col gap-1 ${
+        align === "end" ? "items-end text-right" : "items-start"
+      }`}
+    >
+      <Identity address={address} size={22} link={false} className="max-w-full" />
+      <span className="inline-flex items-center gap-1 font-mono text-sm font-semibold tabular-nums text-foreground">
+        {formatToken(stake, decimals)}
+        <TokenIcon symbol={symbol} size={16} />
+      </span>
+    </div>
   );
 }

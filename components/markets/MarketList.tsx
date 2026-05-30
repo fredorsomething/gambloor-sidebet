@@ -7,6 +7,7 @@ import Link from "next/link";
 import { MarketCard } from "@/components/markets/MarketCard";
 import { Button } from "@/components/ui/button";
 import { jsonFetch } from "@/lib/fetcher";
+import { usePlatformSettings } from "@/lib/hooks/usePlatformSettings";
 import type { ListMarketsResponse } from "@/lib/types";
 
 const STATUSES = ["Open", "Resolved"] as const;
@@ -21,6 +22,8 @@ type Props = {
 
 export function MarketList({ defaultStatus = "Open", who, role, hideFilters }: Props) {
   const [status, setStatus] = useState<Status>(defaultStatus);
+  const platformQ = usePlatformSettings();
+  const allowMarketCreation = platformQ.data?.allowMarketCreation ?? false;
 
   const params = new URLSearchParams();
   params.set("status", status);
@@ -66,10 +69,16 @@ export function MarketList({ defaultStatus = "Open", who, role, hideFilters }: P
 
       {query.data && query.data.items.length === 0 && (
         <div className="card p-10 text-center">
-          <p className="text-muted-foreground">No markets yet.</p>
-          <Button asChild className="mt-4">
-            <Link href="/markets/new">Create the first one</Link>
-          </Button>
+          <p className="text-muted-foreground">
+            {allowMarketCreation
+              ? "No markets yet."
+              : "No markets yet. Market creation is paused — check back later."}
+          </p>
+          {allowMarketCreation && (
+            <Button asChild className="mt-4">
+              <Link href="/markets/new">Create the first one</Link>
+            </Button>
+          )}
         </div>
       )}
 

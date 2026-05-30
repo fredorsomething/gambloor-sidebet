@@ -67,7 +67,7 @@ export default function HomePage() {
           <div>
             <h2 className="text-xl font-semibold">Markets</h2>
             <p className="text-sm text-muted-foreground">
-              Sidebets and prediction markets — open, live, and settled.
+              Find a sidebet! Prediction markets with live orderbook coming soon.
             </p>
           </div>
         </div>
