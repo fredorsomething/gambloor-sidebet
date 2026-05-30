@@ -1,11 +1,20 @@
 "use client";
 
 import {
+  useDepositAddress,
   useFiatOnramp,
   usePrivy,
 } from "@privy-io/react-auth";
 import Link from "next/link";
-import { ArrowDownUp, ArrowUpRight, Check, Copy, CreditCard, X } from "lucide-react";
+import {
+  ArrowDownUp,
+  ArrowUpRight,
+  Check,
+  Copy,
+  CreditCard,
+  Wallet,
+  X,
+} from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -29,6 +38,7 @@ import { useToast } from "@/components/ui/Toast";
 import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
 import {
+  getTokenBySymbol,
   getTokens,
   MARKET_COLLATERAL_SYMBOL,
 } from "@/lib/chains";
@@ -64,6 +74,16 @@ export function useWalletFunds() {
 export const useFundWallet = useWalletFunds;
 
 const POLYGON_CAIP2 = `eip155:${polygon.id}` as const;
+
+function isUserDismissedFundingError(err: unknown): boolean {
+  const lc = ((err as Error)?.message ?? "").toLowerCase();
+  return (
+    lc.includes("closed") ||
+    lc.includes("cancel") ||
+    lc.includes("exited") ||
+    lc.includes("dismiss")
+  );
+}
 
 export function FundWalletProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<ModalMode>(null);
@@ -137,9 +157,11 @@ function DepositTokenTile({
 function FundWalletModal({ onClose }: { onClose: () => void }) {
   const { address } = useAccount();
   const { push } = useToast();
-  const { authenticated, getAccessToken } = usePrivy();
+  const { getAccessToken } = usePrivy();
   const { fund: startFiatOnramp } = useFiatOnramp();
+  const { createDepositAddress } = useDepositAddress();
   const tokens = useMemo(() => getTokens(), []);
+  const polygonUsdc = getTokenBySymbol(polygon.id, "USDC");
 
   const { data: stableBalances } = useReadContracts({
     allowFailure: true,
@@ -163,6 +185,8 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
 
   const [copied, setCopied] = useState(false);
   const [onrampPending, setOnrampPending] = useState(false);
+  const [depositAddressPending, setDepositAddressPending] = useState(false);
+  const fundingBusy = onrampPending || depositAddressPending;
 
   const balanceBySymbol = useMemo(() => {
     const map = new Map<string, bigint>();
@@ -221,14 +245,7 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
       });
       onClose();
     } catch (err) {
-      const raw = (err as Error)?.message ?? "";
-      const lc = raw.toLowerCase();
-      if (
-        !lc.includes("closed") &&
-        !lc.includes("cancel") &&
-        !lc.includes("exited") &&
-        !lc.includes("dismiss")
-      ) {
+      if (!isUserDismissedFundingError(err)) {
         console.error("Privy fiat onramp failed", err);
         const { title, description } = formatCryptoError(err, {
           fallbackTitle: "Couldn't start checkout",
@@ -237,6 +254,36 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
       }
     } finally {
       setOnrampPending(false);
+    }
+  }
+
+  async function onDepositFromExternalWallet() {
+    if (!address || !polygonUsdc) return;
+    setDepositAddressPending(true);
+    try {
+      await createDepositAddress({
+        destinationChain: POLYGON_CAIP2,
+        destinationCurrency: polygonUsdc.address,
+        destinationAddress: address,
+      });
+      void logWalletNotification(
+        getAccessToken,
+        address,
+        "deposit",
+        "Deposit started",
+        "Send crypto to your Privy deposit address — funds will arrive in your wallet.",
+      );
+      onClose();
+    } catch (err) {
+      if (!isUserDismissedFundingError(err)) {
+        console.error("Privy deposit address flow failed", err);
+        const { title, description } = formatCryptoError(err, {
+          fallbackTitle: "Couldn't open deposit flow",
+        });
+        push({ title, description, variant: "danger" });
+      }
+    } finally {
+      setDepositAddressPending(false);
     }
   }
 
@@ -258,28 +305,47 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {authenticated && (
-          <Button
-            className="mt-4 h-auto w-full justify-start gap-3 py-3"
-            onClick={() => void onBuyWithCard()}
-            disabled={!address || onrampPending}
-          >
-            <CreditCard className="h-5 w-5 shrink-0" />
-            <span className="text-left">
-              <span className="block font-semibold">
-                {onrampPending ? "Opening…" : "Buy with card"}
+        {address && (
+          <div className="mt-4 space-y-2">
+            <Button
+              className="h-auto w-full justify-start gap-3 py-3"
+              onClick={() => void onBuyWithCard()}
+              disabled={fundingBusy}
+            >
+              <CreditCard className="h-5 w-5 shrink-0" />
+              <span className="text-left">
+                <span className="block font-semibold">
+                  {onrampPending ? "Opening…" : "Buy with card"}
+                </span>
+                <span className="block text-xs font-normal opacity-80">
+                  Debit, credit, Apple Pay & more
+                </span>
               </span>
-              <span className="block text-xs font-normal opacity-80">
-                Debit, credit, Apple Pay & more
+            </Button>
+
+            <Button
+              variant="outline"
+              className="h-auto w-full justify-start gap-3 py-3"
+              onClick={() => void onDepositFromExternalWallet()}
+              disabled={fundingBusy || !polygonUsdc}
+            >
+              <Wallet className="h-5 w-5 shrink-0" />
+              <span className="text-left">
+                <span className="block font-semibold">
+                  {depositAddressPending ? "Opening…" : "Deposit from another wallet"}
+                </span>
+                <span className="block text-xs font-normal opacity-80">
+                  Send from any chain — Privy bridges to your wallet
+                </span>
               </span>
-            </span>
-          </Button>
+            </Button>
+          </div>
         )}
 
-        <div className={cn(authenticated && "mt-5")}>
-          <p className="text-sm font-medium">Deposit crypto on Polygon</p>
+        <div className={cn(address && "mt-5")}>
+          <p className="text-sm font-medium">Or send directly on Polygon</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Send any token below to your wallet address.
+            Copy your address and send tokens on Polygon.
           </p>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
