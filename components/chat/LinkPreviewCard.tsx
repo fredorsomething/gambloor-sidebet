@@ -8,6 +8,7 @@ import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { jsonFetch } from "@/lib/fetcher";
 import type { LinkPreviewData } from "@/lib/linkPreview";
+import { normalizePreviewUrl } from "@/lib/linkPreview";
 import { cn } from "@/lib/utils";
 
 function pnlClass(n: number) {
@@ -22,10 +23,11 @@ function pnlLabel(n: number) {
 }
 
 export function LinkPreviewCard({ url }: { url: string }) {
+  const canonical = normalizePreviewUrl(url);
   const { data, isLoading, isError } = useQuery<{ preview: LinkPreviewData }>({
-    queryKey: ["link-preview", url],
+    queryKey: ["link-preview", canonical],
     queryFn: () =>
-      jsonFetch(`/api/link-preview?url=${encodeURIComponent(url)}`),
+      jsonFetch(`/api/link-preview?url=${encodeURIComponent(canonical)}`),
     staleTime: 120_000,
     retry: false,
   });
@@ -108,6 +110,9 @@ function PreviewMeta({ preview: p }: { preview: LinkPreviewData }) {
         <span className={cn("text-xs font-semibold tabular-nums", pnlClass(p.pnl ?? 0))}>
           {pnlLabel(p.pnl ?? 0)} PnL
         </span>
+        {p.joinedAt && (
+          <span className="text-xs text-muted-foreground">Joined {p.joinedAt}</span>
+        )}
       </>
     );
   }

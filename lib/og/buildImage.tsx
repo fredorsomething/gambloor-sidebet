@@ -27,14 +27,23 @@ function kindLabel(p: LinkPreviewData): string {
   return "Sidebet";
 }
 
-function gradientFor(seed: string): string {
+function colorFromSeed(seed: string): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
     hash = (hash * 31 + seed.charCodeAt(i)) % 360;
   }
-  const a = hash;
-  const b = (hash + 48) % 360;
-  return `linear-gradient(135deg, hsl(${a} 70% 52%), hsl(${b} 75% 42%))`;
+  const h = hash;
+  const s = 0.7;
+  const l = 0.52;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const channel = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * channel)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
 }
 
 function initialsFor(preview: LinkPreviewData): string {
@@ -114,7 +123,7 @@ function Thumb({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundImage: gradientFor(seed),
+        backgroundColor: colorFromSeed(seed),
         fontSize: 64,
         fontWeight: 700,
         color: "rgba(255,255,255,0.92)",
@@ -234,6 +243,12 @@ export function renderOgCard(
                 }}
               >
                 {pnl}
+              </span>
+            )}
+
+            {preview.kind === "profile" && preview.joinedAt && (
+              <span style={{ fontSize: 24, color: C.muted }}>
+                Joined {preview.joinedAt}
               </span>
             )}
           </div>

@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { LinkPreviewCard } from "@/components/chat/LinkPreviewCard";
 import {
   extractUrls,
+  normalizePreviewUrl,
   parseInternalLink,
   splitMessageWithUrls,
 } from "@/lib/linkPreview";
@@ -42,7 +43,9 @@ export function MessageText({
 
 export function MessagePreviews({ body }: { body: string }) {
   const previewUrls = useMemo(() => {
-    const urls = extractUrls(body).filter((u) => parseInternalLink(u));
+    const urls = extractUrls(body)
+      .map(normalizePreviewUrl)
+      .filter((u) => parseInternalLink(u));
     return [...new Set(urls)].slice(0, 3);
   }, [body]);
 

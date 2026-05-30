@@ -16,6 +16,7 @@ export type LinkPreviewData = {
   username?: string | null;
   verified?: boolean;
   pnl?: number;
+  joinedAt?: string;
   /** Bet / market */
   id?: number;
   status?: string;
@@ -41,7 +42,25 @@ function isOurHost(host: string): boolean {
 export function normalizeChatUrl(raw: string): string {
   let u = raw.trim().replace(TRAILING_PUNCT, "");
   if (u.startsWith("www.")) u = `https://${u}`;
+  if (/^sidebet\.lol\//i.test(u)) u = `https://${u}`;
   return u;
+}
+
+/** Map pasted URLs (incl. /opengraph-image) to a canonical page path. */
+export function normalizePreviewUrl(raw: string): string {
+  let u = normalizeChatUrl(raw);
+  if (u.startsWith("/")) {
+    return u.split(/[?#]/)[0]!.replace(/\/opengraph-image$/, "") || "/";
+  }
+  try {
+    const url = new URL(u);
+    url.pathname = url.pathname.replace(/\/opengraph-image$/, "") || "/";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return u.split(/[?#]/)[0]!.replace(/\/opengraph-image$/, "") || u;
+  }
 }
 
 /** Pull http(s) and root-relative paths from message text. */
@@ -53,8 +72,13 @@ export function extractUrls(text: string): string[] {
   }
   const pathRe = /(?:^|\s)(\/(?:bets|u|markets|leaderboard|users|create|portfolio|swap|how-it-works)[^\s<>"']*)/gi;
   for (const m of text.match(pathRe) ?? []) {
-    const path = normalizeChatUrl(m.trim());
+    const path = normalizePreviewUrl(m.trim());
     if (path.startsWith("/")) found.add(path);
+  }
+  const bareRe =
+    /(?:^|\s)((?:sidebet\.lol|www\.sidebet\.lol)\/(?:bets|u|markets)[^\s<>"']*)/gi;
+  for (const m of text.match(bareRe) ?? []) {
+    found.add(normalizePreviewUrl(m.trim()));
   }
   return [...found];
 }
@@ -66,7 +90,7 @@ export type ParsedInternalLink =
   | { kind: "market"; id: number };
 
 export function parseInternalLink(input: string): ParsedInternalLink | null {
-  const raw = normalizeChatUrl(input);
+  const raw = normalizePreviewUrl(input);
   let path: string;
   try {
     if (raw.startsWith("/")) {
@@ -81,6 +105,8 @@ export function parseInternalLink(input: string): ParsedInternalLink | null {
   } catch {
     return null;
   }
+
+  path = path.replace(/\/opengraph-image$/, "");
 
   const bet = path.match(/^\/bets\/(\d+)$/);
   if (bet) return { kind: "bet", id: Number(bet[1]) };
@@ -133,9 +159,25 @@ export async function resolveLinkPreview(
     const handle = parsed.handle.replace(/^@/, "");
     let address: string;
     let user = isAddress(handle)
-      ? await prisma.user.findUnique({ where: { address: getAddress(handle) } })
+      ? await prisma.user.findUnique({
+          where: { address: getAddress(handle) },
+          select: {
+            address: true,
+            username: true,
+            avatarUrl: true,
+            verified: true,
+            createdAt: true,
+          },
+        })
       : await prisma.user.findFirst({
           where: { username: { equals: handle, mode: "insensitive" } },
+          select: {
+            address: true,
+            username: true,
+            avatarUrl: true,
+            verified: true,
+            createdAt: true,
+          },
         });
 
     if (!user && !isAddress(handle)) {
@@ -145,7 +187,16 @@ export async function resolveLinkPreview(
       });
       if (past) {
         address = getAddress(past.address);
-        user = await prisma.user.findUnique({ where: { address } });
+        user = await prisma.user.findUnique({
+          where: { address },
+          select: {
+            address: true,
+            username: true,
+            avatarUrl: true,
+            verified: true,
+            createdAt: true,
+          },
+        });
       } else {
         return null;
       }
@@ -172,17 +223,22 @@ export async function resolveLinkPreview(
     });
     const pnl = computeUserStats(bets as StatBet[], address).pnl;
     const slug = user?.username ?? address;
+    const joined = user?.createdAt ? formatJoinDate(user.createdAt) : null;
+    const subtitle = joined
+      ? `PnL ${formatUsd(pnl)} · Joined ${joined}`
+      : `PnL ${formatUsd(pnl)}`;
 
     return {
       kind: "profile",
       url: `/u/${slug}`,
       title: user?.username ? `@${user.username}` : address.slice(0, 6) + "…" + address.slice(-4),
-      subtitle: `PnL ${formatUsd(pnl)}`,
+      subtitle,
       imageUrl: user?.avatarUrl ?? null,
       address,
       username: user?.username ?? null,
       verified: user?.verified ?? false,
       pnl,
+      joinedAt: joined ?? undefined,
     };
   }
 
@@ -268,6 +324,10 @@ function formatUsd(n: number): string {
   return `${sign}$${Math.abs(n).toLocaleString(undefined, {
     maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 2,
   })}`;
+}
+
+function formatJoinDate(d: Date): string {
+  return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
 
 /** Split message into alternating text / url segments for rendering. */
