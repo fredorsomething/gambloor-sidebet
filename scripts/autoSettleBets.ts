@@ -1,6 +1,12 @@
 import "dotenv/config";
 
-import { autoSettleEligibleBets, autoSettleEnabled } from "../lib/autoSettle";
+import {
+  autoSettleEligibleBets,
+  autoSettleDiagnostics,
+  autoSettleEnabled,
+  platformAutoSettleReady,
+} from "../lib/autoSettle";
+import { ADMIN_ADDRESS } from "../lib/admin";
 
 /**
  * Cron-friendly worker: settle matched admin-settler bets where both parties
@@ -11,6 +17,12 @@ async function main() {
   if (!autoSettleEnabled()) {
     throw new Error(
       "SETTLER_PRIVATE_KEY / AUTO_SETTLE_PRIVATE_KEY / ADMIN_PRIVATE_KEY not set or invalid",
+    );
+  }
+  if (!platformAutoSettleReady()) {
+    const d = autoSettleDiagnostics();
+    throw new Error(
+      `SETTLER_PRIVATE_KEY derives ${d.signerAddress} but platform settler is ${ADMIN_ADDRESS}`,
     );
   }
 

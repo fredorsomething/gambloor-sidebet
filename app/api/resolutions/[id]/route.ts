@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { isAdminAddress } from "@/lib/admin";
 import { verifyWalletAuth } from "@/lib/auth";
-import { canAutoSettleBet, tryAutoSettleBet } from "@/lib/autoSettle";
+import { canAutoSettleBet, platformAutoSettleReady, tryAutoSettleBet } from "@/lib/autoSettle";
 import { applyBetOnchainSync } from "@/lib/betSync";
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
@@ -120,7 +120,7 @@ export async function POST(
         link: `/bets/${proposal.subjectId}`,
       });
 
-      if (canAutoSettleBet(bet)) {
+      if (platformAutoSettleReady() && canAutoSettleBet(bet)) {
         const settleResult = await tryAutoSettleBet(proposal.subjectId, {
           expectedOutcome: proposal.proposedOutcome,
           force: true,

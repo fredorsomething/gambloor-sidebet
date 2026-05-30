@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import {
   autoSettleEnabled,
   canAutoSettleBet,
+  platformAutoSettleReady,
   tryAutoSettleBet,
 } from "@/lib/autoSettle";
 import { loadBetResolutionState } from "@/lib/betResolution";
@@ -25,6 +26,12 @@ export async function POST(
 
   if (!autoSettleEnabled()) {
     return jsonErr("SETTLER_PRIVATE_KEY not configured", 503);
+  }
+  if (!platformAutoSettleReady()) {
+    return jsonErr(
+      "SETTLER_PRIVATE_KEY does not match the platform admin settler wallet",
+      503,
+    );
   }
 
   const bet = await prisma.bet.findUnique({ where: { id } });

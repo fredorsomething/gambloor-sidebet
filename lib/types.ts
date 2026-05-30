@@ -68,9 +68,19 @@ export type BetResolutionSummary = {
   verifiedOutcome: number | null;
 };
 
+export type AutoSettleStatus = {
+  keyConfigured: boolean;
+  signerAddress: string | null;
+  adminSettlerAddress: string;
+  platformReady: boolean;
+  canSettleThisBet: boolean;
+};
+
 export type GetBetResponse = {
   bet: BetRow;
   resolution?: BetResolutionSummary;
+  autoSettleStatus?: AutoSettleStatus;
+  autoSettle?: { ok: boolean; betId: number; hash?: string; reason?: string };
   onchain: {
     proposer: string;
     acceptor: string;

@@ -11,6 +11,8 @@ import { betDetailPollInterval, resolveBetStatus } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import type { GetBetResponse } from "@/lib/types";
 
+const AUTO_SETTLE_RETRY_MS = 15_000;
+
 /**
  * Polls the bet endpoint so the action UI always reflects the latest on-chain
  * status (via the API's opportunistic sync) without a full reload.
@@ -40,26 +42,35 @@ export function BetDetailLive({
   useEffect(() => {
     const status = resolveBetStatus(data.bet, data.onchain);
     const res = data.resolution;
-    const ready =
+    const shouldRetry =
       status === "Matched" &&
       isAdminAddress(data.bet.settler) &&
+      data.autoSettleStatus?.platformReady !== false &&
       ((res?.consensus === "unanimous" && res.agreedOutcome != null) ||
         res?.verifiedOutcome != null);
 
-    if (!ready || autoSettleBusy.current) return;
+    if (!shouldRetry) return;
 
-    autoSettleBusy.current = true;
-    jsonFetch(`/api/bets/${id}/auto-settle`, { method: "POST" })
-      .then(() => {
-        void refetch();
-      })
-      .catch(() => {
-        /* server retries on poll */
-      })
-      .finally(() => {
-        autoSettleBusy.current = false;
-      });
+    const attempt = () => {
+      if (autoSettleBusy.current) return;
+      autoSettleBusy.current = true;
+      jsonFetch(`/api/bets/${id}/auto-settle`, { method: "POST" })
+        .then(() => {
+          void refetch();
+        })
+        .catch(() => {
+          /* GET poll + cron also retry */
+        })
+        .finally(() => {
+          autoSettleBusy.current = false;
+        });
+    };
+
+    attempt();
+    const timer = window.setInterval(attempt, AUTO_SETTLE_RETRY_MS);
+    return () => window.clearInterval(timer);
   }, [
+    data.autoSettleStatus?.platformReady,
     data.bet,
     data.onchain,
     data.resolution?.consensus,
@@ -86,6 +97,7 @@ export function BetDetailLive({
         bet={data.bet}
         onchain={data.onchain}
         resolution={data.resolution}
+        autoSettleStatus={data.autoSettleStatus}
         onTxConfirmed={onBetUpdated}
       />
       {resolveBetStatus(data.bet, data.onchain) === "Open" && (

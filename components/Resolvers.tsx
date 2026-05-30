@@ -9,6 +9,8 @@ import { useAccount } from "wagmi";
 import { Identity } from "@/components/profile/Identity";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
+import { isAdminAddress } from "@/lib/admin";
+import type { BetResolutionConsensus } from "@/lib/betResolution";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +47,20 @@ export function Resolvers({
   const approved = settlerData?.settlers ?? [];
   const isApproved = (addr: string) =>
     approved.some((s) => s.address.toLowerCase() === addr.toLowerCase());
+
+  const { data: resolutionData } = useQuery<{ consensus: BetResolutionConsensus }>({
+    queryKey: ["resolution", "bet", subjectId],
+    queryFn: () =>
+      jsonFetch(
+        `/api/resolutions?subjectType=bet&subjectId=${subjectId}`,
+      ),
+    enabled: subjectType === "bet",
+    refetchInterval: 8_000,
+  });
+  const showAutomaticBadge =
+    subjectType === "bet" &&
+    isAdminAddress(settler) &&
+    resolutionData?.consensus === "unanimous";
 
   const reqKey = ["resolverRequests", subjectType, subjectId];
   const { data: reqData } = useQuery<{ requests: ResolverRequest[] }>({
@@ -88,6 +104,7 @@ export function Resolvers({
         address={settler}
         verified={isApproved(settler)}
         primary
+        automatic={showAutomaticBadge}
       />
 
       {addedResolvers.map((r) => (
@@ -137,16 +154,23 @@ function ResolverRow({
   verified,
   primary,
   added,
+  automatic,
 }: {
   address: string;
   verified?: boolean;
   primary?: boolean;
   added?: boolean;
+  automatic?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-3">
       <Identity address={address} size={28} weight="semibold" />
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {automatic && (
+          <span className="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            Automatic
+          </span>
+        )}
         {added ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
             <Plus className="h-3 w-3" />

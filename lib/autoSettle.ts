@@ -90,8 +90,8 @@ function getSettlerWallet(): SettlerWallet | null {
   if (
     account.address.toLowerCase() !== ADMIN_ADDRESS.toLowerCase()
   ) {
-    console.warn(
-      `auto-settle: SETTLER_PRIVATE_KEY derives ${account.address}, expected admin ${ADMIN_ADDRESS}`,
+    console.error(
+      `auto-settle: SETTLER_PRIVATE_KEY derives ${account.address} but platform settler is ${ADMIN_ADDRESS} — auto-settle disabled until the admin settler key is configured`,
     );
   }
 
@@ -103,9 +103,31 @@ export function autoSettleSettlerAddress(): Address | null {
   return getSettlerWallet()?.address ?? null;
 }
 
-/** Whether auto-settle is configured (valid settler private key present). */
+/** Whether a valid settler private key is present (any address). */
 export function autoSettleEnabled(): boolean {
   return getSettlerWallet() != null;
+}
+
+/** Server key derives to the platform admin settler (@admin). Required for auto-settle. */
+export function platformAutoSettleReady(): boolean {
+  const signer = getSettlerWallet();
+  if (!signer) return false;
+  return signer.address.toLowerCase() === ADMIN_ADDRESS.toLowerCase();
+}
+
+export function autoSettleDiagnostics(): {
+  keyConfigured: boolean;
+  signerAddress: Address | null;
+  adminSettlerAddress: Address;
+  platformReady: boolean;
+} {
+  const signer = getSettlerWallet();
+  return {
+    keyConfigured: signer != null,
+    signerAddress: signer?.address ?? null,
+    adminSettlerAddress: ADMIN_ADDRESS,
+    platformReady: platformAutoSettleReady(),
+  };
 }
 
 /** True when this bet's on-chain settler is the wallet we can sign with. */
@@ -170,6 +192,14 @@ export async function tryAutoSettleBet(
   const signer = getSettlerWallet();
   if (!signer) {
     return { ok: false, betId, reason: "SETTLER_PRIVATE_KEY not configured" };
+  }
+
+  if (!platformAutoSettleReady()) {
+    return {
+      ok: false,
+      betId,
+      reason: `SETTLER_PRIVATE_KEY must derive platform admin ${ADMIN_ADDRESS}, got ${signer.address}`,
+    };
   }
 
   if (!canAutoSettleBet(bet)) {
@@ -256,15 +286,14 @@ export async function tryAutoSettleBet(
   }
 }
 
-/** Scan matched bets our wallet settles and finalize any with unanimous agreement. */
+/** Scan matched platform-settler bets and finalize any with unanimous agreement. */
 export async function autoSettleEligibleBets(): Promise<AutoSettleResult[]> {
-  const signer = getSettlerWallet();
-  if (!signer) return [];
+  if (!platformAutoSettleReady()) return [];
 
   const bets = await prisma.bet.findMany({
     where: {
       status: "Matched",
-      settler: { equals: signer.address, mode: "insensitive" },
+      settler: { equals: ADMIN_ADDRESS, mode: "insensitive" },
     },
     select: { id: true },
     orderBy: { updatedAt: "asc" },

@@ -24,7 +24,7 @@ import {
 import { isAdminAddress } from "@/lib/admin";
 import { settlerMaySettle } from "@/lib/betResolution";
 import { formatToken, shortAddr } from "@/lib/utils";
-import type { BetResolutionSummary, BetRow, GetBetResponse } from "@/lib/types";
+import type { AutoSettleStatus, BetResolutionSummary, BetRow, GetBetResponse } from "@/lib/types";
 
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 
@@ -34,10 +34,17 @@ type Props = {
    *  status/acceptor so stale off-chain data never shows the wrong action. */
   onchain?: GetBetResponse["onchain"];
   resolution?: BetResolutionSummary;
+  autoSettleStatus?: AutoSettleStatus;
   onTxConfirmed?: () => void;
 };
 
-export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
+export function BetActions({
+  bet,
+  onchain,
+  resolution,
+  autoSettleStatus,
+  onTxConfirmed,
+}: Props) {
   const { address: account } = useAccount();
   const { push } = useToast();
   const ensurePolygon = useEnsurePolygon();
@@ -427,15 +434,22 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
     const outcomeLocked = lockedOutcome != null;
     const platformAuto =
       isAdminAddress(bet.settler) && unanimous && lockedOutcome != null;
+    const autoLive = platformAuto && autoSettleStatus?.platformReady !== false;
 
     return (
       <div className="card p-5 space-y-4">
         <LowGasBanner />
-        {platformAuto && (
+        {autoLive && (
           <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm text-muted-foreground">
             Both parties declared the same outcome. Payout is finalized
             automatically on-chain — you can also confirm manually below if
             needed.
+          </div>
+        )}
+        {platformAuto && autoSettleStatus?.platformReady === false && (
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-muted-foreground">
+            Both parties agreed, but server auto-settle is not configured for
+            the platform settler wallet. Confirm payout manually below.
           </div>
         )}
         <div>
@@ -529,15 +543,22 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
               {outcomes[resolution.agreedOutcome]}
             </span>
             .{" "}
-            {isAdminAddress(bet.settler)
-              ? "Payout is being finalized automatically on-chain."
-              : (
+            {isAdminAddress(bet.settler) ? (
+              autoSettleStatus?.platformReady === false ? (
                 <>
-                  Settler{" "}
-                  <span className="font-mono">{shortAddr(bet.settler)}</span> can
-                  finalize payout.
+                  The platform settler needs to confirm payout on-chain
+                  manually.
                 </>
-              )}
+              ) : (
+                <>Payout is being finalized automatically on-chain.</>
+              )
+            ) : (
+              <>
+                Settler{" "}
+                <span className="font-mono">{shortAddr(bet.settler)}</span> can
+                finalize payout.
+              </>
+            )}
           </p>
         ) : disputed ? (
           <p className="text-muted-foreground">

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import {
   autoSettleEligibleBets,
   autoSettleEnabled,
+  platformAutoSettleReady,
 } from "@/lib/autoSettle";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
@@ -22,6 +23,12 @@ export async function GET(req: NextRequest) {
 
   if (!autoSettleEnabled()) {
     return jsonErr("SETTLER_PRIVATE_KEY not configured", 503);
+  }
+  if (!platformAutoSettleReady()) {
+    return jsonErr(
+      "SETTLER_PRIVATE_KEY does not match platform admin settler",
+      503,
+    );
   }
 
   const results = await autoSettleEligibleBets();

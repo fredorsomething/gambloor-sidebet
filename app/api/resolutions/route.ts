@@ -9,7 +9,7 @@ import {
   betPartyRole,
   loadBetResolutionState,
 } from "@/lib/betResolution";
-import { tryAutoSettleBet, canAutoSettleBet } from "@/lib/autoSettle";
+import { tryAutoSettleBet, canAutoSettleBet, platformAutoSettleReady } from "@/lib/autoSettle";
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
 import {
@@ -211,7 +211,7 @@ export async function POST(req: NextRequest) {
         reason: "auto-settle not configured for this settler",
       };
 
-      if (canAutoSettleBet(bet)) {
+      if (platformAutoSettleReady() && canAutoSettleBet(bet)) {
         settleResult = await tryAutoSettleBet(d.subjectId, {
           expectedOutcome: state.agreedOutcome,
           force: true,
@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
           body: `Both sides agreed on "${outcomeLabel}" for ${subject.title}. Payout is finalized on-chain.`,
           link: subject.link,
         });
-      } else if (canAutoSettleBet(bet)) {
+      } else if (platformAutoSettleReady() && canAutoSettleBet(bet)) {
         await notifyMany(parties, {
           type: "status",
           title: "Both sides agree — settling",

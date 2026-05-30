@@ -4,6 +4,8 @@ import { getAddress } from "viem";
 import { loadBetResolutionState } from "@/lib/betResolution";
 import {
   canAutoSettleBet,
+  autoSettleDiagnostics,
+  platformAutoSettleReady,
   tryAutoSettleBet,
 } from "@/lib/autoSettle";
 import { applyBetOnchainSync } from "@/lib/betSync";
@@ -49,9 +51,14 @@ export async function GET(
       : null;
 
   let autoSettle: Awaited<ReturnType<typeof tryAutoSettleBet>> | null = null;
+  const autoSettleStatus = {
+    ...autoSettleDiagnostics(),
+    canSettleThisBet: canAutoSettleBet(bet),
+  };
   if (
     bet.status === "Matched" &&
     resolution &&
+    platformAutoSettleReady() &&
     canAutoSettleBet(bet) &&
     ((resolution.consensus === "unanimous" &&
       resolution.agreedOutcome != null) ||
@@ -75,6 +82,7 @@ export async function GET(
     bet,
     onchain,
     autoSettle,
+    autoSettleStatus,
     resolution: resolution
       ? {
           proposer: resolution.proposer,
