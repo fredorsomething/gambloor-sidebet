@@ -1,10 +1,8 @@
 "use client";
 
 import {
-  getEmbeddedConnectedWallet,
-  useFundWallet as usePrivyFundWallet,
+  useFiatOnramp,
   usePrivy,
-  useWallets,
 } from "@privy-io/react-auth";
 import Link from "next/link";
 import { ArrowDownUp, ArrowUpRight, Check, Copy, CreditCard, X } from "lucide-react";
@@ -26,7 +24,7 @@ import {
 import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
-import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
+import { TokenIcon } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
 import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
@@ -65,29 +63,7 @@ export function useWalletFunds() {
 /** @deprecated use useWalletFunds */
 export const useFundWallet = useWalletFunds;
 
-function useIsPrivyEmbeddedWallet(): boolean {
-  const { address, connector } = useAccount();
-  const { wallets } = useWallets();
-  return useMemo(() => {
-    if (!address) return false;
-    const id = connector?.id?.toLowerCase() ?? "";
-    if (id === "io.privy.wallet" || id.startsWith("io.privy.wallet.")) {
-      return true;
-    }
-    const embedded = getEmbeddedConnectedWallet(wallets);
-    if (embedded?.address?.toLowerCase() === address.toLowerCase()) {
-      return true;
-    }
-    const active = wallets.find(
-      (w) => w.address?.toLowerCase() === address.toLowerCase(),
-    );
-    return (
-      active?.walletClientType === "privy" ||
-      active?.walletClientType === "privy-v2" ||
-      active?.connectorType === "embedded"
-    );
-  }, [address, connector?.id, wallets]);
-}
+const POLYGON_CAIP2 = `eip155:${polygon.id}` as const;
 
 export function FundWalletProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<ModalMode>(null);
@@ -161,9 +137,8 @@ function DepositTokenTile({
 function FundWalletModal({ onClose }: { onClose: () => void }) {
   const { address } = useAccount();
   const { push } = useToast();
-  const { getAccessToken } = usePrivy();
-  const { fundWallet: privyFundWallet } = usePrivyFundWallet();
-  const isPrivyEmbedded = useIsPrivyEmbeddedWallet();
+  const { authenticated, getAccessToken } = usePrivy();
+  const { fund: startFiatOnramp } = useFiatOnramp();
   const tokens = useMemo(() => getTokens(), []);
 
   const { data: stableBalances } = useReadContracts({
@@ -212,33 +187,51 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
     if (!address) return;
     setOnrampPending(true);
     try {
-      await privyFundWallet({
-        address,
-        options: {
-          chain: polygon,
-          defaultFundingMethod: "card",
+      const result = await startFiatOnramp({
+        source: {
+          assets: ["usd", "eur", "gbp"],
+          defaultAsset: "usd",
         },
+        destination: {
+          asset: "usdc",
+          chain: POLYGON_CAIP2,
+          address,
+        },
+        environment: "production",
+        defaultAmount: "25",
       });
+
       void logWalletNotification(
         getAccessToken,
         address,
         "deposit",
-        "Deposit started",
-        "You started a card deposit via Privy.",
+        result.status === "confirmed" ? "Deposit confirmed" : "Deposit started",
+        result.status === "confirmed"
+          ? "Your USDC purchase was confirmed."
+          : "You started a USDC purchase — funds may take a few minutes to arrive.",
       );
       push({
-        title: "Funding started",
-        description: "Complete checkout in the Privy window.",
+        title:
+          result.status === "confirmed" ? "Purchase confirmed" : "Purchase started",
+        description:
+          result.status === "confirmed"
+            ? "USDC should appear in your wallet shortly."
+            : "Complete checkout in the Privy window. Funds may take a few minutes.",
         variant: "success",
       });
       onClose();
     } catch (err) {
       const raw = (err as Error)?.message ?? "";
       const lc = raw.toLowerCase();
-      if (!lc.includes("closed") && !lc.includes("cancel") && !lc.includes("exited")) {
-        console.error("Privy fundWallet failed", err);
+      if (
+        !lc.includes("closed") &&
+        !lc.includes("cancel") &&
+        !lc.includes("exited") &&
+        !lc.includes("dismiss")
+      ) {
+        console.error("Privy fiat onramp failed", err);
         const { title, description } = formatCryptoError(err, {
-          fallbackTitle: "Couldn't start funding",
+          fallbackTitle: "Couldn't start checkout",
         });
         push({ title, description, variant: "danger" });
       }
@@ -265,7 +258,7 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {isPrivyEmbedded && (
+        {authenticated && (
           <Button
             className="mt-4 h-auto w-full justify-start gap-3 py-3"
             onClick={() => void onBuyWithCard()}
@@ -283,7 +276,7 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           </Button>
         )}
 
-        <div className={cn(isPrivyEmbedded && "mt-5")}>
+        <div className={cn(authenticated && "mt-5")}>
           <p className="text-sm font-medium">Deposit crypto on Polygon</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Send any token below to your wallet address.
