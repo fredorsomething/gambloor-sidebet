@@ -15,8 +15,8 @@ export default function HomePage() {
               Settle any argument on-chain.
             </h1>
             <p className="mt-1 text-sm text-primary-foreground/85">
-              Peer-to-peer sidebets and public CLOB markets on Polygon. Pick a
-              side, stake, and let a trusted settler call it.
+              Peer-to-peer sidebets on Polygon with 0% fees. Pick a
+              side, stake, and agree on the outcome with your counterparty. If you can't agree, let a trusted settler call it.
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">

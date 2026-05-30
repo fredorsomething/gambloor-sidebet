@@ -34,14 +34,14 @@ export function MarketCard({ market }: { market: MarketRow }) {
   const href = `/markets/${market.id}`;
 
   return (
-    <div className="card group relative flex h-full flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+    <div className="card group relative flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
       <Link
         href={href}
         aria-label={market.title}
         className="absolute inset-0 z-0 rounded-2xl"
       />
 
-      <div className="pointer-events-none relative z-10 flex h-full flex-col">
+      <div className="pointer-events-none relative z-10 flex flex-col">
         <div className="flex items-center justify-between gap-2 px-4 pt-4">
           <TypeTag kind="market" />
           <span
@@ -72,7 +72,7 @@ export function MarketCard({ market }: { market: MarketRow }) {
           </div>
         </div>
 
-        <div className="flex min-h-[148px] flex-1 flex-col justify-end px-4 pb-3 pt-3">
+        <div className="mt-2 px-4 pb-2">
           {resolved ? (
             <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-4 text-center">
               <span className="text-xs font-medium uppercase tracking-wide text-success">

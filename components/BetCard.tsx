@@ -62,16 +62,16 @@ export function BetCard({ bet }: { bet: BetRow }) {
   return (
     <Link
       href={`/bets/${bet.id}`}
-      className="card group flex h-full flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+      className="card group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
     >
-      <div className="flex items-center justify-between gap-2 px-4 pt-4">
+      <div className="flex items-center justify-between gap-2 px-4 pt-3">
         <TypeTag kind="sidebet" />
         <span className="text-xs font-medium text-muted-foreground">
           {statusLabel(bet)}
         </span>
       </div>
 
-      <div className="flex gap-3 px-4 pt-3">
+      <div className="flex gap-3 px-4 pt-2">
         <BetThumbnail
           imageUrl={bet.imageUrl}
           title={bet.title}
@@ -87,7 +87,7 @@ export function BetCard({ bet }: { bet: BetRow }) {
       </div>
 
       {outcomes.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5 px-4">
+        <div className="mt-2 flex flex-wrap gap-1.5 px-4">
           {outcomes.slice(0, 4).map((o, i) => (
             <span
               key={i}
@@ -108,9 +108,9 @@ export function BetCard({ bet }: { bet: BetRow }) {
         </div>
       )}
 
-      <div className="flex min-h-[132px] flex-1 flex-col justify-end px-4 pb-3 pt-3">
+      <div className="mt-2 px-4 pb-2">
         {isOpen ? (
-          <div className="space-y-2 rounded-xl bg-muted/30 p-3">
+          <div className="space-y-2 rounded-xl bg-muted/30 p-2.5">
             <p className="text-xs text-muted-foreground">
               Backing{" "}
               <span className="font-medium text-foreground">
@@ -142,7 +142,7 @@ export function BetCard({ bet }: { bet: BetRow }) {
             </div>
           </div>
         ) : isMatched ? (
-          <div className="rounded-xl bg-muted/30 p-3">
+          <div className="rounded-xl bg-muted/30 px-3 py-2">
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
               Pool
             </div>
@@ -152,17 +152,17 @@ export function BetCard({ bet }: { bet: BetRow }) {
             </div>
           </div>
         ) : isSettled ? (
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/10 p-3">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-success/30 bg-success/10 px-3 py-2">
             <div className="min-w-0 flex-1">
               <div className="text-[10px] font-medium uppercase tracking-wide text-success">
                 Winner
               </div>
               {bet.winner ? (
-                <div className="mt-1">
-                  <Identity address={bet.winner} size={22} link={false} />
+                <div className="mt-0.5">
+                  <Identity address={bet.winner} size={20} link={false} />
                 </div>
               ) : winLabel ? (
-                <p className="mt-1 text-sm font-medium text-foreground">
+                <p className="mt-0.5 text-sm font-medium text-foreground">
                   {winLabel}
                 </p>
               ) : null}
@@ -172,15 +172,15 @@ export function BetCard({ bet }: { bet: BetRow }) {
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-success">
                   Won
                 </div>
-                <div className="mt-0.5 inline-flex items-center gap-1.5 font-mono text-xl font-bold tabular-nums text-success">
+                <div className="mt-0.5 inline-flex items-center gap-1 font-mono text-lg font-bold tabular-nums text-success">
                   {formatToken(payoutWei, bet.decimals)}
-                  <TokenIcon symbol={sym} size={20} />
+                  <TokenIcon symbol={sym} size={18} />
                 </div>
               </div>
             ) : null}
           </div>
         ) : isRefunded ? (
-          <div className="rounded-xl bg-muted/30 p-3 text-xs text-muted-foreground">
+          <div className="rounded-xl bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             Refunded — no winner backed
             {winLabel && (
               <span className="mt-1 block font-medium text-foreground">
@@ -191,7 +191,7 @@ export function BetCard({ bet }: { bet: BetRow }) {
         ) : null}
       </div>
 
-      <div className="mt-auto border-t border-border px-4 py-3">
+      <div className="border-t border-border px-4 py-2.5">
         {(isMatched || isSettled || isRefunded) && bet.acceptor ? (
           <div className="flex items-center justify-between gap-3">
             <VsPlayer
