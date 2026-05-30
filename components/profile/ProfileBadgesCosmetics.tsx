@@ -33,7 +33,7 @@ import {
   LOCKED_CATALOG_HINT,
 } from "@/lib/profileBadgeMeta";
 import { SUPPORTER_PRICE_USDC } from "@/lib/supporterBadge";
-import { cn, formatToken, shortAddr } from "@/lib/utils";
+import { cn, formatToken } from "@/lib/utils";
 
 type SupporterConfig = {
   priceUsdc: number;
@@ -217,14 +217,33 @@ function SupporterPurchasePanel({
     () => config?.tokens ?? [{ symbol: "USDC", address: "", decimals: 6 }],
     [config?.tokens],
   );
-  const [symbol, setSymbol] = useState("USDC");
-  const asset =
-    tokenOptions.find((t) => t.symbol === symbol) ?? tokenOptions[0];
 
-  const info = useTokenInfo({
-    token: asset?.address as Address | undefined,
+  const usdcToken = tokenOptions.find((t) => t.symbol === "USDC");
+  const usdceToken = tokenOptions.find((t) => t.symbol === "USDC.e");
+
+  const usdcInfo = useTokenInfo({
+    token: usdcToken?.address as Address | undefined,
     owner: from,
   });
+  const usdceInfo = useTokenInfo({
+    token: usdceToken?.address as Address | undefined,
+    owner: from,
+  });
+
+  const priceWei = parseUnits(String(SUPPORTER_PRICE_USDC), 6);
+
+  const asset = useMemo(() => {
+    if (usdcToken && (usdcInfo.balance ?? 0n) >= priceWei) return usdcToken;
+    if (usdceToken && (usdceInfo.balance ?? 0n) >= priceWei) return usdceToken;
+    return usdceToken ?? usdcToken ?? tokenOptions[0];
+  }, [usdcToken, usdceToken, usdcInfo.balance, usdceInfo.balance, tokenOptions, priceWei]);
+
+  const balance =
+    asset?.symbol === "USDC.e"
+      ? (usdceInfo.balance ?? 0n)
+      : asset?.symbol === "USDC"
+        ? (usdcInfo.balance ?? 0n)
+        : 0n;
 
   const [txHash, setTxHash] = useState<Hex>();
   const [sending, setSending] = useState(false);
@@ -234,8 +253,6 @@ function SupporterPurchasePanel({
 
   const onPolygon = chainId === polygon.id;
   const treasury = config?.treasury;
-  const priceWei = parseUnits(String(SUPPORTER_PRICE_USDC), 6);
-  const balance = info.balance ?? 0n;
   const canPay =
     onPolygon &&
     !!from &&
@@ -339,47 +356,26 @@ function SupporterPurchasePanel({
 
   return (
     <div className="rounded-xl border border-pink-500/40 bg-pink-500/10 p-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
         <BadgeChip kind="Supporter" />
-        <span className="text-sm font-bold text-pink-400">
-          {SUPPORTER_PRICE_USDC} USDC
-        </span>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Send {SUPPORTER_PRICE_USDC} USDC to the platform treasury. Your Supporter
-        badge appears on your profile once the transfer confirms.
+      <p className="mt-3 text-sm text-muted-foreground">
+        Support sidebet and earn the Supporter badge. Our platform is only
+        possible through your support{" "}
+        <span className="text-pink-400">&lt;3</span>
       </p>
 
       {loading ? (
         <p className="mt-3 text-xs text-muted-foreground">Loading…</p>
       ) : !treasury ? (
-        <p className="mt-3 text-xs text-danger">Treasury not configured.</p>
+        <p className="mt-3 text-xs text-danger">Support is unavailable right now.</p>
       ) : (
         <>
-          {tokenOptions.length > 1 && (
-            <div className="mt-3 flex gap-2">
-              {tokenOptions.map((t) => (
-                <button
-                  key={t.symbol}
-                  type="button"
-                  onClick={() => setSymbol(t.symbol)}
-                  className={cn(
-                    "flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors",
-                    symbol === t.symbol
-                      ? "border-pink-500/50 bg-pink-500/15 text-foreground"
-                      : "border-border text-muted-foreground hover:bg-muted/60",
-                  )}
-                >
-                  {t.symbol}
-                </button>
-              ))}
-            </div>
-          )}
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Treasury:{" "}
-            <span className="font-mono">{shortAddr(treasury, 8, 6)}</span>
-            {" · "}
-            Balance: {formatToken(balance, asset.decimals, 2)} {asset.symbol}
+          <p className="mt-3 text-xs text-muted-foreground">
+            Your balance:{" "}
+            <span className="font-medium text-foreground">
+              {formatToken(balance, asset?.decimals ?? 6, 2)} {asset?.symbol ?? "USDC"}
+            </span>
           </p>
           {!onPolygon ? (
             <Button
@@ -399,7 +395,7 @@ function SupporterPurchasePanel({
               <Heart className="h-4 w-4" />
               {sending || wait.isLoading || redeeming
                 ? "Processing…"
-                : `Buy for ${SUPPORTER_PRICE_USDC} ${asset.symbol}`}
+                : `Support — ${SUPPORTER_PRICE_USDC} USDC`}
             </Button>
           )}
         </>
