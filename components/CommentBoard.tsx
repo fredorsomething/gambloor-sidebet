@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { GifPicker } from "@/components/GifPicker";
+import { RichMessageBody } from "@/components/chat/RichMessageBody";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { Button } from "@/components/ui/button";
@@ -406,11 +407,7 @@ function CommentRow({
             </button>
           )}
         </div>
-        {c.body && (
-          <p className="mt-0.5 whitespace-pre-wrap break-words text-sm">
-            {c.body}
-          </p>
-        )}
+        {c.body && <RichMessageBody body={c.body} />}
         {c.gifUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img

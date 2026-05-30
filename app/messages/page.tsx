@@ -9,6 +9,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { GifPicker } from "@/components/GifPicker";
+import { MessagePreviews, MessageText } from "@/components/chat/RichMessageBody";
 import { NegotiationCard } from "@/components/negotiations/NegotiationCard";
 import { NegotiationCompose } from "@/components/negotiations/NegotiationCompose";
 import { Avatar } from "@/components/profile/Identity";
@@ -585,37 +586,46 @@ function MessagesInner() {
                         size={28}
                         className="mt-1 shrink-0"
                       />
-                      <div
-                        className={cn(
-                          "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
-                          m.mine
-                            ? "rounded-br-sm bg-primary text-primary-foreground"
-                            : "rounded-bl-sm bg-muted text-foreground",
-                        )}
-                      >
-                        {m.gifUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={m.gifUrl}
-                            alt=""
-                            className="mb-1 max-h-48 w-full rounded-lg object-contain"
-                          />
-                        )}
-                        {m.body.trim() && (
-                          <p className="whitespace-pre-wrap break-words">
-                            {m.body}
-                          </p>
-                        )}
-                        <span
+                      <div className="flex max-w-[75%] flex-col gap-1.5">
+                        <div
                           className={cn(
-                            "mt-1 block text-[10px]",
+                            "rounded-2xl px-3 py-2 text-sm",
                             m.mine
-                              ? "text-primary-foreground/70"
-                              : "text-muted-foreground",
+                              ? "rounded-br-sm bg-primary text-primary-foreground"
+                              : "rounded-bl-sm bg-muted text-foreground",
                           )}
                         >
-                          {timeLabel(m.createdAt)}
-                        </span>
+                          {m.gifUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={m.gifUrl}
+                              alt=""
+                              className="mb-1 max-h-48 w-full rounded-lg object-contain"
+                            />
+                          )}
+                          {m.body.trim() && (
+                            <MessageText
+                              body={m.body}
+                              className="whitespace-pre-wrap break-words"
+                              linkClassName={
+                                m.mine
+                                  ? "break-all underline underline-offset-2 opacity-90 hover:opacity-100"
+                                  : "break-all text-primary underline-offset-2 hover:underline"
+                              }
+                            />
+                          )}
+                          <span
+                            className={cn(
+                              "mt-1 block text-[10px]",
+                              m.mine
+                                ? "text-primary-foreground/70"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {timeLabel(m.createdAt)}
+                          </span>
+                        </div>
+                        {m.body.trim() && <MessagePreviews body={m.body} />}
                       </div>
                     </div>
                   );

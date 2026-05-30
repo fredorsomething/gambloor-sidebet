@@ -1,0 +1,287 @@
+import { getAddress, isAddress } from "viem";
+
+import { prisma } from "@/lib/db";
+import { computeUserStats, type StatBet } from "@/lib/stats";
+
+export type LinkPreviewKind = "site" | "profile" | "bet" | "market";
+
+export type LinkPreviewData = {
+  kind: LinkPreviewKind;
+  url: string;
+  title: string;
+  subtitle?: string;
+  imageUrl?: string | null;
+  /** Profile */
+  address?: string;
+  username?: string | null;
+  verified?: boolean;
+  pnl?: number;
+  /** Bet / market */
+  id?: number;
+  status?: string;
+  tokenSymbol?: string | null;
+  stakeLabel?: string;
+};
+
+const TRAILING_PUNCT = /[)\].,;:!?]+$/;
+
+const SITE_HOSTS = new Set([
+  "sidebet.lol",
+  "www.sidebet.lol",
+  "localhost",
+  "127.0.0.1",
+]);
+
+function isOurHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (SITE_HOSTS.has(h)) return true;
+  return h.endsWith(".vercel.app");
+}
+
+export function normalizeChatUrl(raw: string): string {
+  let u = raw.trim().replace(TRAILING_PUNCT, "");
+  if (u.startsWith("www.")) u = `https://${u}`;
+  return u;
+}
+
+/** Pull http(s) and root-relative paths from message text. */
+export function extractUrls(text: string): string[] {
+  const found = new Set<string>();
+  const httpRe = /https?:\/\/[^\s<>"']+/gi;
+  for (const m of text.match(httpRe) ?? []) {
+    found.add(normalizeChatUrl(m));
+  }
+  const pathRe = /(?:^|\s)(\/(?:bets|u|markets|leaderboard|users|create|portfolio|swap|how-it-works)[^\s<>"']*)/gi;
+  for (const m of text.match(pathRe) ?? []) {
+    const path = normalizeChatUrl(m.trim());
+    if (path.startsWith("/")) found.add(path);
+  }
+  return [...found];
+}
+
+export type ParsedInternalLink =
+  | { kind: "site"; path: string }
+  | { kind: "profile"; handle: string }
+  | { kind: "bet"; id: number }
+  | { kind: "market"; id: number };
+
+export function parseInternalLink(input: string): ParsedInternalLink | null {
+  const raw = normalizeChatUrl(input);
+  let path: string;
+  try {
+    if (raw.startsWith("/")) {
+      path = raw.split(/[?#]/)[0] || "/";
+    } else if (/^https?:\/\//i.test(raw)) {
+      const url = new URL(raw);
+      if (!isOurHost(url.hostname)) return null;
+      path = url.pathname.replace(/\/$/, "") || "/";
+    } else {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  const bet = path.match(/^\/bets\/(\d+)$/);
+  if (bet) return { kind: "bet", id: Number(bet[1]) };
+
+  const market = path.match(/^\/markets\/(\d+)$/);
+  if (market) return { kind: "market", id: Number(market[1]) };
+
+  const profile = path.match(/^\/u\/([^/]+)$/);
+  if (profile) return { kind: "profile", handle: decodeURIComponent(profile[1]) };
+
+  return { kind: "site", path };
+}
+
+const SITE_PAGE_LABELS: Record<string, string> = {
+  "/": "Markets",
+  "/leaderboard": "Leaderboard",
+  "/users": "Directory",
+  "/create": "Create a bet",
+  "/portfolio": "Portfolio",
+  "/swap": "Swap tokens",
+  "/how-it-works": "How it works",
+  "/messages": "Messages",
+};
+
+function siteTitleForPath(path: string): string {
+  return SITE_PAGE_LABELS[path] ?? "Sidebet";
+}
+
+export async function resolveLinkPreview(
+  input: string,
+): Promise<LinkPreviewData | null> {
+  const parsed = parseInternalLink(input);
+  if (!parsed) return null;
+
+  const href = input.startsWith("/")
+    ? input.split(/[?#]/)[0]!
+    : normalizeChatUrl(input).split(/[?#]/)[0]!;
+
+  if (parsed.kind === "site") {
+    return {
+      kind: "site",
+      url: parsed.path,
+      title: siteTitleForPath(parsed.path),
+      subtitle: "sidebet.lol",
+      imageUrl: "/favicon.png",
+    };
+  }
+
+  if (parsed.kind === "profile") {
+    const handle = parsed.handle.replace(/^@/, "");
+    let address: string;
+    let user = isAddress(handle)
+      ? await prisma.user.findUnique({ where: { address: getAddress(handle) } })
+      : await prisma.user.findFirst({
+          where: { username: { equals: handle, mode: "insensitive" } },
+        });
+
+    if (!user && !isAddress(handle)) {
+      const past = await prisma.usernameHistory.findFirst({
+        where: { username: handle.toLowerCase() },
+        orderBy: { createdAt: "desc" },
+      });
+      if (past) {
+        address = getAddress(past.address);
+        user = await prisma.user.findUnique({ where: { address } });
+      } else {
+        return null;
+      }
+    } else {
+      address = getAddress(user?.address ?? handle);
+    }
+
+    const bets = await prisma.bet.findMany({
+      where: {
+        OR: [
+          { proposer: { equals: address, mode: "insensitive" } },
+          { acceptor: { equals: address, mode: "insensitive" } },
+        ],
+      },
+      select: {
+        proposer: true,
+        acceptor: true,
+        amount: true,
+        decimals: true,
+        feeBps: true,
+        status: true,
+        winner: true,
+      },
+    });
+    const pnl = computeUserStats(bets as StatBet[], address).pnl;
+    const slug = user?.username ?? address;
+
+    return {
+      kind: "profile",
+      url: `/u/${slug}`,
+      title: user?.username ? `@${user.username}` : address.slice(0, 6) + "…" + address.slice(-4),
+      subtitle: `PnL ${formatUsd(pnl)}`,
+      imageUrl: user?.avatarUrl ?? null,
+      address,
+      username: user?.username ?? null,
+      verified: user?.verified ?? false,
+      pnl,
+    };
+  }
+
+  if (parsed.kind === "bet") {
+    const bet = await prisma.bet.findUnique({
+      where: { id: parsed.id },
+      select: {
+        id: true,
+        title: true,
+        imageUrl: true,
+        status: true,
+        proposer: true,
+        proposerStake: true,
+        amount: true,
+        decimals: true,
+        tokenSymbol: true,
+        acceptorStake: true,
+      },
+    });
+    if (!bet) return null;
+
+    const proposerUser = await prisma.user.findUnique({
+      where: { address: getAddress(bet.proposer) },
+      select: { username: true },
+    });
+
+    const stakeWei = BigInt(bet.proposerStake || bet.amount || "0");
+    const stake = formatStake(stakeWei, bet.decimals, bet.tokenSymbol);
+
+    return {
+      kind: "bet",
+      url: `/bets/${bet.id}`,
+      id: bet.id,
+      title: bet.title,
+      subtitle: `${proposerUser?.username ? `@${proposerUser.username}` : "Proposer"} · ${stake}`,
+      imageUrl: bet.imageUrl,
+      status: bet.status,
+      tokenSymbol: bet.tokenSymbol,
+      stakeLabel: stake,
+    };
+  }
+
+  const market = await prisma.market.findUnique({
+    where: { id: parsed.id },
+    select: {
+      id: true,
+      title: true,
+      imageUrl: true,
+      status: true,
+      tokenSymbol: true,
+      creator: true,
+    },
+  });
+  if (!market) return null;
+
+  const creator = await prisma.user.findUnique({
+    where: { address: getAddress(market.creator) },
+    select: { username: true },
+  });
+
+  return {
+    kind: "market",
+    url: `/markets/${market.id}`,
+    id: market.id,
+    title: market.title,
+    subtitle: `${creator?.username ? `@${creator.username}` : "Creator"} · ${market.status}`,
+    imageUrl: market.imageUrl,
+    status: market.status,
+    tokenSymbol: market.tokenSymbol,
+  };
+}
+
+function formatStake(wei: bigint, decimals: number, symbol: string | null): string {
+  const n = Number(wei) / 10 ** decimals;
+  const formatted = n.toLocaleString(undefined, {
+    maximumFractionDigits: n >= 100 ? 0 : 2,
+  });
+  return symbol ? `${formatted} ${symbol}` : formatted;
+}
+
+function formatUsd(n: number): string {
+  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
+  return `${sign}$${Math.abs(n).toLocaleString(undefined, {
+    maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 2,
+  })}`;
+}
+
+/** Split message into alternating text / url segments for rendering. */
+export function splitMessageWithUrls(text: string): Array<{ type: "text" | "url"; value: string }> {
+  if (!text.trim()) return [];
+  const re = /(https?:\/\/[^\s<>"']+|\/(?:bets|u|markets|leaderboard|users|create|portfolio|swap|how-it-works)[^\s<>"']*)/gi;
+  const parts: Array<{ type: "text" | "url"; value: string }> = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    const idx = m.index ?? 0;
+    if (idx > last) parts.push({ type: "text", value: text.slice(last, idx) });
+    parts.push({ type: "url", value: normalizeChatUrl(m[0]) });
+    last = idx + m[0].length;
+  }
+  if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
+  return parts.length ? parts : [{ type: "text", value: text }];
+}

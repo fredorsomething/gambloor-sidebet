@@ -202,7 +202,11 @@ export function AdminDashboard({ address }: { address: string }) {
     mutationFn: (body: {
       allowMarketCreation?: boolean;
       sidebetFeeBps?: number;
-    }) => adminPatch(`/api/admin/settings?address=${address}`, body),
+    }) =>
+      adminPatch<{ feeSync?: { onChainSynced: boolean; onChainError?: string } }>(
+        `/api/admin/settings?address=${address}`,
+        body,
+      ),
     onSuccess: (data: {
       feeSync?: { onChainSynced: boolean; onChainError?: string };
     }) => {
@@ -239,10 +243,13 @@ export function AdminDashboard({ address }: { address: string }) {
     });
   }
 
-  async function adminPatch(path: string, body: Record<string, unknown>) {
+  async function adminPatch<T = unknown>(
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<T> {
     const token = await getAccessToken();
     if (!token) throw new Error("Session expired");
-    return jsonFetch(path, {
+    return jsonFetch<T>(path, {
       method: "PATCH",
       headers: authHeaders(token),
       body: JSON.stringify({ admin: address, ...body }),

@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { useNotifications, type AppNotification } from "@/lib/hooks/useNotifications";
+import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { cn } from "@/lib/utils";
 
 function iconFor(type: string) {
@@ -80,6 +81,40 @@ export function NotificationBell() {
 
   if (!ready || !authenticated || !address) return null;
 
+  const panelContent = (
+    <>
+      <div className="flex items-center justify-between border-b border-border p-3">
+        <div className="text-sm font-semibold">Notifications</div>
+        {unread > 0 && (
+          <button
+            onClick={() => markRead.mutate(undefined)}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <CheckCheck className="h-3.5 w-3.5" />
+            Mark all read
+          </button>
+        )}
+      </div>
+
+      <div className="max-h-[26rem] overflow-y-auto md:max-h-[26rem]">
+        {items.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            No notifications yet.
+          </div>
+        ) : (
+          items.map((n) => (
+            <Row
+              key={n.id}
+              n={n}
+              onClose={() => setOpen(false)}
+              markRead={markRead.mutate}
+            />
+          ))
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -97,30 +132,14 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl animate-in fade-in slide-in-from-top-1">
-          <div className="flex items-center justify-between border-b border-border p-3">
-            <div className="text-sm font-semibold">Notifications</div>
-            {unread > 0 && (
-              <button
-                onClick={() => markRead.mutate(undefined)}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <CheckCheck className="h-3.5 w-3.5" />
-                Mark all read
-              </button>
-            )}
+        <>
+          <MobileBottomSheet open={open} onClose={() => setOpen(false)}>
+            {panelContent}
+          </MobileBottomSheet>
+          <div className="absolute right-0 top-full z-50 mt-2 hidden w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl animate-in fade-in slide-in-from-top-1 md:block">
+            {panelContent}
           </div>
-
-          <div className="max-h-[26rem] overflow-y-auto">
-            {items.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                No notifications yet.
-              </div>
-            ) : (
-              items.map((n) => <Row key={n.id} n={n} onClose={() => setOpen(false)} markRead={markRead.mutate} />)
-            )}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
