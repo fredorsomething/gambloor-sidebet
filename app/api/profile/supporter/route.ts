@@ -3,7 +3,9 @@ import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 
 import { resolveDisplayBadges } from "@/lib/badges";
+import { announceSupporterBadgeInChat } from "@/lib/announceSupporterChat";
 import { verifyWalletAuth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import {
   SUPPORTER_PRICE_USDC,
   getTreasuryAddress,
@@ -50,7 +52,6 @@ export async function POST(req: NextRequest) {
   const auth = await verifyWalletAuth({ req, address: buyer });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
-  const { prisma } = await import("@/lib/db");
   const user = await prisma.user.findUnique({ where: { address: buyer } });
   if (userHasSupporterBadge(user?.badges)) {
     return jsonErr("supporter badge already owned", 409);
@@ -71,6 +72,12 @@ export async function POST(req: NextRequest) {
     amount: verified.amount,
     token: verified.token,
   });
+
+  try {
+    await announceSupporterBadgeInChat(buyer);
+  } catch (err) {
+    console.error("supporter chat announce failed", err);
+  }
 
   return jsonOk({
     badges: resolveDisplayBadges(badges, buyer),

@@ -69,11 +69,17 @@ function BadgeChip({
 export function ProfileBadgesCosmetics({
   address,
   badges,
+  defaultOpen = false,
 }: {
   address: string;
   badges: BadgeKind[];
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
 
   return (
     <>

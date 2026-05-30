@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, Check, Copy, Eye, Mail } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -105,6 +105,7 @@ function joinedLabel(iso?: string | null): string | null {
 
 export default function ProfilePage() {
   const params = useParams<{ address: string }>();
+  const searchParams = useSearchParams();
   const handle = params.address;
   const { address: connected } = useAccount();
 
@@ -147,6 +148,7 @@ export default function ProfilePage() {
   }
 
   const isMe = eq(connected, address);
+  const openBadgesModal = isMe && searchParams.get("badges") === "1";
   const isAdmin = isAdminUser({ address, username: data?.user.username });
   const stats = data?.stats;
 
@@ -225,6 +227,7 @@ export default function ProfilePage() {
               <ProfileBadgesCosmetics
                 address={address}
                 badges={(data?.user.badges ?? ["User"]) as BadgeKind[]}
+                defaultOpen={openBadgesModal}
               />
             )}
           </div>

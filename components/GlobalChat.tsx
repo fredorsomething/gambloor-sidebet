@@ -20,6 +20,7 @@ import { RichMessageBody } from "@/components/chat/RichMessageBody";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { lockBodyScroll, resetBodyScrollLock } from "@/lib/bodyScrollLock";
+import { isSupporterChatMessage, supporterChatMessageText, SUPPORTER_CHAT_LINK_HREF } from "@/lib/chatSupporter";
 import { isTipChatMessage, tipChatMessageText } from "@/lib/chatTip";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
@@ -538,6 +539,18 @@ function ChatRow({ m }: { m: ChatMessage }) {
             <p className="mt-0.5 text-sm font-bold text-[#ff4dbd]">
               {tipChatMessageText(m.body)}
             </p>
+          ) : isSupporterChatMessage(m.body) ? (
+            <div className="mt-0.5">
+              <p className="text-sm font-bold text-[#ff4dbd]">
+                {supporterChatMessageText(m.body)}
+              </p>
+              <Link
+                href={SUPPORTER_CHAT_LINK_HREF}
+                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              >
+                Support the platform here.
+              </Link>
+            </div>
           ) : (
             <RichMessageBody body={m.body} />
           ))}
