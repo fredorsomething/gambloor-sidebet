@@ -89,9 +89,8 @@ export function BetResolutionPanel({
       </div>
 
         <p className="text-sm text-muted-foreground">
-          When both sides declare the same winning outcome, the settler can
-          finalize payout on-chain. If you disagree, an admin reviews before
-          payout.
+          When both sides declare the same winning outcome, payout is finalized
+          automatically on-chain (platform settler) or by your chosen settler.
         </p>
 
       <div className="grid gap-2 sm:grid-cols-2">
@@ -120,7 +119,8 @@ export function BetResolutionPanel({
               <span className="font-medium text-foreground">
                 {outcomes[state.agreedOutcome] ?? `Outcome ${state.agreedOutcome}`}
               </span>
-              . The settler confirms payout on-chain.
+              . The settler confirms payout on-chain automatically when both
+              sides agree.
             </span>
           </p>
         </div>
@@ -273,6 +273,7 @@ function DeclareModal({
       const res = await jsonFetch<{
         unanimous?: boolean;
         disputed?: boolean;
+        settled?: boolean;
       }>("/api/resolutions", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -287,16 +288,20 @@ function DeclareModal({
       await qc.invalidateQueries({ queryKey: ["resolution", "bet", betId] });
       await qc.invalidateQueries({ queryKey: ["bet", betId] });
       push({
-        title: res.unanimous
-          ? "Both sides agree"
-          : res.disputed
-            ? "Declarations recorded — disputed"
-            : "Declaration saved",
-        description: res.unanimous
-          ? "The settler can finalize payout on-chain."
-          : res.disputed
-            ? "An admin will review the conflicting outcomes."
-            : "Waiting for the other side to declare.",
+        title: res.settled
+          ? "Sidebet settled"
+          : res.unanimous
+            ? "Both sides agree"
+            : res.disputed
+              ? "Declarations recorded — disputed"
+              : "Declaration saved",
+        description: res.settled
+          ? "Payout was finalized on-chain."
+          : res.unanimous
+            ? "Settlement is being finalized on-chain automatically."
+            : res.disputed
+              ? "An admin will review the conflicting outcomes."
+              : "Waiting for the other side to declare.",
         variant: res.disputed ? "default" : "success",
       });
       onClose();

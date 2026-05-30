@@ -4,7 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/ui/badge";
 import type { BetStatusName } from "@/lib/abi";
-import { resolveBetStatus } from "@/lib/betStatus";
+import {
+  betDetailPollInterval,
+  betIsTerminal,
+  resolveBetStatus,
+} from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import type { GetBetResponse } from "@/lib/types";
 
@@ -22,7 +26,11 @@ export function LiveBetStatusBadge({
   const { data } = useQuery<GetBetResponse>({
     queryKey: ["bet", id],
     queryFn: () => jsonFetch(`/api/bets/${id}`),
-    refetchInterval: 3_000,
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (d?.bet) return betDetailPollInterval(d.bet, d.onchain);
+      return betIsTerminal(initialStatus) ? false : 3_000;
+    },
   });
 
   const status = data

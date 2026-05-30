@@ -1,7 +1,9 @@
 /**
  * Auto-settle matched sidebets when both parties declare the same outcome.
- * Only bets whose on-chain settler is the platform admin wallet are eligible.
- * Requires SETTLER_PRIVATE_KEY (admin settler wallet) in the environment.
+ *
+ * Uses SETTLER_PRIVATE_KEY / AUTO_SETTLE_PRIVATE_KEY server-side only. The
+ * wallet must be the on-chain settler for the bet (typically @admin). Never
+ * exposes the key or runs from the client.
  */
 import {
   createPublicClient,
@@ -14,7 +16,6 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
 
-import { isAdminAddress, ADMIN_ADDRESS } from "@/lib/admin";
 import { SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { loadBetResolutionState } from "@/lib/betResolution";
 import { prisma } from "@/lib/db";
@@ -30,7 +31,7 @@ const RPC =
   process.env.NEXT_PUBLIC_POLYGON_RPC?.trim() ||
   "https://polygon-bor-rpc.publicnode.com";
 
-const SETTLER_KEY =
+const SETTLER_KEY_RAW =
   process.env.SETTLER_PRIVATE_KEY?.trim() ||
   process.env.AUTO_SETTLE_PRIVATE_KEY?.trim();
 
@@ -38,15 +39,32 @@ export type AutoSettleResult =
   | { ok: true; hash: Hex; betId: number }
   | { ok: false; betId: number; reason: string };
 
-function settlerWallet() {
-  if (!SETTLER_KEY || !/^0x[0-9a-fA-F]{64}$/.test(SETTLER_KEY)) return null;
-  const account = privateKeyToAccount(SETTLER_KEY as Hex);
-  if (!isAdminAddress(account.address)) {
-    console.warn(
-      "auto-settle: SETTLER_PRIVATE_KEY does not match admin address",
-    );
+type SettlerWallet = {
+  address: Address;
+  account: ReturnType<typeof privateKeyToAccount>;
+  publicClient: ReturnType<typeof createPublicClient>;
+  wallet: ReturnType<typeof createWalletClient>;
+};
+
+let cachedWallet: SettlerWallet | null | undefined;
+
+function parseSettlerPrivateKey(raw?: string): Hex | null {
+  if (!raw) return null;
+  const hex = raw.startsWith("0x") ? raw : `0x${raw}`;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hex)) return null;
+  return hex as Hex;
+}
+
+function getSettlerWallet(): SettlerWallet | null {
+  if (cachedWallet !== undefined) return cachedWallet;
+
+  const key = parseSettlerPrivateKey(SETTLER_KEY_RAW);
+  if (!key) {
+    cachedWallet = null;
     return null;
   }
+
+  const account = privateKeyToAccount(key);
   const publicClient = createPublicClient({
     chain: polygon,
     transport: http(RPC, { batch: false }),
@@ -56,12 +74,49 @@ function settlerWallet() {
     chain: polygon,
     transport: http(RPC, { batch: false }),
   });
-  return { account, publicClient, wallet };
+
+  cachedWallet = {
+    address: account.address,
+    account,
+    publicClient,
+    wallet,
+  };
+  return cachedWallet;
 }
 
-/** Whether auto-settle is configured (admin key present). */
+/** Address of the server settler wallet (from env), if configured. */
+export function autoSettleSettlerAddress(): Address | null {
+  return getSettlerWallet()?.address ?? null;
+}
+
+/** Whether auto-settle is configured (valid settler private key present). */
 export function autoSettleEnabled(): boolean {
-  return settlerWallet() != null;
+  return getSettlerWallet() != null;
+}
+
+/** True when this bet's on-chain settler is the wallet we can sign with. */
+export function canAutoSettleBet(bet: { settler: string }): boolean {
+  const signer = getSettlerWallet();
+  if (!signer) return false;
+  try {
+    return (
+      getAddress(bet.settler).toLowerCase() === signer.address.toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function declarationsMatchOutcome(
+  state: Awaited<ReturnType<typeof loadBetResolutionState>>,
+  outcome: number,
+): boolean {
+  return (
+    state.consensus === "unanimous" &&
+    state.agreedOutcome === outcome &&
+    state.proposer?.proposedOutcome === outcome &&
+    state.acceptor?.proposedOutcome === outcome
+  );
 }
 
 /**
@@ -70,9 +125,23 @@ export function autoSettleEnabled(): boolean {
  */
 export async function tryAutoSettleBet(
   betId: number,
+  opts: { expectedOutcome?: number } = {},
 ): Promise<AutoSettleResult> {
   const bet = await prisma.bet.findUnique({ where: { id: betId } });
   if (!bet) return { ok: false, betId, reason: "bet not found" };
+
+  const signer = getSettlerWallet();
+  if (!signer) {
+    return { ok: false, betId, reason: "SETTLER_PRIVATE_KEY not configured" };
+  }
+
+  if (!canAutoSettleBet(bet)) {
+    return {
+      ok: false,
+      betId,
+      reason: "server wallet is not this bet's on-chain settler",
+    };
+  }
 
   const onchain = await readBetV2(
     bet.chainId,
@@ -82,6 +151,7 @@ export async function tryAutoSettleBet(
   if (!onchain) {
     return { ok: false, betId, reason: "on-chain read failed" };
   }
+
   if (onchain.status === "Settled" || onchain.status === "Refunded") {
     if (bet.status !== "Settled" && bet.status !== "Refunded") {
       await applyBetOnchainSync(bet, onchain, { notify: true });
@@ -92,8 +162,8 @@ export async function tryAutoSettleBet(
   if (bet.status !== "Matched") {
     return { ok: false, betId, reason: `status is ${bet.status}` };
   }
-  if (!isAdminAddress(bet.settler)) {
-    return { ok: false, betId, reason: "settler is not admin" };
+  if (onchain.status !== "Matched") {
+    return { ok: false, betId, reason: `on-chain status is ${onchain.status}` };
   }
 
   const state = await loadBetResolutionState(bet);
@@ -101,18 +171,31 @@ export async function tryAutoSettleBet(
     return { ok: false, betId, reason: "no unanimous agreement" };
   }
 
-  const signer = settlerWallet();
-  if (!signer) {
-    return { ok: false, betId, reason: "SETTLER_PRIVATE_KEY not configured" };
+  const winningOutcome =
+    opts.expectedOutcome != null ? opts.expectedOutcome : state.agreedOutcome;
+
+  if (!declarationsMatchOutcome(state, winningOutcome)) {
+    return {
+      ok: false,
+      betId,
+      reason: "declarations do not match agreed outcome",
+    };
   }
 
-  if (onchain.status !== "Matched") {
-    return { ok: false, betId, reason: `on-chain status is ${onchain.status}` };
+  if (winningOutcome >= onchain.numOutcomes) {
+    return { ok: false, betId, reason: "outcome index out of range" };
   }
 
-  const winningOutcome = state.agreedOutcome;
+  if (
+    getAddress(onchain.settler).toLowerCase() !== signer.address.toLowerCase()
+  ) {
+    return { ok: false, betId, reason: "on-chain settler mismatch" };
+  }
+
   try {
     const hash = await signer.wallet.writeContract({
+      account: signer.account,
+      chain: polygon,
       address: getAddress(bet.escrowAddress) as Address,
       abi: SIDEBET_ESCROW_V2_ABI,
       functionName: "settleBet",
@@ -138,12 +221,15 @@ export async function tryAutoSettleBet(
   }
 }
 
-/** Scan all matched admin-settler bets and settle any with unanimous agreement. */
+/** Scan matched bets our wallet settles and finalize any with unanimous agreement. */
 export async function autoSettleEligibleBets(): Promise<AutoSettleResult[]> {
+  const signer = getSettlerWallet();
+  if (!signer) return [];
+
   const bets = await prisma.bet.findMany({
     where: {
       status: "Matched",
-      settler: ADMIN_ADDRESS,
+      settler: { equals: signer.address, mode: "insensitive" },
     },
     select: { id: true },
     orderBy: { updatedAt: "asc" },

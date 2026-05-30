@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BetActions } from "@/components/BetActions";
 import { BetNegotiations } from "@/components/BetNegotiations";
 import { ReviseBetEscrow } from "@/components/ReviseBetEscrow";
-import { resolveBetStatus } from "@/lib/betStatus";
+import { betDetailPollInterval, resolveBetStatus } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import type { GetBetResponse } from "@/lib/types";
 
@@ -27,8 +27,7 @@ export function BetDetailLive({
     initialData: initial,
     refetchInterval: (query) => {
       const d = query.state.data ?? initial;
-      const status = resolveBetStatus(d.bet, d.onchain);
-      return status === "Open" || status === "Matched" ? 2_000 : 5_000;
+      return betDetailPollInterval(d.bet, d.onchain);
     },
   });
 

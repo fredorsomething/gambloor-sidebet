@@ -3,6 +3,8 @@ import type { Bet } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
+import { betStatusRank } from "@/lib/betStatus";
+import type { BetStatusName } from "@/lib/abi";
 import { readBetV2, type OnchainBetV2 } from "@/lib/onchain";
 import { reconcileSettledBetProposals } from "@/lib/resolutionReconcile";
 
@@ -56,7 +58,13 @@ export function buildBetSyncUpdates(
 ): Record<string, unknown> {
   const updates: Record<string, unknown> = {};
   const syncedStatus = chainStatusFromOnchain(onchain);
-  if (syncedStatus !== bet.status) updates.status = syncedStatus;
+  if (
+    syncedStatus !== bet.status &&
+    betStatusRank(syncedStatus as BetStatusName) >=
+      betStatusRank(bet.status as BetStatusName)
+  ) {
+    updates.status = syncedStatus;
+  }
   if (
     onchain.acceptor &&
     onchain.acceptor !== ZERO &&

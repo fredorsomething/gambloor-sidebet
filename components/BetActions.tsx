@@ -421,6 +421,24 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
     );
   }
 
+  // Matched + platform settler + unanimous → auto-settle handles payout.
+  const autoSettling =
+    status === "Matched" &&
+    isAdminAddress(bet.settler) &&
+    resolution?.consensus === "unanimous";
+
+  if (status === "Matched" && isSettler && autoSettling) {
+    return (
+      <div className="card p-5 space-y-2">
+        <h3 className="font-semibold">Finalizing payout</h3>
+        <p className="text-sm text-muted-foreground">
+          Both parties declared the same outcome. Settlement is being processed
+          automatically on-chain — no manual action needed.
+        </p>
+      </div>
+    );
+  }
+
   // Matched + I'm the settler => can settle by picking the winning outcome.
   if (status === "Matched" && isSettler) {
     const unanimous = resolution?.consensus === "unanimous";
@@ -521,7 +539,7 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
             </span>
             .{" "}
             {isAdminAddress(bet.settler)
-              ? "Payout is being finalized automatically."
+              ? "Payout is being finalized automatically on-chain."
               : (
                 <>
                   Settler{" "}

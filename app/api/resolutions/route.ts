@@ -9,7 +9,7 @@ import {
   betPartyRole,
   loadBetResolutionState,
 } from "@/lib/betResolution";
-import { tryAutoSettleBet } from "@/lib/autoSettle";
+import { tryAutoSettleBet, canAutoSettleBet } from "@/lib/autoSettle";
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
 import {
@@ -21,6 +21,7 @@ import { jsonErr, jsonOk } from "@/lib/serialize";
 import { shortAddr } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const SubjectEnum = z.enum(["bet", "market"]);
 
@@ -203,32 +204,73 @@ export async function POST(req: NextRequest) {
 
     if (state.consensus === "unanimous" && state.agreedOutcome != null) {
       await autoApproveUnanimousBet(d.subjectId, state.agreedOutcome);
-      const settleResult = await tryAutoSettleBet(d.subjectId).catch((err) => {
-        console.error("auto-settle failed", err);
-        return { ok: false as const, betId: d.subjectId, reason: "auto-settle error" };
-      });
-      if (settleResult.ok) {
-        console.log(
-          `auto-settle triggered for bet #${d.subjectId}: ${settleResult.hash}`,
-        );
-      } else if (settleResult.reason !== "SETTLER_PRIVATE_KEY not configured") {
-        console.warn(
-          `auto-settle skipped for bet #${d.subjectId}: ${settleResult.reason}`,
-        );
+
+      let settleResult: Awaited<ReturnType<typeof tryAutoSettleBet>> = {
+        ok: false,
+        betId: d.subjectId,
+        reason: "auto-settle not configured for this settler",
+      };
+
+      if (canAutoSettleBet(bet)) {
+        settleResult = await tryAutoSettleBet(d.subjectId, {
+          expectedOutcome: state.agreedOutcome,
+        }).catch((err) => {
+          console.error("auto-settle failed", err);
+          return {
+            ok: false as const,
+            betId: d.subjectId,
+            reason: "auto-settle error",
+          };
+        });
+        if (settleResult.ok) {
+          console.log(
+            `auto-settle triggered for bet #${d.subjectId}: ${settleResult.hash}`,
+          );
+        } else {
+          console.warn(
+            `auto-settle skipped for bet #${d.subjectId}: ${settleResult.reason}`,
+          );
+        }
       }
-      await notify({
-        recipient: bet.settler.toLowerCase(),
-        type: "resolution_verified",
-        title: "Both sides agree — settling",
-        body: `Proposer and acceptor declared "${outcomeLabel}" for ${subject.title}. Payout is being finalized on-chain.`,
-        link: subject.link,
-      });
+
+      const parties = [bet.proposer, bet.acceptor].filter(Boolean) as string[];
+      if (settleResult.ok) {
+        await notifyMany(parties, {
+          type: "bet_settled",
+          title: "Sidebet settled",
+          body: `Both sides agreed on "${outcomeLabel}" for ${subject.title}. Payout is finalized on-chain.`,
+          link: subject.link,
+        });
+      } else if (canAutoSettleBet(bet)) {
+        await notifyMany(parties, {
+          type: "status",
+          title: "Both sides agree — settling",
+          body: `You both declared "${outcomeLabel}" for ${subject.title}. Payout is being finalized on-chain.`,
+          link: subject.link,
+        });
+      } else {
+        await notify({
+          recipient: bet.settler.toLowerCase(),
+          type: "resolution_verified",
+          title: "Both sides agree — ready to settle",
+          body: `Proposer and acceptor declared "${outcomeLabel}" for ${subject.title}. Finalize payout on-chain.`,
+          link: subject.link,
+        });
+        await notifyMany(parties, {
+          type: "status",
+          title: "Both sides agree",
+          body: `You both declared "${outcomeLabel}". The settler will finalize payout.`,
+          link: subject.link,
+        });
+      }
+
       return jsonOk(
         {
           proposal,
           unanimous: true,
           agreedOutcome: state.agreedOutcome,
           autoSettle: settleResult,
+          settled: settleResult.ok,
         },
         { status: prior ? 200 : 201 },
       );

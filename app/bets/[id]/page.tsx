@@ -81,7 +81,6 @@ export default async function BetDetailPage({
       <div className="card relative p-6 space-y-3">
         <ShareLinkButton
           path={`/bets/${bet.id}`}
-          title={bet.title}
           className="absolute right-3 top-3 h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
         />
         <div className="flex items-center gap-2 pr-8">

@@ -3,6 +3,29 @@ import type { BetRow, GetBetResponse } from "@/lib/types";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
+const STATUS_RANK: Record<BetStatusName, number> = {
+  None: 0,
+  Open: 1,
+  Matched: 2,
+  Settled: 3,
+  Cancelled: 3,
+  Refunded: 3,
+};
+
+export function betStatusRank(status: BetStatusName): number {
+  return STATUS_RANK[status] ?? 0;
+}
+
+/** Prefer the more mature lifecycle state (Settled beats Matched, etc.). */
+export function mergeBetStatus(
+  indexed: BetStatusName,
+  fromChain: BetStatusName,
+): BetStatusName {
+  return betStatusRank(fromChain) >= betStatusRank(indexed)
+    ? fromChain
+    : indexed;
+}
+
 export function betAcceptor(
   bet: BetRow,
   onchain?: GetBetResponse["onchain"],
@@ -24,34 +47,40 @@ export function betEscrowRevisionPending(bet: BetRow): boolean {
   return bet.escrowRevisionNeeded;
 }
 
-/** Effective status for UI/actions; never regress below the indexed snapshot. */
+export function betIsTerminal(status: BetStatusName): boolean {
+  return status === "Settled" || status === "Cancelled" || status === "Refunded";
+}
+
+/**
+ * Effective status for UI/actions. On-chain can advance the indexed snapshot
+ * (Matched → Settled) but never regress it — stale RPC reads must not flash
+ * "Awaiting settlement" on an already-settled bet.
+ */
 export function resolveBetStatus(
   bet: BetRow,
   onchain?: GetBetResponse["onchain"],
 ): BetStatusName {
-  // Mid-revision the old escrow id may be cancelled on-chain while the proposer
-  // publishes a replacement — keep the listing Open until revise-escrow completes.
   if (betEscrowRevisionPending(bet)) {
     return "Open";
   }
 
+  const indexed = bet.status as BetStatusName;
   const hasAcceptor = betHasAcceptor(bet, onchain);
-  const chainStatus = onchain?.status ?? bet.status;
-  let status: BetStatusName =
-    chainStatus === "Open" && hasAcceptor ? "Matched" : chainStatus;
+  const chainRaw = (onchain?.status ?? indexed) as BetStatusName;
+  const fromChain: BetStatusName =
+    chainRaw === "Open" && hasAcceptor ? "Matched" : chainRaw;
 
-  const indexed = bet.status;
-  if (
-    (indexed === "Matched" ||
-      indexed === "Settled" ||
-      indexed === "Cancelled" ||
-      indexed === "Refunded") &&
-    status === "Open"
-  ) {
-    status = indexed;
-  }
+  return mergeBetStatus(indexed, fromChain);
+}
 
-  return status;
+/** Poll live bet detail while status can still change; stop on terminal states. */
+export function betDetailPollInterval(
+  bet: BetRow,
+  onchain?: GetBetResponse["onchain"],
+): number | false {
+  const status = resolveBetStatus(bet, onchain);
+  if (betIsTerminal(status)) return false;
+  return status === "Open" || status === "Matched" ? 2_000 : 5_000;
 }
 
 export function betShowMatchup(

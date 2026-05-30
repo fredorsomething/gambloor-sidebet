@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Identity } from "@/components/profile/Identity";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
-import { betAcceptor, betShowMatchup, resolveBetStatus } from "@/lib/betStatus";
+import { betAcceptor, betDetailPollInterval, betShowMatchup, resolveBetStatus } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import { formatTimestamp, formatToken, fromNowUnix } from "@/lib/utils";
 import type { GetBetResponse } from "@/lib/types";
@@ -95,7 +95,10 @@ export function BetMatchup({
     queryKey: ["bet", id],
     queryFn: () => jsonFetch(`/api/bets/${id}`),
     initialData: initial,
-    refetchInterval: 3_000,
+    refetchInterval: (query) => {
+      const d = query.state.data ?? initial;
+      return betDetailPollInterval(d.bet, d.onchain);
+    },
   });
 
   const payload = data ?? initial;

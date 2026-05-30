@@ -35,7 +35,7 @@ export async function GET(
   );
 
   if (onchain && !bet.escrowRevisionNeeded) {
-    await applyBetOnchainSync(bet, onchain, { notify: true });
+    await applyBetOnchainSync(bet, onchain, { notify: false });
   }
 
   const resolution =
