@@ -17,6 +17,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
 
 import { SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
+import { ADMIN_ADDRESS } from "@/lib/admin";
 import { loadBetResolutionState } from "@/lib/betResolution";
 import { prisma } from "@/lib/db";
 import { readBetV2 } from "@/lib/onchain";
@@ -33,7 +34,11 @@ const RPC =
 
 const SETTLER_KEY_RAW =
   process.env.SETTLER_PRIVATE_KEY?.trim() ||
-  process.env.AUTO_SETTLE_PRIVATE_KEY?.trim();
+  process.env.AUTO_SETTLE_PRIVATE_KEY?.trim() ||
+  process.env.ADMIN_PRIVATE_KEY?.trim();
+
+const RETRY_COOLDOWN_MS = 10_000;
+const lastAttemptAt = new Map<number, number>();
 
 export type AutoSettleResult =
   | { ok: true; hash: Hex; betId: number }
@@ -81,6 +86,15 @@ function getSettlerWallet(): SettlerWallet | null {
     publicClient,
     wallet,
   };
+
+  if (
+    account.address.toLowerCase() !== ADMIN_ADDRESS.toLowerCase()
+  ) {
+    console.warn(
+      `auto-settle: SETTLER_PRIVATE_KEY derives ${account.address}, expected admin ${ADMIN_ADDRESS}`,
+    );
+  }
+
   return cachedWallet;
 }
 
@@ -107,26 +121,49 @@ export function canAutoSettleBet(bet: { settler: string }): boolean {
   }
 }
 
-function declarationsMatchOutcome(
+function outcomeReadyToSettle(
   state: Awaited<ReturnType<typeof loadBetResolutionState>>,
   outcome: number,
 ): boolean {
-  return (
-    state.consensus === "unanimous" &&
-    state.agreedOutcome === outcome &&
-    state.proposer?.proposedOutcome === outcome &&
-    state.acceptor?.proposedOutcome === outcome
-  );
+  if (state.consensus === "unanimous" && state.agreedOutcome === outcome) {
+    return (
+      state.proposer?.proposedOutcome === outcome &&
+      state.acceptor?.proposedOutcome === outcome
+    );
+  }
+  if (state.verifiedOutcome === outcome) return true;
+  return false;
+}
+
+function resolveAutoSettleOutcome(
+  state: Awaited<ReturnType<typeof loadBetResolutionState>>,
+  expectedOutcome?: number,
+): number | null {
+  if (expectedOutcome != null) return expectedOutcome;
+  if (state.consensus === "unanimous" && state.agreedOutcome != null) {
+    return state.agreedOutcome;
+  }
+  if (state.verifiedOutcome != null) return state.verifiedOutcome;
+  return null;
 }
 
 /**
- * Attempt to settle a single bet on-chain when both parties agree.
+ * Attempt to settle a single bet on-chain when both parties agree
+ * (or an admin verified the outcome).
  * No-op if the bet is ineligible or already settled.
  */
 export async function tryAutoSettleBet(
   betId: number,
-  opts: { expectedOutcome?: number } = {},
+  opts: { expectedOutcome?: number; force?: boolean } = {},
 ): Promise<AutoSettleResult> {
+  if (!opts.force) {
+    const last = lastAttemptAt.get(betId) ?? 0;
+    if (Date.now() - last < RETRY_COOLDOWN_MS) {
+      return { ok: false, betId, reason: "retry cooldown" };
+    }
+  }
+  lastAttemptAt.set(betId, Date.now());
+
   const bet = await prisma.bet.findUnique({ where: { id: betId } });
   if (!bet) return { ok: false, betId, reason: "bet not found" };
 
@@ -167,14 +204,12 @@ export async function tryAutoSettleBet(
   }
 
   const state = await loadBetResolutionState(bet);
-  if (state.consensus !== "unanimous" || state.agreedOutcome == null) {
-    return { ok: false, betId, reason: "no unanimous agreement" };
+  const winningOutcome = resolveAutoSettleOutcome(state, opts.expectedOutcome);
+  if (winningOutcome == null) {
+    return { ok: false, betId, reason: "no approved outcome to settle" };
   }
 
-  const winningOutcome =
-    opts.expectedOutcome != null ? opts.expectedOutcome : state.agreedOutcome;
-
-  if (!declarationsMatchOutcome(state, winningOutcome)) {
+  if (!outcomeReadyToSettle(state, winningOutcome)) {
     return {
       ok: false,
       betId,
@@ -238,7 +273,7 @@ export async function autoSettleEligibleBets(): Promise<AutoSettleResult[]> {
 
   const results: AutoSettleResult[] = [];
   for (const { id } of bets) {
-    results.push(await tryAutoSettleBet(id));
+    results.push(await tryAutoSettleBet(id, { force: true }));
   }
   return results;
 }

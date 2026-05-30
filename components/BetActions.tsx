@@ -421,32 +421,23 @@ export function BetActions({ bet, onchain, resolution, onTxConfirmed }: Props) {
     );
   }
 
-  // Matched + platform settler + unanimous → auto-settle handles payout.
-  const autoSettling =
-    status === "Matched" &&
-    isAdminAddress(bet.settler) &&
-    resolution?.consensus === "unanimous";
-
-  if (status === "Matched" && isSettler && autoSettling) {
-    return (
-      <div className="card p-5 space-y-2">
-        <h3 className="font-semibold">Finalizing payout</h3>
-        <p className="text-sm text-muted-foreground">
-          Both parties declared the same outcome. Settlement is being processed
-          automatically on-chain — no manual action needed.
-        </p>
-      </div>
-    );
-  }
-
   // Matched + I'm the settler => can settle by picking the winning outcome.
   if (status === "Matched" && isSettler) {
     const unanimous = resolution?.consensus === "unanimous";
     const outcomeLocked = lockedOutcome != null;
+    const platformAuto =
+      isAdminAddress(bet.settler) && unanimous && lockedOutcome != null;
 
     return (
       <div className="card p-5 space-y-4">
         <LowGasBanner />
+        {platformAuto && (
+          <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm text-muted-foreground">
+            Both parties declared the same outcome. Payout is finalized
+            automatically on-chain — you can also confirm manually below if
+            needed.
+          </div>
+        )}
         <div>
           <h3 className="font-semibold">Settle bet</h3>
           {unanimous && lockedOutcome != null ? (

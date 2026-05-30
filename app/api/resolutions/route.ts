@@ -214,6 +214,7 @@ export async function POST(req: NextRequest) {
       if (canAutoSettleBet(bet)) {
         settleResult = await tryAutoSettleBet(d.subjectId, {
           expectedOutcome: state.agreedOutcome,
+          force: true,
         }).catch((err) => {
           console.error("auto-settle failed", err);
           return {

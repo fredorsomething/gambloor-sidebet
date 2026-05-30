@@ -1,10 +1,12 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 
 import { BetActions } from "@/components/BetActions";
 import { BetNegotiations } from "@/components/BetNegotiations";
 import { ReviseBetEscrow } from "@/components/ReviseBetEscrow";
+import { isAdminAddress } from "@/lib/admin";
 import { betDetailPollInterval, resolveBetStatus } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import type { GetBetResponse } from "@/lib/types";
@@ -32,6 +34,40 @@ export function BetDetailLive({
   });
 
   const data = q.data ?? initial;
+  const autoSettleBusy = useRef(false);
+  const { refetch } = q;
+
+  useEffect(() => {
+    const status = resolveBetStatus(data.bet, data.onchain);
+    const res = data.resolution;
+    const ready =
+      status === "Matched" &&
+      isAdminAddress(data.bet.settler) &&
+      ((res?.consensus === "unanimous" && res.agreedOutcome != null) ||
+        res?.verifiedOutcome != null);
+
+    if (!ready || autoSettleBusy.current) return;
+
+    autoSettleBusy.current = true;
+    jsonFetch(`/api/bets/${id}/auto-settle`, { method: "POST" })
+      .then(() => {
+        void refetch();
+      })
+      .catch(() => {
+        /* server retries on poll */
+      })
+      .finally(() => {
+        autoSettleBusy.current = false;
+      });
+  }, [
+    data.bet,
+    data.onchain,
+    data.resolution?.consensus,
+    data.resolution?.agreedOutcome,
+    data.resolution?.verifiedOutcome,
+    id,
+    refetch,
+  ]);
 
   function onBetUpdated() {
     void q.refetch();

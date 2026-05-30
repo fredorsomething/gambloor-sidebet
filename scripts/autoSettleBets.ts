@@ -10,7 +10,7 @@ import { autoSettleEligibleBets, autoSettleEnabled } from "../lib/autoSettle";
 async function main() {
   if (!autoSettleEnabled()) {
     throw new Error(
-      "SETTLER_PRIVATE_KEY / AUTO_SETTLE_PRIVATE_KEY not set or invalid",
+      "SETTLER_PRIVATE_KEY / AUTO_SETTLE_PRIVATE_KEY / ADMIN_PRIVATE_KEY not set or invalid",
     );
   }
 

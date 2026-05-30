@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { isAdminAddress } from "@/lib/admin";
 import { verifyWalletAuth } from "@/lib/auth";
+import { canAutoSettleBet, tryAutoSettleBet } from "@/lib/autoSettle";
 import { applyBetOnchainSync } from "@/lib/betSync";
 import { prisma } from "@/lib/db";
 import { notify, notifyMany } from "@/lib/notifications";
@@ -118,6 +119,27 @@ export async function POST(
         body: `An admin verified the outcome for "${bet.title}". You can finalize payout on-chain.`,
         link: `/bets/${proposal.subjectId}`,
       });
+
+      if (canAutoSettleBet(bet)) {
+        const settleResult = await tryAutoSettleBet(proposal.subjectId, {
+          expectedOutcome: proposal.proposedOutcome,
+          force: true,
+        }).catch((err) => {
+          console.error("auto-settle after admin verify failed", err);
+          return {
+            ok: false as const,
+            betId: proposal.subjectId,
+            reason: "auto-settle error",
+          };
+        });
+        if (settleResult.ok) {
+          return jsonOk({
+            proposal: updated,
+            settled: true,
+            autoSettle: settleResult,
+          });
+        }
+      }
     }
   }
 

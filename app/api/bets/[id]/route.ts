@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getAddress } from "viem";
 
 import { loadBetResolutionState } from "@/lib/betResolution";
+import {
+  canAutoSettleBet,
+  tryAutoSettleBet,
+} from "@/lib/autoSettle";
 import { applyBetOnchainSync } from "@/lib/betSync";
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -16,7 +20,7 @@ export async function GET(
   const id = Number(params.id);
   if (!Number.isFinite(id) || id <= 0) return jsonErr("bad id", 400);
 
-  const bet = await prisma.bet.findUnique({ where: { id } });
+  let bet = await prisma.bet.findUnique({ where: { id } });
   if (!bet) return jsonErr("not found", 404);
 
   if (bet.escrowRevisionNeeded && bet.status === "Cancelled") {
@@ -36,6 +40,7 @@ export async function GET(
 
   if (onchain && !bet.escrowRevisionNeeded) {
     await applyBetOnchainSync(bet, onchain, { notify: false });
+    bet = (await prisma.bet.findUnique({ where: { id } })) ?? bet;
   }
 
   const resolution =
@@ -43,9 +48,33 @@ export async function GET(
       ? await loadBetResolutionState(bet)
       : null;
 
+  let autoSettle: Awaited<ReturnType<typeof tryAutoSettleBet>> | null = null;
+  if (
+    bet.status === "Matched" &&
+    resolution &&
+    canAutoSettleBet(bet) &&
+    ((resolution.consensus === "unanimous" &&
+      resolution.agreedOutcome != null) ||
+      resolution.verifiedOutcome != null)
+  ) {
+    autoSettle = await tryAutoSettleBet(id).catch((err) => {
+      console.error(`auto-settle on bet GET #${id}`, err);
+      return {
+        ok: false as const,
+        betId: id,
+        reason: "auto-settle error",
+      };
+    });
+    if (autoSettle.ok) {
+      const refreshed = await prisma.bet.findUnique({ where: { id } });
+      if (refreshed) bet = refreshed;
+    }
+  }
+
   return jsonOk({
     bet,
     onchain,
+    autoSettle,
     resolution: resolution
       ? {
           proposer: resolution.proposer,
