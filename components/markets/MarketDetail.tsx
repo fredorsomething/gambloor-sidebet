@@ -466,7 +466,6 @@ export function MarketDetail({ id }: { id: number }) {
             subjectType="market"
             subjectId={market.id}
             settler={market.settler}
-            feeBps={market.feeBps}
           />
 
           {market.status === "Open" && (
