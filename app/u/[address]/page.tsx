@@ -170,19 +170,8 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
-      <div className="card relative p-6">
-        {isMe && (
-          <ProfileBadgesCosmetics
-            address={address}
-            badges={(data?.user.badges ?? ["User"]) as BadgeKind[]}
-          />
-        )}
-        <div
-          className={cn(
-            "flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between",
-            isMe && "pt-8 sm:pt-0",
-          )}
-        >
+      <div className="card p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <Avatar
               address={address}
@@ -230,7 +219,15 @@ export default function ProfilePage() {
           </div>
 
           {/* Badges */}
-          <UserBadges badges={(data?.user.badges ?? ["User"]) as BadgeKind[]} />
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <UserBadges badges={(data?.user.badges ?? ["User"]) as BadgeKind[]} />
+            {isMe && (
+              <ProfileBadgesCosmetics
+                address={address}
+                badges={(data?.user.badges ?? ["User"]) as BadgeKind[]}
+              />
+            )}
+          </div>
 
           {/* Reputation + actions */}
           <div className="flex flex-col items-center gap-3 lg:items-end">

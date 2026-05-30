@@ -80,7 +80,7 @@ export function ProfileBadgesCosmetics({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
         aria-label="Profile badges"
       >
         <Star className="h-3.5 w-3.5" />
