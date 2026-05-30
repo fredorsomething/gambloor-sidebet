@@ -224,9 +224,8 @@ export async function resolveLinkPreview(
     const pnl = computeUserStats(bets as StatBet[], address).pnl;
     const slug = user?.username ?? address;
     const joinedFull = user?.createdAt ? formatJoinDate(user.createdAt) : null;
-    const joinedShort = user?.createdAt ? formatJoinDateShort(user.createdAt) : null;
-    // Meta description only — PnL is rendered on the OG card, not duplicated here.
-    const subtitle = joinedShort ? `Joined ${joinedShort}` : undefined;
+    // Discord meta text — join date only; PnL lives on the OG image card.
+    const subtitle = joinedFull ? `Date joined: ${joinedFull}` : undefined;
 
     return {
       kind: "profile",
@@ -323,13 +322,6 @@ function formatJoinDate(d: Date): string {
   return d.toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatJoinDateShort(d: Date): string {
-  return d.toLocaleDateString("en-US", {
-    month: "long",
     year: "numeric",
   });
 }

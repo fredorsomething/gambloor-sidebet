@@ -280,12 +280,18 @@ function ProfileThumb({
   );
 }
 
+function profileJoinLine(p: LinkPreviewData): string | null {
+  if (p.kind !== "profile" || !p.joinedAt) return null;
+  return `Date joined: ${p.joinedAt}`;
+}
+
 function renderProfileOgCard(
   preview: LinkPreviewData,
   options: OgCardOptions = {},
 ): ImageResponse {
   const label = kindLabel(preview);
   const pnl = pnlText(preview);
+  const joined = profileJoinLine(preview);
 
   return new ImageResponse(
     (
@@ -351,6 +357,12 @@ function renderProfileOgCard(
             >
               {truncate(preview.title, 80)}
             </span>
+
+            {joined && (
+              <span style={{ fontSize: 28, color: C.muted }}>
+                {truncate(joined, 60)}
+              </span>
+            )}
 
             {pnl && (
               <span
