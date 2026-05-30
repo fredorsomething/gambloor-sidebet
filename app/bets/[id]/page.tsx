@@ -13,6 +13,7 @@ import { Comments } from "@/components/Comments";
 import { LiveBetStatusBadge } from "@/components/LiveBetStatusBadge";
 import { BetResolutionLive } from "@/components/BetResolutionLive";
 import { Resolvers } from "@/components/Resolvers";
+import { ShareLinkButton } from "@/components/ShareLinkButton";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
 import { explorerAddress, explorerTx } from "@/lib/chains";
@@ -77,8 +78,13 @@ export default async function BetDetailPage({
         </Link>
       </div>
 
-      <div className="card p-6 space-y-3">
-        <div className="flex items-center gap-2">
+      <div className="card relative p-6 space-y-3">
+        <ShareLinkButton
+          path={`/bets/${bet.id}`}
+          title={bet.title}
+          className="absolute right-3 top-3 h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+        />
+        <div className="flex items-center gap-2 pr-8">
           <TypeTag kind="sidebet" />
           <LiveBetStatusBadge id={bet.id} initialStatus={bet.status} />
           <FeeBadge feeBps={bet.feeBps} />

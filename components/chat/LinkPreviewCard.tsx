@@ -34,46 +34,22 @@ export function LinkPreviewCard({ url }: { url: string }) {
   if (isError) return null;
   if (isLoading) {
     return (
-      <div className="mt-2 h-[8.5rem] animate-pulse rounded-lg border border-border bg-muted/40" />
+      <div className="mt-2 h-[4.5rem] animate-pulse rounded-lg border border-border bg-muted/40" />
     );
   }
 
   const p = data?.preview;
   if (!p) return null;
 
-  const isVisualCard = p.kind === "bet" || p.kind === "market";
-
   return (
     <Link
       href={p.url}
-      className={cn(
-        "mt-2 overflow-hidden rounded-lg border border-border bg-muted/25 transition-colors hover:bg-muted/45",
-        isVisualCard ? "flex flex-col" : "flex",
-      )}
+      className="mt-2 flex overflow-hidden rounded-lg border border-border bg-muted/25 transition-colors hover:bg-muted/45"
     >
-      {isVisualCard ? (
-        <>
-          <div className="relative h-28 w-full shrink-0 border-b border-border bg-muted">
-            <BetThumbnail
-              imageUrl={p.imageUrl}
-              title={p.title}
-              variant="banner"
-              fallback
-              className="!h-full !w-full"
-            />
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-2">
-            <PreviewMeta preview={p} />
-          </div>
-        </>
-      ) : (
-        <>
-          <PreviewThumb preview={p} />
-          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-2">
-            <PreviewMeta preview={p} />
-          </div>
-        </>
-      )}
+      <PreviewThumb preview={p} />
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-2.5 py-2">
+        <PreviewMeta preview={p} />
+      </div>
     </Link>
   );
 }
@@ -105,13 +81,13 @@ function PreviewThumb({ preview: p }: { preview: LinkPreviewData }) {
   }
 
   return (
-    <div className="w-[4.5rem] shrink-0 p-1.5">
+    <div className="flex w-[4.5rem] shrink-0 items-center justify-center p-2">
       <BetThumbnail
         imageUrl={p.imageUrl}
         title={p.title}
         size="sm"
         fallback
-        className="!h-[3.75rem] !w-[3.75rem] rounded-lg"
+        className="!h-[3.75rem] !w-[3.75rem] rounded-xl"
       />
     </div>
   );

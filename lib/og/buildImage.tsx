@@ -85,16 +85,12 @@ function heroSrc(
     : absoluteUrl(preview.imageUrl);
 }
 
-function HeroImage({
+function SquareThumb({
   preview,
   thumbDataUrl,
-  height,
-  fontSize = 64,
 }: {
   preview: LinkPreviewData;
   thumbDataUrl?: string | null;
-  height: number;
-  fontSize?: number;
 }) {
   const src = heroSrc(preview, thumbDataUrl);
   if (src) {
@@ -103,9 +99,9 @@ function HeroImage({
       <img
         src={src}
         alt=""
-        width={1200}
-        height={height}
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        width={200}
+        height={200}
+        style={{ objectFit: "cover" }}
       />
     );
   }
@@ -118,41 +114,17 @@ function HeroImage({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: colorFromSeed(preview.title),
-        fontSize,
+        backgroundColor: colorFromSeed(
+          preview.kind === "profile"
+            ? (preview.username ?? preview.address ?? preview.title)
+            : preview.title,
+        ),
+        fontSize: 64,
         fontWeight: 700,
         color: "rgba(255,255,255,0.92)",
       }}
     >
       {initialsFor(preview)}
-    </div>
-  );
-}
-
-function OgHeader({ label }: { label: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        marginBottom: 32,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={absoluteUrl("/favicon.png")}
-          alt=""
-          width={40}
-          height={40}
-          style={{ borderRadius: 10 }}
-        />
-        <span style={{ fontSize: 28, fontWeight: 700, color: C.text }}>
-          sidebet.lol
-        </span>
-      </div>
-      <span style={{ fontSize: 22, color: C.muted }}>{label}</span>
     </div>
   );
 }
@@ -183,36 +155,38 @@ function renderBetMarketOgCard(
           style={{
             display: "flex",
             flex: 1,
-            flexDirection: "column",
+            alignItems: "center",
+            gap: 40,
             background: C.card,
             border: `2px solid ${C.border}`,
             borderRadius: 24,
-            overflow: "hidden",
+            padding: 40,
           }}
         >
           <div
             style={{
-              width: "100%",
-              height: 300,
-              display: "flex",
+              width: 200,
+              height: 200,
+              borderRadius: 20,
               overflow: "hidden",
-              borderBottom: `2px solid ${C.border}`,
+              border: `2px solid ${C.border}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#21262d",
+              flexShrink: 0,
             }}
           >
-            <HeroImage
-              preview={preview}
-              thumbDataUrl={options.thumbDataUrl}
-              height={300}
-              fontSize={80}
-            />
+            <SquareThumb preview={preview} thumbDataUrl={options.thumbDataUrl} />
           </div>
 
           <div
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: 12,
-              padding: "28px 36px 32px",
+              gap: 16,
+              flex: 1,
+              minWidth: 0,
             }}
           >
             <span
@@ -238,44 +212,30 @@ function renderBetMarketOgCard(
   );
 }
 
-function ProfileThumb({
-  preview,
-  thumbDataUrl,
-}: {
-  preview: LinkPreviewData;
-  thumbDataUrl?: string | null;
-}) {
-  const src = heroSrc(preview, thumbDataUrl);
-  if (src) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt=""
-        width={200}
-        height={200}
-        style={{ objectFit: "cover" }}
-      />
-    );
-  }
-
+function OgHeader({ label }: { label: string }) {
   return (
     <div
       style={{
-        width: "100%",
-        height: "100%",
         display: "flex",
         alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: colorFromSeed(
-          preview.username ?? preview.address ?? preview.title,
-        ),
-        fontSize: 64,
-        fontWeight: 700,
-        color: "rgba(255,255,255,0.92)",
+        justifyContent: "space-between",
+        marginBottom: 32,
       }}
     >
-      {initialsFor(preview)}
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={absoluteUrl("/favicon.png")}
+          alt=""
+          width={40}
+          height={40}
+          style={{ borderRadius: 10 }}
+        />
+        <span style={{ fontSize: 28, fontWeight: 700, color: C.text }}>
+          sidebet.lol
+        </span>
+      </div>
+      <span style={{ fontSize: 22, color: C.muted }}>{label}</span>
     </div>
   );
 }
@@ -335,7 +295,7 @@ function renderProfileOgCard(
               flexShrink: 0,
             }}
           >
-            <ProfileThumb preview={preview} thumbDataUrl={options.thumbDataUrl} />
+            <SquareThumb preview={preview} thumbDataUrl={options.thumbDataUrl} />
           </div>
 
           <div
