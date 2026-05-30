@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 
 import { collectDirectoryUsers } from "@/lib/directory";
+import { PUBLIC_BET_FEED_FILTER } from "@/lib/betVisibility";
 import { prisma } from "@/lib/db";
 import { jsonOk } from "@/lib/serialize";
 
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
   const [bets, markets, profileUsers] = await Promise.all([
     prisma.bet.findMany({
       where: {
+        ...PUBLIC_BET_FEED_FILTER,
         ...(chainId ? { chainId } : {}),
         OR: [{ title: { contains: q } }, { description: { contains: q } }],
       },

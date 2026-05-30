@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
 import { syncBetsOnchain } from "@/lib/betSync";
+import { PUBLIC_BET_FEED_FILTER } from "@/lib/betVisibility";
 import { prisma } from "@/lib/db";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -226,6 +227,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!q.who || !isAddress(q.who)) {
+    where.hiddenFromFeed = PUBLIC_BET_FEED_FILTER.hiddenFromFeed;
     // Public feed: hide open offers that expired without a taker. New bets carry
     // a 1-week acceptDeadline; older ones fall back to created + 1 week. Personal
     // ("who") views still show them so the proposer can reclaim their stake.

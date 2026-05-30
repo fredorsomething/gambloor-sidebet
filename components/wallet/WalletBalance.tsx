@@ -243,7 +243,7 @@ export function WalletBalance() {
           className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
         >
           <PieChart className="h-4 w-4" />
-          My positions
+          Positions
         </Link>
       </div>
     </>

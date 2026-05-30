@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
         winner: b.winner,
         winningLabel:
           b.winningOutcome != null ? (outcomes[b.winningOutcome] ?? null) : null,
+        hiddenFromFeed: b.hiddenFromFeed,
         createdAt: b.createdAt,
         resolution: {
           consensus: resolution.consensus,

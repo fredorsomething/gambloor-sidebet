@@ -285,6 +285,9 @@ model Bet {
   intendedAcceptor     String? // lowercased wallet that should take the bet
   escrowRevisionNeeded Boolean @default(false)
 
+  // Hidden from homepage feed and public search; direct /bets/[id] links still work.
+  hiddenFromFeed Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

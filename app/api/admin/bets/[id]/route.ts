@@ -23,6 +23,7 @@ const PatchSchema = z.object({
     .refine((u) => isAllowedImageUrl(u), "invalid image url")
     .nullable()
     .optional(),
+  hiddenFromFeed: z.boolean().optional(),
 });
 
 /** PATCH /api/admin/bets/[id] — edit a sidebet's off-chain display metadata. */
@@ -55,4 +56,38 @@ export async function PATCH(
 
   const updated = await prisma.bet.update({ where: { id }, data: fields });
   return jsonOk({ bet: updated });
+}
+
+const DeleteSchema = z.object({
+  admin: z.string().refine(isAddress, "bad admin"),
+});
+
+/** DELETE /api/admin/bets/[id] — hide sidebet from the public homepage feed. */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  const id = Number(params.id);
+  if (!Number.isFinite(id) || id <= 0) return jsonErr("bad id", 400);
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonErr("invalid json");
+  }
+  const parsed = DeleteSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonErr(parsed.error.errors.map((e) => e.message).join(", "));
+  }
+
+  const gate = await requireAdmin(req, parsed.data.admin);
+  if (!gate.ok) return jsonErr(gate.error, gate.status);
+
+  const bet = await prisma.bet.update({
+    where: { id },
+    data: { hiddenFromFeed: true },
+  });
+
+  return jsonOk({ bet });
 }

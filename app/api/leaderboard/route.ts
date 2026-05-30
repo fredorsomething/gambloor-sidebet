@@ -2,6 +2,11 @@ import { NextRequest } from "next/server";
 import { getAddress } from "viem";
 
 import { prisma } from "@/lib/db";
+import {
+  parseLeaderboardPeriod,
+  periodStartUtc,
+  type LeaderboardPeriod,
+} from "@/lib/leaderboard";
 import { getRepScores } from "@/lib/rep";
 import { jsonOk } from "@/lib/serialize";
 import { computeLeaderboard, type StatBet } from "@/lib/stats";
@@ -14,9 +19,18 @@ export async function GET(req: NextRequest) {
     100,
     Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 50),
   );
+  const period: LeaderboardPeriod = parseLeaderboardPeriod(
+    req.nextUrl.searchParams.get("period"),
+  );
+  const since = periodStartUtc(period);
 
   const bets = await prisma.bet.findMany({
-    where: chainId ? { chainId } : undefined,
+    where: {
+      ...(chainId ? { chainId } : {}),
+      ...(since
+        ? { status: "Settled", updatedAt: { gte: since } }
+        : {}),
+    },
     select: {
       proposer: true,
       acceptor: true,
@@ -50,5 +64,5 @@ export async function GET(req: NextRequest) {
     rep: repScores.get(e.address.toLowerCase()) ?? 0,
   }));
 
-  return jsonOk({ items: ranked });
+  return jsonOk({ items: ranked, period });
 }

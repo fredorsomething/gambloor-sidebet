@@ -60,6 +60,7 @@ type AdminBetRow = {
   winningOutcome: number | null;
   winner: string | null;
   winningLabel: string | null;
+  hiddenFromFeed: boolean;
   resolution: {
     consensus: "none" | "partial" | "unanimous" | "disputed";
     agreedOutcome: number | null;
@@ -396,6 +397,19 @@ export function AdminDashboard({ address }: { address: string }) {
             await adminPatch(`/api/admin/bets/${id}`, data);
             push({ title: "Sidebet saved", variant: "success" });
             void qc.invalidateQueries({ queryKey: ["admin", "bets", address] });
+          }}
+          onHide={async (id) => {
+            if (!confirm("Hide this sidebet from the homepage feed?")) return;
+            await adminDelete(`/api/admin/bets/${id}`, {});
+            push({ title: "Sidebet hidden from feed", variant: "success" });
+            void qc.invalidateQueries({ queryKey: ["admin", "bets", address] });
+            void qc.invalidateQueries({ queryKey: ["feed"] });
+          }}
+          onRestore={async (id) => {
+            await adminPatch(`/api/admin/bets/${id}`, { hiddenFromFeed: false });
+            push({ title: "Sidebet restored to feed", variant: "success" });
+            void qc.invalidateQueries({ queryKey: ["admin", "bets", address] });
+            void qc.invalidateQueries({ queryKey: ["feed"] });
           }}
         />
       )}
@@ -861,12 +875,16 @@ function BetsPanel({
   onReview,
   reviewing,
   onSave,
+  onHide,
+  onRestore,
 }: {
   bets: AdminBetRow[];
   loading: boolean;
   onReview: (proposalId: number, action: "approve" | "reject") => void;
   reviewing: boolean;
   onSave: (id: number, data: Record<string, unknown>) => Promise<void>;
+  onHide: (id: number) => Promise<void>;
+  onRestore: (id: number) => Promise<void>;
 }) {
   const [editId, setEditId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
@@ -875,6 +893,7 @@ function BetsPanel({
   const pendingCount = bets.filter(
     (b) => b.resolution.consensus === "disputed",
   ).length;
+  const hiddenCount = bets.filter((b) => b.hiddenFromFeed).length;
 
   if (loading) {
     return <div className="card h-24 animate-pulse bg-muted/40" />;
@@ -897,6 +916,14 @@ function BetsPanel({
         )}
         . When both bettors disagree, verify one outcome here so the settler can
         pay out on-chain. Unanimous agreements settle without admin review.
+        {hiddenCount > 0 && (
+          <>
+            {" "}
+            <span className="font-semibold text-muted-foreground">
+              {hiddenCount} hidden from feed.
+            </span>
+          </>
+        )}
       </p>
 
       {bets.map((b) => (
@@ -910,6 +937,11 @@ function BetsPanel({
             >
               {b.status}
             </span>
+            {b.hiddenFromFeed && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold uppercase text-muted-foreground">
+                Hidden from feed
+              </span>
+            )}
             <Link
               href={`/bets/${b.id}`}
               className="min-w-0 flex-1 truncate font-medium hover:text-primary"
@@ -1010,17 +1042,38 @@ function BetsPanel({
               </div>
             </div>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setEditId(b.id);
-                setTitle(b.title);
-                setDescription(b.description);
-              }}
-            >
-              Edit details
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditId(b.id);
+                  setTitle(b.title);
+                  setDescription(b.description);
+                }}
+              >
+                Edit details
+              </Button>
+              {b.hiddenFromFeed ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onRestore(b.id)}
+                  className="gap-1"
+                >
+                  <Check className="h-3.5 w-3.5" /> Show on feed
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => void onHide(b.id)}
+                  className="gap-1"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Hide from feed
+                </Button>
+              )}
+            </div>
           )}
         </div>
       ))}
