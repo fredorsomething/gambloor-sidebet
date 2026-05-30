@@ -1,6 +1,8 @@
 import { CreateChooser } from "@/components/CreateChooser";
 import { getPlatformSettings } from "@/lib/platformSettings";
 
+export const dynamic = "force-dynamic";
+
 export default async function CreatePage({
   searchParams,
 }: {
