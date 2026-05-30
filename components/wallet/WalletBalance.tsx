@@ -128,7 +128,7 @@ export function WalletBalance() {
 
       <div className="p-3">
         <Link
-          href="/portfolio"
+          href="/me"
           onClick={() => setMenuOpen(false)}
           className="-mx-1 mb-3 flex items-center justify-between rounded-lg px-1 py-1.5 transition-colors hover:bg-muted/60"
         >
@@ -238,12 +238,12 @@ export function WalletBalance() {
           Swap
         </Link>
         <Link
-          href="/portfolio"
+          href="/me"
           onClick={() => setMenuOpen(false)}
           className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
         >
           <PieChart className="h-4 w-4" />
-          Portfolio
+          My positions
         </Link>
       </div>
     </>

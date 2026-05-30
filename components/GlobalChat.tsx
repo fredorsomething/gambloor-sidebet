@@ -20,6 +20,7 @@ import { RichMessageBody } from "@/components/chat/RichMessageBody";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { lockBodyScroll, resetBodyScrollLock } from "@/lib/bodyScrollLock";
+import { isTipChatMessage, tipChatMessageText } from "@/lib/chatTip";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
 
@@ -532,7 +533,14 @@ function ChatRow({ m }: { m: ChatMessage }) {
             loading="lazy"
           />
         )}
-        {m.body.trim() && <RichMessageBody body={m.body} />}
+        {m.body.trim() &&
+          (isTipChatMessage(m.body) ? (
+            <p className="mt-0.5 text-sm font-bold text-[#ff4dbd]">
+              {tipChatMessageText(m.body)}
+            </p>
+          ) : (
+            <RichMessageBody body={m.body} />
+          ))}
       </div>
     </div>
   );

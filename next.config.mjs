@@ -1,6 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  async redirects() {
+    return [
+      {
+        source: "/portfolio",
+        destination: "/me",
+        permanent: true,
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     // pino-pretty and friends are server-side-only deps that some wallet
     // libraries try to `require` even when bundled for the browser.

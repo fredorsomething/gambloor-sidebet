@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 
 import { BetList } from "@/components/BetList";
+import { PortfolioSection } from "@/components/portfolio/PortfolioSection";
 import { Button } from "@/components/ui/button";
 import { ConnectButton } from "@/components/ConnectButton";
 
@@ -17,8 +18,7 @@ export default function MyBetsPage() {
       <div className="card p-8 text-center space-y-4">
         <h1 className="text-xl font-semibold">My bets</h1>
         <p className="text-sm text-muted-foreground">
-          Sign in to see bets you proposed, accepted, or were named as settler
-          for.
+          Sign in to see your portfolio and bets you proposed or accepted.
         </p>
         <div className="flex justify-center">
           <ConnectButton />
@@ -28,8 +28,10 @@ export default function MyBetsPage() {
   }
 
   return (
-    <div className="space-y-10">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto max-w-3xl space-y-10">
+      <PortfolioSection address={address} />
+
+      <div className="flex flex-wrap items-end justify-between gap-3 border-t border-border pt-8">
         <div>
           <h1 className="text-2xl font-semibold">My bets</h1>
           <p className="text-sm text-muted-foreground">

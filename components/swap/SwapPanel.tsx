@@ -22,9 +22,9 @@ import { polygon } from "wagmi/chains";
 import { Button } from "@/components/ui/button";
 import { TokenIcon } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
+import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { cn } from "@/lib/utils";
 import { ERC20_ABI } from "@/lib/abi";
-import { explorerTx } from "@/lib/chains";
 import { formatCryptoError } from "@/lib/cryptoErrors";
 import { jsonFetch } from "@/lib/fetcher";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
@@ -80,6 +80,7 @@ export function SwapPanel() {
   const [priceLoading, setPriceLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [txHash, setTxHash] = useState<Hex | undefined>();
+  const [confirmed, setConfirmed] = useState(false);
 
   const sellAsset = getSwapAsset(sellSymbol)!;
   const buyAsset = getSwapAsset(buySymbol)!;
@@ -160,13 +161,44 @@ export function SwapPanel() {
   }, [fetchPrice]);
 
   useEffect(() => {
-    if (waitTx.isSuccess) {
-      push({ title: "Transaction confirmed", variant: "success" });
-      setAmount("");
-      setPrice(null);
-      setTxHash(undefined);
+    if (waitTx.isSuccess && txHash && !confirmed) {
+      setConfirmed(true);
     }
-  }, [waitTx.isSuccess, push]);
+  }, [waitTx.isSuccess, txHash, confirmed]);
+
+  const buyDisplay = wrapMode
+    ? amount
+    : price
+      ? formatUnits(BigInt(price.buyAmount), buyAsset.decimals)
+      : null;
+
+  function closeSuccess() {
+    setAmount("");
+    setPrice(null);
+    setTxHash(undefined);
+    setConfirmed(false);
+  }
+
+  if (confirmed && txHash) {
+    const successTitle = wrapMode
+      ? wrapping
+        ? "Wrap complete!"
+        : "Unwrap complete!"
+      : "Swap complete!";
+    const successDesc = wrapMode
+      ? `${amount} ${sellSymbol} → ${buySymbol}`
+      : `${amount} ${sellSymbol} → ${buyDisplay ?? buySymbol}`;
+
+    return (
+      <TxSuccessDialog
+        title={successTitle}
+        description={successDesc}
+        txHash={txHash}
+        chainId={polygon.id}
+        onClose={closeSuccess}
+      />
+    );
+  }
 
   async function ensureApproval(
     token: Address,
@@ -295,12 +327,6 @@ export function SwapPanel() {
     }
   }
 
-  const buyDisplay = wrapMode
-    ? amount
-    : price
-      ? formatUnits(BigInt(price.buyAmount), buyAsset.decimals)
-      : null;
-
   const pending = submitting || waitTx.isLoading;
 
   let actionLabel = "Swap";
@@ -422,18 +448,13 @@ export function SwapPanel() {
             </span>
           )}
         </Button>
-      </div>
 
-      {txHash && (
-        <a
-          href={explorerTx(polygon.id, txHash)}
-          target="_blank"
-          rel="noreferrer"
-          className="block border-t border-border py-3 text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
-        >
-          View transaction
-        </a>
-      )}
+        {txHash && waitTx.isLoading && (
+          <p className="border-t border-border py-3 text-center text-xs text-muted-foreground">
+            Waiting for confirmation…
+          </p>
+        )}
+      </div>
     </div>
   );
 }

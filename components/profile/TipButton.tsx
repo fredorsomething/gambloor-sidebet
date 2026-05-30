@@ -15,10 +15,12 @@ import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
+import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
-import { getTokens, explorerTx } from "@/lib/chains";
-import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
+import { getTokens } from "@/lib/chains";
 import { formatCryptoError } from "@/lib/cryptoErrors";
+import { jsonFetch } from "@/lib/fetcher";
+import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { formatToken, shortAddr } from "@/lib/utils";
 
@@ -53,7 +55,7 @@ function TipModal({
   username?: string | null;
   onClose: () => void;
 }) {
-  const { authenticated, login } = usePrivy();
+  const { authenticated, login, getAccessToken } = usePrivy();
   const { address: from } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
@@ -89,6 +91,7 @@ function TipModal({
   const { sendTx } = useTxSender();
   const [txHash, setTxHash] = useState<Hex>();
   const [sending, setSending] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const wait = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
@@ -118,12 +121,56 @@ function TipModal({
     !wait.isLoading;
 
   useEffect(() => {
-    if (wait.isSuccess) {
-      push({ title: "Tip sent", description: `Sent ${amount} ${symbol}`, variant: "success" });
-      onClose();
+    if (!wait.isSuccess || confirmed || !txHash) return;
+
+    async function onConfirmed() {
+      setConfirmed(true);
+      try {
+        const token = await getAccessToken();
+        if (token) {
+          await jsonFetch("/api/chat/tip", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              from,
+              to,
+              amount: amount.trim(),
+              symbol,
+            }),
+          });
+        }
+      } catch {
+        /* chat announce is best-effort */
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wait.isSuccess]);
+
+    void onConfirmed();
+  }, [
+    wait.isSuccess,
+    confirmed,
+    txHash,
+    getAccessToken,
+    from,
+    to,
+    amount,
+    symbol,
+  ]);
+
+  function closeAll() {
+    onClose();
+  }
+
+  if (confirmed && txHash) {
+    return (
+      <TxSuccessDialog
+        title="Tip sent!"
+        description={`You tipped ${username ? `@${username}` : shortAddr(to)} ${amount} ${symbol}.`}
+        txHash={txHash}
+        chainId={polygon.id}
+        onClose={closeAll}
+      />
+    );
+  }
 
   async function onSend() {
     if (!authenticated) {
@@ -255,15 +302,10 @@ function TipModal({
           </Button>
         )}
 
-        {txHash && (
-          <a
-            href={explorerTx(polygon.id, txHash)}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 block text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
-          >
-            View transaction
-          </a>
+        {txHash && wait.isLoading && (
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            Waiting for confirmation…
+          </p>
         )}
       </div>
     </div>

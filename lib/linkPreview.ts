@@ -72,7 +72,7 @@ export function extractUrls(text: string): string[] {
   for (const m of text.match(httpRe) ?? []) {
     found.add(normalizeChatUrl(m));
   }
-  const pathRe = /(?:^|\s)(\/(?:bets|u|markets|leaderboard|users|create|portfolio|swap|how-it-works)[^\s<>"']*)/gi;
+  const pathRe = /(?:^|\s)(\/(?:bets|u|markets|leaderboard|users|create|me|swap|how-it-works)[^\s<>"']*)/gi;
   for (const m of text.match(pathRe) ?? []) {
     const path = normalizePreviewUrl(m.trim());
     if (path.startsWith("/")) found.add(path);
@@ -127,7 +127,7 @@ const SITE_PAGE_LABELS: Record<string, string> = {
   "/leaderboard": "Leaderboard",
   "/users": "Directory",
   "/create": "Create a bet",
-  "/portfolio": "Portfolio",
+  "/me": "My positions",
   "/swap": "Swap tokens",
   "/how-it-works": "How it works",
   "/messages": "Messages",
@@ -348,7 +348,7 @@ function formatJoinDate(d: Date): string {
 /** Split message into alternating text / url segments for rendering. */
 export function splitMessageWithUrls(text: string): Array<{ type: "text" | "url"; value: string }> {
   if (!text.trim()) return [];
-  const re = /(https?:\/\/[^\s<>"']+|\/(?:bets|u|markets|leaderboard|users|create|portfolio|swap|how-it-works)[^\s<>"']*)/gi;
+  const re = /(https?:\/\/[^\s<>"']+|\/(?:bets|u|markets|leaderboard|users|create|me|swap|how-it-works)[^\s<>"']*)/gi;
   const parts: Array<{ type: "text" | "url"; value: string }> = [];
   let last = 0;
   for (const m of text.matchAll(re)) {

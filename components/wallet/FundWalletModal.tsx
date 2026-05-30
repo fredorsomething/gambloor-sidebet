@@ -23,9 +23,9 @@ import { polygon } from "wagmi/chains";
 import { Button } from "@/components/ui/button";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
+import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
 import {
-  explorerTx,
   getMarketCollateralToken,
   getTokenBySymbol,
   getTokens,
@@ -377,6 +377,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const { sendTx } = useTxSender();
   const [txHash, setTxHash] = useState<Hex>();
   const [sending, setSending] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const wait = useWaitForTransactionReceipt({ hash: txHash });
 
   const toValid = isAddress(to.trim());
@@ -399,25 +400,30 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
     !wait.isLoading;
 
   useEffect(() => {
-    if (wait.isSuccess) {
-      push({
-        title: "Withdrawal sent",
-        description: `Sent ${amount} ${symbol}`,
-        variant: "success",
-      });
-      if (from) {
-        void logWalletNotification(
-          getAccessToken,
-          from,
-          "withdrawal",
-          "Withdrawal sent",
-          `You withdrew ${amount} ${symbol}.`,
-        );
-      }
-      onClose();
+    if (!wait.isSuccess || confirmed) return;
+    setConfirmed(true);
+    if (from) {
+      void logWalletNotification(
+        getAccessToken,
+        from,
+        "withdrawal",
+        "Withdrawal sent",
+        `You withdrew ${amount} ${symbol}.`,
+      );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wait.isSuccess]);
+  }, [wait.isSuccess, confirmed, from, getAccessToken, amount, symbol]);
+
+  if (confirmed && txHash) {
+    return (
+      <TxSuccessDialog
+        title="Withdrawal sent!"
+        description={`Sent ${amount} ${symbol} to ${shortAddr(to.trim())}.`}
+        txHash={txHash}
+        chainId={polygon.id}
+        onClose={onClose}
+      />
+    );
+  }
 
   function setMax() {
     if (isPol) {
@@ -570,15 +576,10 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
               : "Enter address and amount"}
         </Button>
 
-        {txHash && (
-          <a
-            href={explorerTx(polygon.id, txHash)}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 block text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
-          >
-            View transaction
-          </a>
+        {txHash && wait.isLoading && (
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            Waiting for confirmation…
+          </p>
         )}
       </div>
     </div>
