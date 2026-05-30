@@ -1,8 +1,13 @@
 "use client";
 
-import { useFundWallet as usePrivyFundWallet, usePrivy } from "@privy-io/react-auth";
+import {
+  getEmbeddedConnectedWallet,
+  useFundWallet as usePrivyFundWallet,
+  usePrivy,
+  useWallets,
+} from "@privy-io/react-auth";
 import Link from "next/link";
-import { ArrowDownUp, ArrowUpRight, Check, Copy, CreditCard, Fuel, X } from "lucide-react";
+import { ArrowDownUp, ArrowUpRight, Check, Copy, CreditCard, X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -21,13 +26,11 @@ import {
 import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
-import { TokenSymbol } from "@/components/ui/TokenIcon";
+import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
 import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
 import {
-  getMarketCollateralToken,
-  getTokenBySymbol,
   getTokens,
   MARKET_COLLATERAL_SYMBOL,
 } from "@/lib/chains";
@@ -45,7 +48,6 @@ type WalletFundsCtx = {
   open: () => void;
   openFund: () => void;
   openWithdraw: () => void;
-  fundGas: () => Promise<void>;
   close: () => void;
   isOpen: boolean;
 };
@@ -63,36 +65,36 @@ export function useWalletFunds() {
 /** @deprecated use useWalletFunds */
 export const useFundWallet = useWalletFunds;
 
+function useIsPrivyEmbeddedWallet(): boolean {
+  const { address, connector } = useAccount();
+  const { wallets } = useWallets();
+  return useMemo(() => {
+    if (!address) return false;
+    const id = connector?.id?.toLowerCase() ?? "";
+    if (id === "io.privy.wallet" || id.startsWith("io.privy.wallet.")) {
+      return true;
+    }
+    const embedded = getEmbeddedConnectedWallet(wallets);
+    if (embedded?.address?.toLowerCase() === address.toLowerCase()) {
+      return true;
+    }
+    const active = wallets.find(
+      (w) => w.address?.toLowerCase() === address.toLowerCase(),
+    );
+    return (
+      active?.walletClientType === "privy" ||
+      active?.walletClientType === "privy-v2" ||
+      active?.connectorType === "embedded"
+    );
+  }, [address, connector?.id, wallets]);
+}
+
 export function FundWalletProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<ModalMode>(null);
-  const { address } = useAccount();
-  const { fundWallet: privyFundWallet } = usePrivyFundWallet();
-  const { push } = useToast();
 
   const close = useCallback(() => setMode(null), []);
   const openFund = useCallback(() => setMode("fund"), []);
   const openWithdraw = useCallback(() => setMode("withdraw"), []);
-
-  const fundGas = useCallback(async () => {
-    if (!address) return;
-    try {
-      await privyFundWallet({
-        address,
-        options: {
-          chain: polygon,
-          asset: "native-currency",
-          amount: "1",
-        },
-      });
-    } catch (err) {
-      const raw = (err as Error)?.message ?? "";
-      if (raw.toLowerCase().includes("closed")) return;
-      const { title, description } = formatCryptoError(err, {
-        fallbackTitle: "Couldn't open funding",
-      });
-      push({ title, description, variant: "danger" });
-    }
-  }, [address, privyFundWallet, push]);
 
   useEffect(() => {
     if (!mode) return;
@@ -106,11 +108,10 @@ export function FundWalletProvider({ children }: { children: React.ReactNode }) 
       open: openFund,
       openFund,
       openWithdraw,
-      fundGas,
       close,
       isOpen: mode !== null,
     }),
-    [openFund, openWithdraw, fundGas, close, mode],
+    [openFund, openWithdraw, close, mode],
   );
 
   return (
@@ -122,81 +123,119 @@ export function FundWalletProvider({ children }: { children: React.ReactNode }) 
   );
 }
 
+const DEPOSIT_TOKENS = () => {
+  const stables = getTokens().map((t) => ({
+    symbol: t.symbol,
+    decimals: t.decimals,
+    address: t.address as Address,
+  }));
+  return [...stables, { symbol: "POL", decimals: 18, address: undefined as Address | undefined }];
+};
+
+function DepositTokenTile({
+  symbol,
+  balance,
+  decimals,
+  onCopy,
+}: {
+  symbol: string;
+  balance: bigint;
+  decimals: number;
+  onCopy: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-muted/20 p-3 text-center transition-colors hover:border-primary/30 hover:bg-muted/40"
+    >
+      <TokenIcon symbol={symbol} size={28} />
+      <span className="text-sm font-semibold">{symbol}</span>
+      <span className="font-mono text-xs tabular-nums text-muted-foreground">
+        {formatToken(balance, decimals, 4)}
+      </span>
+    </button>
+  );
+}
+
 function FundWalletModal({ onClose }: { onClose: () => void }) {
   const { address } = useAccount();
   const { push } = useToast();
   const { getAccessToken } = usePrivy();
   const { fundWallet: privyFundWallet } = usePrivyFundWallet();
-  const { data: balance } = useBalance({
+  const isPrivyEmbedded = useIsPrivyEmbeddedWallet();
+  const tokens = useMemo(() => getTokens(), []);
+
+  const { data: stableBalances } = useReadContracts({
+    allowFailure: true,
+    contracts: address
+      ? tokens.map((t) => ({
+          address: t.address,
+          abi: ERC20_ABI,
+          functionName: "balanceOf" as const,
+          args: [address],
+          chainId: polygon.id,
+        }))
+      : [],
+    query: { enabled: !!address },
+  });
+
+  const { data: polBalance } = useBalance({
     address,
     chainId: polygon.id,
     query: { enabled: !!address },
   });
-  const nativeUsdc = getTokenBySymbol(polygon.id, "USDC")!;
-  const marketUsdc = getMarketCollateralToken();
-  const { data: stableBalances } = useReadContracts({
-    allowFailure: true,
-    contracts: address
-      ? [
-          {
-            address: nativeUsdc.address,
-            abi: ERC20_ABI,
-            functionName: "balanceOf",
-            args: [address],
-            chainId: polygon.id,
-          },
-          {
-            address: marketUsdc.address,
-            abi: ERC20_ABI,
-            functionName: "balanceOf",
-            args: [address],
-            chainId: polygon.id,
-          },
-        ]
-      : [],
-    query: { enabled: !!address },
-  });
-  const nativeUsdcBal =
-    (stableBalances?.[0]?.result as bigint | undefined) ?? 0n;
-  const usdceBal = (stableBalances?.[1]?.result as bigint | undefined) ?? 0n;
-  const [copied, setCopied] = useState(false);
-  const [pending, setPending] = useState<"usdc" | "pol" | null>(null);
 
-  const onCopy = useCallback(() => {
+  const [copied, setCopied] = useState(false);
+  const [onrampPending, setOnrampPending] = useState(false);
+
+  const balanceBySymbol = useMemo(() => {
+    const map = new Map<string, bigint>();
+    tokens.forEach((t, i) => {
+      map.set(t.symbol, (stableBalances?.[i]?.result as bigint | undefined) ?? 0n);
+    });
+    map.set("POL", polBalance?.value ?? 0n);
+    return map;
+  }, [tokens, stableBalances, polBalance?.value]);
+
+  const nativeUsdcBal = balanceBySymbol.get("USDC") ?? 0n;
+
+  const onCopyAddress = useCallback(() => {
     if (!address) return;
     navigator.clipboard?.writeText(address);
     setCopied(true);
+    push({ title: "Address copied", variant: "success" });
     setTimeout(() => setCopied(false), 1500);
-  }, [address]);
+  }, [address, push]);
 
-  async function onPrivyFund(asset: "USDC" | "native-currency", amount: string) {
+  async function onBuyWithCard() {
     if (!address) return;
-    setPending(asset === "USDC" ? "usdc" : "pol");
+    setOnrampPending(true);
     try {
       await privyFundWallet({
         address,
-        options: { chain: polygon, asset, amount },
+        options: {
+          chain: polygon,
+          defaultFundingMethod: "card",
+        },
       });
-      const label = asset === "USDC" ? "USDC" : "POL";
       void logWalletNotification(
         getAccessToken,
         address,
         "deposit",
         "Deposit started",
-        `You started a ${label} deposit via Privy. Funds may take a few minutes to arrive.`,
+        "You started a card deposit via Privy.",
       );
       push({
         title: "Funding started",
-        description: "Complete checkout in the Privy window. Funds may take a few minutes to arrive.",
+        description: "Complete checkout in the Privy window.",
         variant: "success",
       });
       onClose();
     } catch (err) {
       const raw = (err as Error)?.message ?? "";
       const lc = raw.toLowerCase();
-      const userClosed =
-        lc.includes("closed") || lc.includes("cancel") || lc.includes("exited");
-      if (!userClosed) {
+      if (!lc.includes("closed") && !lc.includes("cancel") && !lc.includes("exited")) {
         console.error("Privy fundWallet failed", err);
         const { title, description } = formatCryptoError(err, {
           fallbackTitle: "Couldn't start funding",
@@ -204,7 +243,7 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
         push({ title, description, variant: "danger" });
       }
     } finally {
-      setPending(null);
+      setOnrampPending(false);
     }
   }
 
@@ -226,54 +265,55 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <p className="mt-1 text-sm text-muted-foreground">
-          Prediction markets settle in{" "}
-          <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> (bridged).
-          Privy card checkout deposits native USDC — swap to{" "}
-          {MARKET_COLLATERAL_SYMBOL} before trading. POL covers gas.
-        </p>
-
-        {address && (
-          <div className="mt-3 rounded-xl border border-border bg-muted/20 p-3 text-xs">
-            <div className="flex justify-between gap-2">
-              <span className="text-muted-foreground">Native USDC</span>
-              <span className="font-mono tabular-nums">
-                {formatToken(nativeUsdcBal, nativeUsdc.decimals)}
+        {isPrivyEmbedded && (
+          <Button
+            className="mt-4 h-auto w-full justify-start gap-3 py-3"
+            onClick={() => void onBuyWithCard()}
+            disabled={!address || onrampPending}
+          >
+            <CreditCard className="h-5 w-5 shrink-0" />
+            <span className="text-left">
+              <span className="block font-semibold">
+                {onrampPending ? "Opening…" : "Buy with card"}
               </span>
-            </div>
-            <div className="mt-1 flex justify-between gap-2">
-              <span className="text-muted-foreground">
-                {MARKET_COLLATERAL_SYMBOL} (markets)
+              <span className="block text-xs font-normal opacity-80">
+                Debit, credit, Apple Pay & more
               </span>
-              <span className="font-mono tabular-nums text-primary">
-                {formatToken(usdceBal, marketUsdc.decimals)}
-              </span>
-            </div>
-            {nativeUsdcBal > usdceBal && nativeUsdcBal > 0n && (
-              <Link
-                href="/swap?sell=USDC&buy=USDC.e"
-                onClick={onClose}
-                className="mt-2 inline-flex items-center gap-1 font-medium text-primary hover:underline"
-              >
-                <ArrowDownUp className="h-3 w-3" />
-                Swap USDC → {MARKET_COLLATERAL_SYMBOL}
-              </Link>
-            )}
-          </div>
+            </span>
+          </Button>
         )}
 
-        <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
+        <div className={cn(isPrivyEmbedded && "mt-5")}>
+          <p className="text-sm font-medium">Deposit crypto on Polygon</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Send any token below to your wallet address.
+          </p>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {DEPOSIT_TOKENS().map((t) => (
+              <DepositTokenTile
+                key={t.symbol}
+                symbol={t.symbol}
+                balance={balanceBySymbol.get(t.symbol) ?? 0n}
+                decimals={t.decimals}
+                onCopy={onCopyAddress}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3">
           <div className="text-xs font-medium text-muted-foreground">
             Your wallet address
           </div>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1.5 flex items-center gap-2">
             <code className="flex-1 truncate font-mono text-sm">
               {address ? shortAddr(address) : "—"}
             </code>
             <button
-              onClick={onCopy}
+              onClick={onCopyAddress}
               disabled={!address}
-              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
             >
               {copied ? (
                 <Check className="h-3.5 w-3.5 text-success" />
@@ -283,54 +323,18 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
               {copied ? "Copied" : "Copy"}
             </button>
           </div>
-          <div className="mt-3 text-xs text-muted-foreground">
-            POL balance:{" "}
-            <span className="font-mono">
-              {balance ? `${Number(balance.formatted).toFixed(4)} POL` : "—"}
-            </span>
-          </div>
         </div>
 
-        <div className="mt-4 space-y-2">
-          <Button
-            className="w-full justify-start gap-3"
-            onClick={() => onPrivyFund("USDC", "25")}
-            disabled={!address || pending !== null}
+        {nativeUsdcBal > 0n && (
+          <Link
+            href="/swap?sell=USDC&buy=USDC.e"
+            onClick={onClose}
+            className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
           >
-            <CreditCard className="h-4 w-4 shrink-0" />
-            <span className="text-left">
-              <span className="block font-semibold">Buy / deposit USDC (native)</span>
-              <span className="block text-xs font-normal opacity-80">
-                Card or transfer — then swap to {MARKET_COLLATERAL_SYMBOL} for
-                markets
-              </span>
-            </span>
-          </Button>
-
-          <Button
-            variant="outline"
-            className="w-full justify-start gap-3"
-            onClick={() => onPrivyFund("native-currency", "1")}
-            disabled={!address || pending !== null}
-          >
-            <Fuel className="h-4 w-4 shrink-0" />
-            <span className="text-left">
-              <span className="block font-semibold">
-                {pending === "pol" ? "Opening…" : "Top up POL (gas)"}
-              </span>
-              <span className="block text-xs font-normal opacity-80">
-                Recommended ~1 POL for many transactions
-              </span>
-            </span>
-          </Button>
-        </div>
-
-        <p className="mt-4 text-xs text-muted-foreground">
-          Or send {MARKET_COLLATERAL_SYMBOL} (contract{" "}
-          <span className="font-mono">{shortAddr(marketUsdc.address)}</span>) or
-          POL directly to your address. Use the swap page to convert native USDC
-          ↔ {MARKET_COLLATERAL_SYMBOL}.
-        </p>
+            <ArrowDownUp className="h-3 w-3" />
+            Swap USDC → {MARKET_COLLATERAL_SYMBOL}
+          </Link>
+        )}
       </div>
     </div>
   );
@@ -427,7 +431,6 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
 
   function setMax() {
     if (isPol) {
-      // Leave a little POL for gas if withdrawing native.
       const reserve = parseUnits("0.01", 18);
       const max = balance > reserve ? balance - reserve : 0n;
       setAmount(formatToken(max, decimals, 6));
@@ -441,8 +444,6 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
     const dest = to.trim() as Address;
     setSending(true);
     try {
-      // Make sure the (embedded) wallet is on Polygon before sending, otherwise
-      // the transfer targets the wrong network and silently fails.
       await ensurePolygon();
       let hash: Hex;
       if (isPol) {
@@ -490,8 +491,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          Send funds from your wallet to an external address on Polygon. You&apos;ll
-          confirm the transaction with Privy.
+          Send from your wallet to an external Polygon address.
         </p>
 
         <div className="mt-5 flex gap-2">
@@ -501,13 +501,14 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
               type="button"
               onClick={() => setSymbol(o.symbol)}
               className={cn(
-                "flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                "flex flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-sm font-medium transition-colors",
                 symbol === o.symbol
                   ? "border-primary bg-primary/10 text-foreground"
                   : "border-border text-muted-foreground hover:bg-muted/60",
               )}
             >
-              <TokenSymbol symbol={o.symbol} />
+              <TokenIcon symbol={o.symbol} size={20} />
+              {o.symbol}
             </button>
           ))}
         </div>
@@ -560,11 +561,6 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
           {overBalance && (
             <p className="mt-1 text-xs text-danger">Amount exceeds your balance.</p>
           )}
-          {!isPol && balance > 0n && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              ERC-20 transfers require a small amount of POL for gas.
-            </p>
-          )}
         </div>
 
         <Button className="mt-5 w-full gap-2" onClick={onSend} disabled={!canSend}>
@@ -589,7 +585,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
 /** Slim inline prompt shown on tx pages when the wallet has no POL for gas. */
 export function LowGasBanner({ className }: { className?: string }) {
   const { address, isConnected } = useAccount();
-  const { fundGas } = useWalletFunds();
+  const { openFund } = useWalletFunds();
   const { data: balance } = useBalance({
     address,
     chainId: polygon.id,
@@ -607,14 +603,13 @@ export function LowGasBanner({ className }: { className?: string }) {
       )}
     >
       <div>
-        <div className="font-medium">No POL for gas</div>
+        <div className="font-medium">Need POL for gas</div>
         <p className="text-muted-foreground">
-          On-chain actions need a little POL for gas. Top up via Privy to
-          continue.
+          Add funds to your wallet to continue.
         </p>
       </div>
-      <Button size="sm" onClick={() => void fundGas()}>
-        Top up gas
+      <Button size="sm" onClick={openFund}>
+        Add funds
       </Button>
     </div>
   );

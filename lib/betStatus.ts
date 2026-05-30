@@ -89,3 +89,13 @@ export function betShowMatchup(
 ): boolean {
   return betHasAcceptor(bet, onchain);
 }
+
+/** Open offer with no taker yet — show proposer vs empty acceptor slot. */
+export function betShowOpenMatchup(
+  bet: BetRow,
+  onchain?: GetBetResponse["onchain"],
+): boolean {
+  if (betEscrowRevisionPending(bet)) return false;
+  const status = resolveBetStatus(bet, onchain);
+  return status === "Open" && !betHasAcceptor(bet, onchain);
+}

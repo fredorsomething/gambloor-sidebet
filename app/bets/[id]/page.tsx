@@ -23,7 +23,7 @@ import {
   fromNowUnix,
   shortAddr,
 } from "@/lib/utils";
-import { betShowMatchup } from "@/lib/betStatus";
+import { betShowMatchup, betShowOpenMatchup } from "@/lib/betStatus";
 import type { GetBetResponse } from "@/lib/types";
 import { buildMetadataForPath } from "@/lib/og/metadata";
 
@@ -66,6 +66,8 @@ export default async function BetDetailPage({
     ? Math.floor(new Date(bet.estimatedEndDate).getTime() / 1000)
     : 0;
   const showMatchup = betShowMatchup(bet);
+  const showOpenMatchup = betShowOpenMatchup(bet);
+  const showBetLayout = showMatchup || showOpenMatchup;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -110,7 +112,7 @@ export default async function BetDetailPage({
           </div>
         </div>
 
-        {!showMatchup && outcomes.length > 0 && (
+        {!showBetLayout && outcomes.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
             {outcomes.map((o, i) => (
               <span
@@ -131,7 +133,7 @@ export default async function BetDetailPage({
           </div>
         )}
 
-        {!showMatchup && (
+        {!showBetLayout && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-2">
               <Stat

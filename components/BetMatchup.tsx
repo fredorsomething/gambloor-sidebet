@@ -1,12 +1,20 @@
 "use client";
 
+import { User } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useAccount } from "wagmi";
 
 import { Identity } from "@/components/profile/Identity";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
-import { betAcceptor, betDetailPollInterval, betShowMatchup, resolveBetStatus } from "@/lib/betStatus";
+import {
+  betAcceptor,
+  betDetailPollInterval,
+  betShowMatchup,
+  betShowOpenMatchup,
+  resolveBetStatus,
+} from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
-import { formatTimestamp, formatToken, fromNowUnix } from "@/lib/utils";
+import { cn, formatTimestamp, formatToken, fromNowUnix } from "@/lib/utils";
 import type { GetBetResponse } from "@/lib/types";
 
 function outcomeTone(
@@ -67,9 +75,10 @@ function Side({
 }) {
   return (
     <div
-      className={`flex min-w-0 flex-1 flex-col gap-2 ${
-        align === "end" ? "items-end text-right" : "items-start"
-      }`}
+      className={cn(
+        "flex min-w-0 flex-1 flex-col gap-2",
+        align === "end" ? "items-end text-right" : "items-start",
+      )}
     >
       <span className="label">{role}</span>
       <Identity address={address} size={32} weight="semibold" link={false} />
@@ -84,6 +93,56 @@ function Side({
   );
 }
 
+function OpenAcceptorSide({
+  outcomeLabel,
+  outcomeTone: tone,
+  stake,
+  decimals,
+  symbol,
+  viewerAddress,
+  isProposerView,
+}: {
+  outcomeLabel?: string;
+  outcomeTone: "success" | "danger" | "muted";
+  stake: bigint;
+  decimals: number;
+  symbol: string;
+  viewerAddress?: string;
+  isProposerView: boolean;
+}) {
+  const showViewer = !!viewerAddress && !isProposerView;
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col items-end gap-2 text-right">
+      <span className="label">{isProposerView ? "Acceptor" : "Your side"}</span>
+      {showViewer ? (
+        <Identity address={viewerAddress} size={32} weight="semibold" link={false} />
+      ) : (
+        <div
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-border bg-muted/20 text-muted-foreground"
+          aria-hidden
+        >
+          <User className="h-4 w-4" strokeWidth={1.75} />
+        </div>
+      )}
+      {outcomeLabel && (
+        <OutcomeBadge label={outcomeLabel} role="acceptor" tone={tone} />
+      )}
+      <div className="inline-flex items-center gap-1.5 font-mono text-xl font-bold tabular-nums">
+        {formatToken(stake, decimals)}
+        <TokenIcon symbol={symbol} size={18} />
+      </div>
+      <span className="text-xs text-muted-foreground">
+        {isProposerView
+          ? "Open — waiting for a taker"
+          : showViewer
+            ? "Your stake if you take this bet"
+            : "Stake required to take this side"}
+      </span>
+    </div>
+  );
+}
+
 export function BetMatchup({
   id,
   initial,
@@ -91,6 +150,8 @@ export function BetMatchup({
   id: number;
   initial: GetBetResponse;
 }) {
+  const { address: connected } = useAccount();
+
   const { data } = useQuery<GetBetResponse>({
     queryKey: ["bet", id],
     queryFn: () => jsonFetch(`/api/bets/${id}`),
@@ -103,11 +164,11 @@ export function BetMatchup({
 
   const payload = data ?? initial;
   const { bet, onchain } = payload;
-  if (!betShowMatchup(bet, onchain)) return null;
+  const matched = betShowMatchup(bet, onchain);
+  const open = betShowOpenMatchup(bet, onchain);
+  if (!matched && !open) return null;
 
   const acceptor = betAcceptor(bet, onchain);
-  if (!acceptor) return null;
-
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
   const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
   const poolWei = proposerStake + acceptorStake;
@@ -120,6 +181,8 @@ export function BetMatchup({
     : 0;
   const status = resolveBetStatus(bet, onchain);
   const settled = status === "Settled" || status === "Refunded";
+  const isProposerView =
+    !!connected && connected.toLowerCase() === bet.proposer.toLowerCase();
 
   return (
     <section className="card overflow-hidden">
@@ -150,16 +213,28 @@ export function BetMatchup({
             vs
           </span>
         </div>
-        <Side
-          role="Acceptor"
-          address={acceptor}
-          outcomeLabel={acceptorPick}
-          outcomeTone={outcomeTone(outcomes, bet.acceptorOutcome)}
-          stake={acceptorStake}
-          decimals={bet.decimals}
-          symbol={symbol}
-          align="end"
-        />
+        {matched && acceptor ? (
+          <Side
+            role="Acceptor"
+            address={acceptor}
+            outcomeLabel={acceptorPick}
+            outcomeTone={outcomeTone(outcomes, bet.acceptorOutcome)}
+            stake={acceptorStake}
+            decimals={bet.decimals}
+            symbol={symbol}
+            align="end"
+          />
+        ) : (
+          <OpenAcceptorSide
+            outcomeLabel={acceptorPick}
+            outcomeTone={outcomeTone(outcomes, bet.acceptorOutcome)}
+            stake={acceptorStake}
+            decimals={bet.decimals}
+            symbol={symbol}
+            viewerAddress={connected}
+            isProposerView={isProposerView}
+          />
+        )}
       </div>
 
       {endDateSecs > 0 && !settled && (
