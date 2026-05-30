@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { GifPicker } from "@/components/GifPicker";
@@ -119,6 +119,14 @@ export function GlobalChat() {
     el.scrollTo({ top: el.scrollHeight, behavior });
   }
 
+  /** Snap after layout — scroll container mounts when the panel opens. */
+  function snapChatToLatest() {
+    requestAnimationFrame(() => {
+      scrollChatToBottom("auto");
+      requestAnimationFrame(() => scrollChatToBottom("auto"));
+    });
+  }
+
   useEffect(() => {
     try {
       if (localStorage.getItem("sb_chat_open") === "1") setOpen(true);
@@ -184,6 +192,7 @@ export function GlobalChat() {
   function setChatOpen(next: boolean) {
     if (!next) markChatRead(messages);
     setOpen(next);
+    if (next) snapChatToLatest();
   }
 
   useEffect(() => {
@@ -210,9 +219,10 @@ export function GlobalChat() {
     if (nearBottom) scrollChatToBottom("smooth");
   }, [messages.length, open]);
 
-  useEffect(() => {
-    if (open) scrollChatToBottom();
-  }, [open]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    snapChatToLatest();
+  }, [open, messages.length, chatQ.isSuccess]);
 
   const send = useMutation({
     mutationFn: async (payload: { body: string; gifUrl: string | null }) => {
@@ -232,6 +242,7 @@ export function GlobalChat() {
       setDraft("");
       setGifUrl(null);
       qc.invalidateQueries({ queryKey: ["global-chat"] });
+      snapChatToLatest();
     },
   });
 

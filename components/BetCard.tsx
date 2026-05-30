@@ -152,20 +152,32 @@ export function BetCard({ bet }: { bet: BetRow }) {
             </div>
           </div>
         ) : isSettled ? (
-          <div className="rounded-xl border border-success/30 bg-success/10 p-3">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-success">
-              Winner
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/10 p-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-success">
+                Winner
+              </div>
+              {bet.winner ? (
+                <div className="mt-1">
+                  <Identity address={bet.winner} size={22} link={false} />
+                </div>
+              ) : winLabel ? (
+                <p className="mt-1 text-sm font-medium text-foreground">
+                  {winLabel}
+                </p>
+              ) : null}
             </div>
             {bet.winner ? (
-              <div className="mt-1">
-                <Identity address={bet.winner} size={22} link={false} />
+              <div className="shrink-0 text-right">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-success">
+                  Won
+                </div>
+                <div className="mt-0.5 inline-flex items-center gap-1.5 font-mono text-xl font-bold tabular-nums text-success">
+                  {formatToken(payoutWei, bet.decimals)}
+                  <TokenIcon symbol={sym} size={20} />
+                </div>
               </div>
             ) : null}
-            {winLabel && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {winLabel} · paid {formatToken(payoutWei, bet.decimals)} {sym}
-              </p>
-            )}
           </div>
         ) : isRefunded ? (
           <div className="rounded-xl bg-muted/30 p-3 text-xs text-muted-foreground">
