@@ -67,7 +67,7 @@ export default function HomePage() {
           <div>
             <h2 className="text-xl font-semibold">Markets</h2>
             <p className="text-sm text-muted-foreground">
-              Find a sidebet! Can't find one? Create your own.
+              Find a sidebet here. Can't find one? Create your own.
             </p>
           </div>
         </div>

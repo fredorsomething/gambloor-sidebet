@@ -21,10 +21,11 @@ type FeedItem =
   | { kind: "sidebet"; createdAt: string; bet: BetRow }
   | { kind: "market"; createdAt: string; market: MarketRow };
 
-const FEED_FILTERS = ["Open", "Matched", "Filled"] as const;
+const FEED_FILTERS = ["All", "Open", "Matched", "Settled"] as const;
 type FeedFilter = (typeof FEED_FILTERS)[number];
 
 function matchesFeedFilter(item: FeedItem, filter: FeedFilter): boolean {
+  if (filter === "All") return true;
   if (item.kind === "sidebet") {
     const status = resolveBetStatus(item.bet);
     if (filter === "Open") return status === "Open";
@@ -38,11 +39,13 @@ function matchesFeedFilter(item: FeedItem, filter: FeedFilter): boolean {
 
 function emptyMessage(filter: FeedFilter): string {
   switch (filter) {
+    case "All":
+      return "No markets yet.";
     case "Open":
       return "No open markets right now.";
     case "Matched":
       return "No matched bets awaiting settlement.";
-    case "Filled":
+    case "Settled":
       return "No settled bets yet.";
   }
 }
@@ -52,7 +55,7 @@ function emptyMessage(filter: FeedFilter): string {
  * markets (open and resolved), interleaved by recency.
  */
 export function Feed() {
-  const [filter, setFilter] = useState<FeedFilter>("Open");
+  const [filter, setFilter] = useState<FeedFilter>("All");
 
   const betsQ = useQuery<ListBetsResponse>({
     queryKey: ["feed", "bets"],
@@ -128,7 +131,7 @@ export function Feed() {
       {!loading && !errored && items.length === 0 && (
         <div className="card p-10 text-center">
           <p className="text-muted-foreground">{emptyMessage(filter)}</p>
-          {filter === "Open" && (
+          {(filter === "All" || filter === "Open") && (
             <Button asChild className="mt-4">
               <Link href="/create">Create the first one</Link>
             </Button>
