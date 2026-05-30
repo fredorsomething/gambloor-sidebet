@@ -339,6 +339,18 @@ export function MarketDetail({ id }: { id: number }) {
   const collateralLocked = microToNum(viewer?.collateral.locked);
   const myShares = microToNum(viewer?.shares[selected.index]?.balance);
 
+  const isMultiOutcome = outcomes.length > 2;
+  // Complete sets held = the most sets you could redeem = min free shares across
+  // every outcome (one share of each = one set). Only meaningful for >2 outcomes.
+  let completeSetsHeld = Infinity;
+  for (const o of outcomes) {
+    completeSetsHeld = Math.min(
+      completeSetsHeld,
+      microToNum(viewer?.shares[o.index]?.balance),
+    );
+  }
+  if (!Number.isFinite(completeSetsHeld)) completeSetsHeld = 0;
+
   const isAdminAcct = !!account && isAdminAddress(account);
   const isSettlerAcct =
     !!account && account.toLowerCase() === market.settler.toLowerCase();
@@ -560,6 +572,24 @@ export function MarketDetail({ id }: { id: number }) {
                 onSubmit={onSubmit}
               />
 
+              {isMultiOutcome && market.status === "Open" && (
+                <CompleteSetPanel
+                  account={account}
+                  marketId={market.id}
+                  sym={sym}
+                  outcomes={outcomes}
+                  treasury={config.data?.treasury ?? null}
+                  tokenAddress={tokenAddress}
+                  walletBalance={walletBalance}
+                  completeSetsHeld={completeSetsHeld}
+                  authFetch={authFetch}
+                  ensurePolygon={ensurePolygon}
+                  writeContract={writeContract}
+                  publicClient={publicClient}
+                  onChanged={() => query.refetch()}
+                />
+              )}
+
               <section className="card p-4 text-xs text-muted-foreground space-y-1">
                 <div>
                   Settler: <span className="font-mono">{shortAddr(market.settler)}</span>{" "}
@@ -654,6 +684,209 @@ function TradingWallet({
         Your {sym} stays in your wallet. Buying an order moves only that order&apos;s
         cost to the treasury; cancels, sales, and winnings come straight back.
       </p>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Complete sets (liquidity primitive for multi-outcome markets)
+// ---------------------------------------------------------------------------
+
+function CompleteSetPanel({
+  account,
+  marketId,
+  sym,
+  outcomes,
+  treasury,
+  tokenAddress,
+  walletBalance,
+  completeSetsHeld,
+  authFetch,
+  ensurePolygon,
+  writeContract,
+  publicClient,
+  onChanged,
+}: {
+  account: string;
+  marketId: number;
+  sym: string;
+  outcomes: { index: number; label: string }[];
+  treasury: string | null;
+  tokenAddress: Address;
+  walletBalance: number;
+  completeSetsHeld: number;
+  authFetch: (path: string, init: RequestInit) => Promise<unknown>;
+  ensurePolygon: () => Promise<unknown>;
+  writeContract: (args: {
+    address: Address;
+    abi: typeof ERC20_ABI;
+    functionName: string;
+    args: unknown[];
+  }) => Promise<`0x${string}`>;
+  publicClient: ReturnType<typeof usePublicClient>;
+  onChanged: () => void;
+}) {
+  const { push } = useToast();
+  const [mintQty, setMintQty] = useState("");
+  const [redeemQty, setRedeemQty] = useState("");
+  const [busy, setBusy] = useState<"mint" | "redeem" | null>(null);
+
+  const mintSets = Number(mintQty) || 0;
+  const mintCost = mintSets; // $1 per complete set
+  const tooPoor = mintCost > walletBalance && mintCost > 0;
+
+  async function mint() {
+    if (!(mintSets > 0)) {
+      push({ title: "Enter how many sets to mint", variant: "danger" });
+      return;
+    }
+    if (!treasury) {
+      push({ title: "Trading unavailable", description: "Treasury not configured.", variant: "danger" });
+      return;
+    }
+    setBusy("mint");
+    try {
+      const micro = BigInt(Math.round(mintSets * 1_000_000));
+      await ensurePolygon();
+      const hash = await writeContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "transfer",
+        args: [treasury as Address, micro],
+      });
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+      await authFetch(`/api/markets/${marketId}/sets`, {
+        method: "POST",
+        body: JSON.stringify({
+          owner: account,
+          action: "split",
+          shares: mintSets,
+          fundingTxHash: hash,
+        }),
+      });
+      push({
+        title: "Sets minted",
+        description: `You received ${mintSets} share of every outcome. Sell the ones you don't want to add liquidity.`,
+        variant: "success",
+      });
+      setMintQty("");
+      onChanged();
+    } catch (err) {
+      const { title, description } = formatCryptoError(err, { fallbackTitle: "Mint failed" });
+      push({ title, description, variant: "danger" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function redeem() {
+    const sets = Number(redeemQty) || 0;
+    if (!(sets > 0)) {
+      push({ title: "Enter how many sets to redeem", variant: "danger" });
+      return;
+    }
+    if (sets > completeSetsHeld + 1e-9) {
+      push({
+        title: "Not enough complete sets",
+        description: `You can redeem up to ${completeSetsHeld.toLocaleString(undefined, { maximumFractionDigits: 2 })}.`,
+        variant: "danger",
+      });
+      return;
+    }
+    setBusy("redeem");
+    try {
+      await authFetch(`/api/markets/${marketId}/sets`, {
+        method: "POST",
+        body: JSON.stringify({ owner: account, action: "merge", shares: sets }),
+      });
+      push({
+        title: "Sets redeemed",
+        description: `${money(sets)} ${sym} is returning to your wallet.`,
+        variant: "success",
+      });
+      setRedeemQty("");
+      onChanged();
+    } catch (err) {
+      const { title, description } = formatCryptoError(err, { fallbackTitle: "Redeem failed" });
+      push({ title, description, variant: "danger" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="card p-5 space-y-3">
+      <h3 className="font-semibold">Provide liquidity</h3>
+      <p className="text-[11px] text-muted-foreground">
+        A complete set is 1 share of all {outcomes.length} outcomes and always
+        redeems for $1. Mint sets, then sell the ones you don&apos;t believe in —
+        that&apos;s how a multi-outcome book gets asks to trade against.
+      </p>
+
+      <div className="space-y-2">
+        <label className="label block">Mint sets</label>
+        <input
+          className="input font-mono"
+          inputMode="decimal"
+          placeholder="0"
+          value={mintQty}
+          onChange={(e) => setMintQty(e.target.value)}
+        />
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Cost</span>
+          <span className="inline-flex items-center gap-1 font-mono text-foreground">
+            {money(mintCost)} <TokenIcon symbol={sym} size={12} />
+          </span>
+        </div>
+        <Button
+          className="w-full"
+          size="sm"
+          disabled={busy !== null || mintSets <= 0 || tooPoor}
+          onClick={() => void mint()}
+          title={tooPoor ? `Need ${money(mintCost)} ${sym}` : undefined}
+        >
+          {busy === "mint"
+            ? "Minting…"
+            : tooPoor
+              ? `Need ${money(mintCost)} ${sym}`
+              : `Mint ${mintSets > 0 ? mintSets : ""} set${mintSets === 1 ? "" : "s"}`}
+        </Button>
+      </div>
+
+      {completeSetsHeld > 0 && (
+        <div className="space-y-2 border-t border-border pt-3">
+          <div className="flex items-center justify-between">
+            <label className="label">Redeem sets</label>
+            <button
+              type="button"
+              className="text-[11px] text-primary hover:underline"
+              onClick={() =>
+                setRedeemQty(
+                  String(Math.floor(completeSetsHeld * 100) / 100),
+                )
+              }
+            >
+              Max {completeSetsHeld.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </button>
+          </div>
+          <input
+            className="input font-mono"
+            inputMode="decimal"
+            placeholder="0"
+            value={redeemQty}
+            onChange={(e) => setRedeemQty(e.target.value)}
+          />
+          <Button
+            className="w-full"
+            size="sm"
+            variant="outline"
+            disabled={busy !== null || !(Number(redeemQty) > 0)}
+            onClick={() => void redeem()}
+          >
+            {busy === "redeem" ? "Redeeming…" : "Redeem to wallet"}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

@@ -54,6 +54,13 @@ const AUTO_LIMIT = BigInt(process.env.WITHDRAWAL_AUTO_LIMIT || "0");
 const MAX_BLOCK_RANGE = BigInt(process.env.BRIDGE_BLOCK_RANGE || "500");
 const DEPOSIT_LOOKBACK = BigInt(process.env.BRIDGE_LOOKBACK_BLOCKS || "2000");
 const POLL_MS = 15_000;
+// The deposit indexer (eth_getLogs scan of treasury transfers) is a legacy
+// backstop from the pre-funded model. Under just-in-time funding the orders and
+// /sets APIs already credit the exact transfer at order time, so it is OFF by
+// default — this avoids spamming public RPCs that reject eth_getLogs. Set
+// BRIDGE_SCAN_DEPOSITS=true (with an Alchemy/Infura RPC) to re-enable the
+// backstop. Withdrawals/sweeps never use getLogs and always run.
+const SCAN_DEPOSITS = process.env.BRIDGE_SCAN_DEPOSITS === "true";
 // Funds are never held custodially: any free collateral (order-cancel refunds,
 // sell proceeds, price-improvement leftovers, settlement winnings) is swept back
 // to the user's wallet automatically. Skip dust below this to avoid gas waste.
@@ -61,7 +68,12 @@ const SWEEP_MIN = BigInt(process.env.SWEEP_MIN_MICRO || "10000"); // 0.01 USDC.e
 
 export class Bridge {
   private ledger: Ledger;
-  private publicClient = createPublicClient({ chain: polygon, transport: http(RPC) });
+  // batch:false — some public RPCs (publicnode) reject JSON-RPC batch payloads
+  // ("JSON is not a valid request object"); send one request per call.
+  private publicClient = createPublicClient({
+    chain: polygon,
+    transport: http(RPC, { batch: false }),
+  });
   private lastBlock = 0n;
   private running = false;
   private depositErrorCount = 0;
@@ -77,7 +89,11 @@ export class Bridge {
     }
     this.running = true;
     void this.loop();
-    console.log(`[bridge] started; treasury=${TREASURY_ADDRESS}`);
+    console.log(
+      `[bridge] started; treasury=${TREASURY_ADDRESS}; deposit-indexer=${
+        SCAN_DEPOSITS ? "on" : "off (JIT funding credits at order time)"
+      }`,
+    );
   }
 
   stop() {
@@ -87,7 +103,7 @@ export class Bridge {
   private async loop() {
     while (this.running) {
       try {
-        await this.scanDeposits();
+        if (SCAN_DEPOSITS) await this.scanDeposits();
         await this.sweepBalances();
         await this.processWithdrawals();
       } catch (err) {
@@ -194,7 +210,11 @@ export class Bridge {
     if (pending.length === 0) return;
 
     const account = privateKeyToAccount(TREASURY_KEY as Hex);
-    const wallet = createWalletClient({ account, chain: polygon, transport: http(RPC) });
+    const wallet = createWalletClient({
+      account,
+      chain: polygon,
+      transport: http(RPC, { batch: false }),
+    });
 
     for (const w of pending) {
       if (AUTO_LIMIT > 0n && w.amount + w.fee >= AUTO_LIMIT) {

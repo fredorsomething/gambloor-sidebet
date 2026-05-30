@@ -51,6 +51,32 @@ export function startServer(engine: ExchangeEngine) {
     cancelOrder: async (p) =>
       engine.cancelOrder(Number(p.marketId), String(p.orderId), String(p.owner)),
 
+    // Mint complete sets (1 share of every outcome per $1). Optionally credits a
+    // confirmed on-chain deposit first so multi-outcome markets can be funded
+    // just-in-time, mirroring the buy flow.
+    splitSet: async (p) =>
+      engine.splitSet({
+        marketId: Number(p.marketId),
+        owner: String(p.owner),
+        qty: BigInt(p.qty),
+        deposit: p.deposit
+          ? {
+              amount: BigInt(p.deposit.amount),
+              txHash: String(p.deposit.txHash),
+              logIndex: Number(p.deposit.logIndex),
+              chainId: Number(p.deposit.chainId ?? 137),
+            }
+          : undefined,
+      }),
+
+    // Redeem complete sets back to collateral.
+    mergeSet: async (p) =>
+      engine.mergeSet({
+        marketId: Number(p.marketId),
+        owner: String(p.owner),
+        qty: BigInt(p.qty),
+      }),
+
     settleMarket: async (p) =>
       engine.settleMarket(Number(p.marketId), Number(p.winningOutcome)),
 

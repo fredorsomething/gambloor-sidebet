@@ -74,6 +74,36 @@ function assertBinaryInvariant(l: Ledger, addrs: string[], marketId: number) {
   eq(yes, reserve, "outstanding shares == reserve");
 }
 
+/**
+ * General complete-set invariant (any number of outcomes): the outstanding
+ * shares of EVERY outcome equal the reserve. Mirrors Ledger.assertSolvency.
+ */
+function assertCompleteSetInvariant(
+  l: Ledger,
+  addrs: string[],
+  marketId: number,
+  numOutcomes: number,
+) {
+  const reserve = l.get(reserveKey(marketId))?.balance ?? 0n;
+  for (let i = 0; i < numOutcomes; i++) {
+    eq(outstanding(l, addrs, marketId, i), reserve, `outstanding[${i}] == reserve`);
+  }
+}
+
+/** Mirror Ledger.splitSet deltas in the in-process test ledger. */
+function applySplit(l: Ledger, addr: string, marketId: number, qty: bigint, numOutcomes: number) {
+  acc(l, collateralKey(addr)).balance -= qty;
+  acc(l, reserveKey(marketId)).balance += qty;
+  for (let i = 0; i < numOutcomes; i++) acc(l, shareKey(addr, marketId, i)).balance += qty;
+}
+
+/** Mirror Ledger.mergeSet deltas in the in-process test ledger. */
+function applyMerge(l: Ledger, addr: string, marketId: number, qty: bigint, numOutcomes: number) {
+  acc(l, reserveKey(marketId)).balance -= qty;
+  acc(l, collateralKey(addr)).balance += qty;
+  for (let i = 0; i < numOutcomes; i++) acc(l, shareKey(addr, marketId, i)).balance -= qty;
+}
+
 function incoming(p: Partial<IncomingOrder> & {
   maker: string;
   side: Side;
@@ -256,6 +286,50 @@ function test_fees() {
   assertBinaryInvariant(l, ADDRS, M);
 }
 
+function test_multi_outcome_split_and_trade() {
+  const N = 3; // e.g. Thunder / Spurs / Knicks
+  const book = new MarketBook(M, N);
+  const l: Ledger = new Map();
+  seedCollateral(l, A, 100n * SCALE);
+  seedCollateral(l, B, 100n * SCALE);
+
+  // A provides liquidity: mints 5 complete sets ($5 -> 5 shares of every outcome).
+  applySplit(l, A, M, 5n * SCALE, N);
+  eq(acc(l, shareKey(A, M, 0)).balance, 5n * SCALE, "A holds 5 of outcome 0");
+  eq(acc(l, shareKey(A, M, 2)).balance, 5n * SCALE, "A holds 5 of outcome 2");
+  eq(acc(l, reserveKey(M)).balance, 5n * SCALE, "reserve = 5");
+  eq(acc(l, collateralKey(A)).balance, 95n * SCALE, "A paid $5");
+  assertCompleteSetInvariant(l, ADDRS, M, N);
+
+  // A sells the legs it doesn't want: rest 5 of outcome 1 @0.30.
+  place(book, l, incoming({ maker: A, side: "SELL", outcomeIndex: 1, price: 300_000n, qty: 5n * SCALE }));
+  // B buys outcome 1 -> NORMAL match against A's ask (no MINT needed; >2 outcomes).
+  const plan = place(book, l, incoming({ maker: B, side: "BUY", outcomeIndex: 1, price: 400_000n, qty: 3n * SCALE }));
+  ok(plan.fills.length === 1 && plan.fills[0].matchType === "NORMAL", "NORMAL fill on outcome 1");
+  eq(plan.fills[0].takerPrice, 300_000n, "executes at A's ask 0.30");
+  eq(acc(l, shareKey(B, M, 1)).balance, 3n * SCALE, "B receives 3 of outcome 1");
+  // Per-outcome totals are conserved by NORMAL transfers; invariant still holds.
+  assertCompleteSetInvariant(l, ADDRS, M, N);
+}
+
+function test_multi_outcome_merge() {
+  const N = 4;
+  const l: Ledger = new Map();
+  seedCollateral(l, A, 100n * SCALE);
+
+  applySplit(l, A, M, 6n * SCALE, N);
+  assertCompleteSetInvariant(l, ADDRS, M, N);
+
+  // Redeem 2 complete sets back to $2.
+  applyMerge(l, A, M, 2n * SCALE, N);
+  eq(acc(l, shareKey(A, M, 0)).balance, 4n * SCALE, "4 of outcome 0 left");
+  eq(acc(l, shareKey(A, M, 3)).balance, 4n * SCALE, "4 of outcome 3 left");
+  eq(acc(l, reserveKey(M)).balance, 4n * SCALE, "reserve drained to 4");
+  eq(acc(l, collateralKey(A)).balance, 100n * SCALE - 6n * SCALE + 2n * SCALE, "A net paid $4");
+  assertCompleteSetInvariant(l, ADDRS, M, N);
+  assertNonNegative(l);
+}
+
 function run() {
   const tests = [
     test_normal_full_fill,
@@ -265,6 +339,8 @@ function run() {
     test_self_trade_prevention,
     test_price_time_priority,
     test_fees,
+    test_multi_outcome_split_and_trade,
+    test_multi_outcome_merge,
   ];
   for (const t of tests) {
     t();

@@ -287,6 +287,76 @@ export class Ledger {
   }
 
   /**
+   * Mint complete sets: lock `qty` micro-collateral into the market reserve and
+   * credit the owner `qty` micro-shares of EVERY outcome. A complete set always
+   * redeems for exactly $1 (one whole share of each outcome — exactly one wins),
+   * so the set price is qty:qty. This is how multi-outcome markets get inventory
+   * to trade: mint a set, then sell the legs you don't want.
+   */
+  async splitSet(args: {
+    marketId: number;
+    owner: string;
+    qty: bigint;
+    numOutcomes: number;
+  }): Promise<void> {
+    const { marketId, qty, numOutcomes } = args;
+    if (qty <= 0n) throw new Error("qty must be positive");
+    const addr = args.owner.toLowerCase();
+    await this.prisma.$transaction(async (tx) => {
+      const c = await tx.account.findUnique({
+        where: { key: collateralKey(addr) },
+        select: { balance: true },
+      });
+      if (!c || c.balance < qty) throw new Error("insufficient collateral balance");
+      const deltas: AccountDelta[] = [
+        { key: collateralKey(addr), balanceDelta: -qty, lockedDelta: 0n },
+        { key: reserveKey(marketId), balanceDelta: qty, lockedDelta: 0n },
+      ];
+      for (let i = 0; i < numOutcomes; i++) {
+        deltas.push({ key: shareKey(addr, marketId, i), balanceDelta: qty, lockedDelta: 0n });
+      }
+      await writeJournal(tx, "SPLIT", `market:${marketId}`, marketId, deltas);
+    });
+  }
+
+  /**
+   * Merge complete sets: burn `qty` FREE micro-shares of every outcome and
+   * release `qty` micro-collateral back to the owner. Shares locked in resting
+   * sell orders are not eligible — only the free balance counts.
+   */
+  async mergeSet(args: {
+    marketId: number;
+    owner: string;
+    qty: bigint;
+    numOutcomes: number;
+  }): Promise<void> {
+    const { marketId, qty, numOutcomes } = args;
+    if (qty <= 0n) throw new Error("qty must be positive");
+    const addr = args.owner.toLowerCase();
+    await this.prisma.$transaction(async (tx) => {
+      const shares = await tx.account.findMany({
+        where: { owner: addr, kind: "SHARE", marketId },
+        select: { outcomeIndex: true, balance: true },
+      });
+      const have = new Map<number, bigint>();
+      for (const s of shares) if (s.outcomeIndex != null) have.set(s.outcomeIndex, s.balance);
+      for (let i = 0; i < numOutcomes; i++) {
+        if ((have.get(i) ?? 0n) < qty) {
+          throw new Error("insufficient shares to merge a complete set");
+        }
+      }
+      const deltas: AccountDelta[] = [
+        { key: reserveKey(marketId), balanceDelta: -qty, lockedDelta: 0n },
+        { key: collateralKey(addr), balanceDelta: qty, lockedDelta: 0n },
+      ];
+      for (let i = 0; i < numOutcomes; i++) {
+        deltas.push({ key: shareKey(addr, marketId, i), balanceDelta: -qty, lockedDelta: 0n });
+      }
+      await writeJournal(tx, "MERGE", `market:${marketId}`, marketId, deltas);
+    });
+  }
+
+  /**
    * Redeem shares after a market resolves. Winning outcome shares pay 1:1 into
    * collateral; losing shares are zeroed; the reserve is drained. Resting-order
    * lock refunds must be done first by the caller (the engine cancels the book).
@@ -317,7 +387,7 @@ export class Ledger {
           totalPayout += held;
         }
       }
-      // Drain reserve (should equal totalPayout for binary markets).
+      // Drain reserve (equals totalPayout: the winner's outstanding == reserve).
       const reserve = await tx.account.findUnique({
         where: { key: reserveKey(marketId) },
         select: { balance: true },
@@ -330,8 +400,13 @@ export class Ledger {
   }
 
   /**
-   * Binary solvency invariant: outstanding YES == outstanding NO == reserve.
-   * Also verifies no negative balances. Throws on violation.
+   * Complete-set solvency invariant, valid for any number of outcomes:
+   * the outstanding shares of EVERY outcome must equal the reserve. This holds
+   * because shares are only ever created/destroyed in complete sets — by a
+   * mint/merge (split/mergeSet) or a binary auto-MINT/MERGE, each of which moves
+   * every outcome and the reserve by the same amount — while NORMAL trades only
+   * transfer existing shares between owners. Also verifies no negative balances.
+   * Throws on violation.
    */
   async assertSolvency(marketId: number, numOutcomes: number): Promise<void> {
     const rows = await this.prisma.account.findMany({
@@ -345,17 +420,14 @@ export class Ledger {
         throw new Error(`negative balance in market ${marketId}`);
       }
       if (r.kind === "RESERVE") reserve += r.balance + r.locked;
-      else if (r.outcomeIndex != null) outstanding[r.outcomeIndex] += r.balance + r.locked;
-    }
-    if (numOutcomes === 2) {
-      if (outstanding[0] !== outstanding[1]) {
-        throw new Error(
-          `solvency: YES(${outstanding[0]}) != NO(${outstanding[1]}) in market ${marketId}`,
-        );
+      else if (r.outcomeIndex != null && r.outcomeIndex < numOutcomes) {
+        outstanding[r.outcomeIndex] += r.balance + r.locked;
       }
-      if (outstanding[0] !== reserve) {
+    }
+    for (let i = 0; i < numOutcomes; i++) {
+      if (outstanding[i] !== reserve) {
         throw new Error(
-          `solvency: outstanding(${outstanding[0]}) != reserve(${reserve}) in market ${marketId}`,
+          `solvency: outstanding[${i}](${outstanding[i]}) != reserve(${reserve}) in market ${marketId}`,
         );
       }
     }

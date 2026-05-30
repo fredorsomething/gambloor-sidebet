@@ -223,6 +223,59 @@ export class ExchangeEngine {
     });
   }
 
+  /**
+   * Mint complete sets: convert `qty` micro-collateral into 1 share of every
+   * outcome (reserve-backed). Optionally credits a just-confirmed on-chain
+   * deposit first (idempotent) so the funds and the mint commit back-to-back
+   * inside the per-market queue, minimising the window for the auto-sweep to
+   * reclaim the freshly credited collateral. This is the liquidity primitive
+   * for multi-outcome markets.
+   */
+  async splitSet(input: {
+    marketId: number;
+    owner: string;
+    qty: bigint;
+    deposit?: { amount: bigint; txHash: string; logIndex: number; chainId: number };
+  }): Promise<{ ok: true; minted: string }> {
+    const st = await this.ensureMarket(input.marketId);
+    return this.enqueue(input.marketId, async () => {
+      if (st.status !== "Open") throw new Error("market is not open for trading");
+      if (input.qty <= 0n) throw new Error("qty must be positive");
+      const owner = input.owner.toLowerCase();
+      if (input.deposit) {
+        await this.ledger.creditDeposit({ address: owner, ...input.deposit });
+      }
+      await this.ledger.splitSet({
+        marketId: input.marketId,
+        owner,
+        qty: input.qty,
+        numOutcomes: st.numOutcomes,
+      });
+      await this.assertAndPublish(input.marketId, st, []);
+      return { ok: true, minted: input.qty.toString() };
+    });
+  }
+
+  /** Redeem complete sets: burn 1 free share of every outcome for `qty` collateral. */
+  async mergeSet(input: {
+    marketId: number;
+    owner: string;
+    qty: bigint;
+  }): Promise<{ ok: true; redeemed: string }> {
+    const st = await this.ensureMarket(input.marketId);
+    return this.enqueue(input.marketId, async () => {
+      if (input.qty <= 0n) throw new Error("qty must be positive");
+      await this.ledger.mergeSet({
+        marketId: input.marketId,
+        owner: input.owner.toLowerCase(),
+        qty: input.qty,
+        numOutcomes: st.numOutcomes,
+      });
+      await this.assertAndPublish(input.marketId, st, []);
+      return { ok: true, redeemed: input.qty.toString() };
+    });
+  }
+
   async cancelOrder(marketId: number, orderId: string, owner: string): Promise<{ ok: true }> {
     const st = await this.ensureMarket(marketId);
     return this.enqueue(marketId, async () => {

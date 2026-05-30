@@ -94,6 +94,29 @@ export function engineSettleMarket(marketId: number, winningOutcome: number): Pr
   return rpc("settleMarket", { marketId, winningOutcome });
 }
 
+/**
+ * Mint complete sets: turn `qty` micro-collateral into one micro-share of every
+ * outcome (reserve-backed). The optional `deposit` credits a confirmed on-chain
+ * transfer first so multi-outcome markets fund just-in-time like a buy.
+ */
+export function engineSplitSet(params: {
+  marketId: number;
+  owner: string;
+  qty: string; // micro
+  deposit?: { amount: string; txHash: string; logIndex: number; chainId: number };
+}): Promise<{ ok: true; minted: string }> {
+  return rpc("splitSet", params);
+}
+
+/** Redeem complete sets: burn one free micro-share of every outcome for `qty` collateral. */
+export function engineMergeSet(params: {
+  marketId: number;
+  owner: string;
+  qty: string; // micro
+}): Promise<{ ok: true; redeemed: string }> {
+  return rpc("mergeSet", params);
+}
+
 export function engineReloadMarket(marketId: number): Promise<{ ok: true }> {
   return rpc("reloadMarket", { marketId });
 }
