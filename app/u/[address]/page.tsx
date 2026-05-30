@@ -304,8 +304,10 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* Everything this user created */}
-      <CreatedSection bets={createdBets} markets={createdMarkets} />
+      {/* Everything this user created — hidden for admin */}
+      {!isAdmin && (
+        <CreatedSection bets={createdBets} markets={createdMarkets} />
+      )}
 
       {isLoading && (
         <div className="text-center text-sm text-muted-foreground">Loading…</div>
