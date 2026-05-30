@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 
 import { renderOgCard } from "@/lib/og/buildImage";
+import { loadRemoteImageDataUrl } from "@/lib/og/loadThumb";
 import { resolveLinkPreview } from "@/lib/linkPreview";
+import { absoluteUrl } from "@/lib/siteUrl";
 
 export const runtime = "nodejs";
 export const alt = "Sidebet profile";
@@ -13,8 +15,17 @@ export default async function Image({
 }: {
   params: { address: string };
 }) {
-  const handle = decodeURIComponent(params.address);
+  const handle = decodeURIComponent(params.address).replace(/^@/, "");
   const preview = await resolveLinkPreview(`/u/${handle}`);
   if (!preview) notFound();
-  return renderOgCard(preview);
+
+  const thumbDataUrl = preview.imageUrl
+    ? await loadRemoteImageDataUrl(
+        preview.imageUrl.startsWith("http")
+          ? preview.imageUrl
+          : absoluteUrl(preview.imageUrl),
+      )
+    : null;
+
+  return renderOgCard(preview, { thumbDataUrl });
 }

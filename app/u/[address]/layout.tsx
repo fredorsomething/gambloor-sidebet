@@ -7,7 +7,7 @@ export async function generateMetadata({
 }: {
   params: { address: string };
 }): Promise<Metadata> {
-  const handle = decodeURIComponent(params.address);
+  const handle = decodeURIComponent(params.address).replace(/^@/, "");
   return buildMetadataForPath(`/u/${handle}`);
 }
 

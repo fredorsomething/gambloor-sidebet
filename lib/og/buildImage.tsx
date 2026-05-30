@@ -11,9 +11,13 @@ const C = {
   border: "#30363d",
   text: "#e6edf3",
   muted: "#8b949e",
-  primary: "#539bf5",
   success: "#3fb950",
   danger: "#f85149",
+};
+
+type OgCardOptions = {
+  /** Pre-fetched data URL for the thumbnail (avoids Satori remote fetch failures). */
+  thumbDataUrl?: string | null;
 };
 
 function kindLabel(p: LinkPreviewData): string {
@@ -23,11 +27,24 @@ function kindLabel(p: LinkPreviewData): string {
   return "Sidebet";
 }
 
-function thumbSrc(p: LinkPreviewData): string {
-  if (p.imageUrl) {
-    return p.imageUrl.startsWith("http") ? p.imageUrl : absoluteUrl(p.imageUrl);
+function gradientFor(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) % 360;
   }
-  return absoluteUrl("/favicon.png");
+  const a = hash;
+  const b = (hash + 48) % 360;
+  return `linear-gradient(135deg, hsl(${a} 70% 52%), hsl(${b} 75% 42%))`;
+}
+
+function initialsFor(preview: LinkPreviewData): string {
+  if (preview.kind === "profile") {
+    const name = preview.username ?? preview.address ?? preview.title;
+    const clean = name.replace(/^@/, "").trim();
+    if (clean.startsWith("0x")) return clean.slice(2, 4).toUpperCase();
+    return clean.slice(0, 2).toUpperCase() || "?";
+  }
+  return preview.title.trim().slice(0, 2).toUpperCase() || "?";
 }
 
 function pnlText(p: LinkPreviewData): string | null {
@@ -48,10 +65,72 @@ function truncate(text: string, max: number): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
-export function renderOgCard(preview: LinkPreviewData): ImageResponse {
+function Thumb({
+  preview,
+  thumbDataUrl,
+}: {
+  preview: LinkPreviewData;
+  thumbDataUrl?: string | null;
+}) {
+  if (thumbDataUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={thumbDataUrl}
+        alt=""
+        width={200}
+        height={200}
+        style={{ objectFit: "cover" }}
+      />
+    );
+  }
+
+  if (preview.imageUrl) {
+    const src = preview.imageUrl.startsWith("http")
+      ? preview.imageUrl
+      : absoluteUrl(preview.imageUrl);
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={200}
+        height={200}
+        style={{ objectFit: "cover" }}
+      />
+    );
+  }
+
+  const seed =
+    preview.kind === "profile"
+      ? preview.username ?? preview.address ?? preview.title
+      : preview.title;
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundImage: gradientFor(seed),
+        fontSize: 64,
+        fontWeight: 700,
+        color: "rgba(255,255,255,0.92)",
+      }}
+    >
+      {initialsFor(preview)}
+    </div>
+  );
+}
+
+export function renderOgCard(
+  preview: LinkPreviewData,
+  options: OgCardOptions = {},
+): ImageResponse {
   const label = kindLabel(preview);
   const pnl = pnlText(preview);
-  const src = thumbSrc(preview);
 
   return new ImageResponse(
     (
@@ -84,9 +163,7 @@ export function renderOgCard(preview: LinkPreviewData): ImageResponse {
               height={40}
               style={{ borderRadius: 10 }}
             />
-            <span
-              style={{ fontSize: 28, fontWeight: 700, color: C.text }}
-            >
+            <span style={{ fontSize: 28, fontWeight: 700, color: C.text }}>
               sidebet.lol
             </span>
           </div>
@@ -119,14 +196,7 @@ export function renderOgCard(preview: LinkPreviewData): ImageResponse {
               flexShrink: 0,
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={src}
-              alt=""
-              width={200}
-              height={200}
-              style={{ objectFit: "cover" }}
-            />
+            <Thumb preview={preview} thumbDataUrl={options.thumbDataUrl} />
           </div>
 
           <div
@@ -150,12 +220,7 @@ export function renderOgCard(preview: LinkPreviewData): ImageResponse {
             </span>
 
             {preview.subtitle && (
-              <span
-                style={{
-                  fontSize: 28,
-                  color: C.muted,
-                }}
-              >
+              <span style={{ fontSize: 28, color: C.muted }}>
                 {truncate(preview.subtitle, 60)}
               </span>
             )}
