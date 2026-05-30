@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getAddress, isAddress } from "viem";
+import { formatUnits, getAddress, isAddress } from "viem";
 
 import { MARKET_COLLATERAL_SYMBOL } from "@/lib/chains";
 import { prisma } from "@/lib/db";
@@ -8,6 +8,51 @@ import { formatMicro, formatPrice, SCALE } from "@/lib/exchange/units";
 import { replay, userLegs } from "@/lib/exchange/userStats";
 
 export const dynamic = "force-dynamic";
+
+/** A user's stake exposure in live (Open/Matched) sidebets, valued at stake. */
+async function loadSidebetExposure(lower: string) {
+  const bets = await prisma.bet.findMany({
+    where: {
+      status: { in: ["Open", "Matched"] },
+      OR: [
+        { proposer: { equals: lower, mode: "insensitive" } },
+        { acceptor: { equals: lower, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+
+  let value = 0;
+  const items = bets.map((b) => {
+    const isProposer = b.proposer.toLowerCase() === lower;
+    const stakeRaw = isProposer
+      ? b.proposerStake !== "0"
+        ? b.proposerStake
+        : b.amount
+      : b.acceptorStake !== "0"
+        ? b.acceptorStake
+        : b.amount;
+    let stake = 0;
+    try {
+      stake = Number(formatUnits(BigInt(stakeRaw || "0"), b.decimals));
+    } catch {
+      stake = 0;
+    }
+    value += stake;
+    return {
+      id: b.id,
+      title: b.title,
+      imageUrl: b.imageUrl,
+      status: b.status,
+      tokenSymbol: b.tokenSymbol ?? "USDC.e",
+      role: isProposer ? "proposer" : "acceptor",
+      stake,
+    };
+  });
+
+  return { value: Number(value.toFixed(2)), items };
+}
 
 /**
  * GET /api/users/[address]/positions
@@ -24,10 +69,13 @@ export async function GET(
   const address = getAddress(handle);
   const lower = address.toLowerCase();
 
-  const shareAccts = await prisma.account.findMany({
-    where: { owner: lower, kind: "SHARE" },
-    select: { marketId: true, outcomeIndex: true, balance: true, locked: true },
-  });
+  const [shareAccts, sidebets] = await Promise.all([
+    prisma.account.findMany({
+      where: { owner: lower, kind: "SHARE" },
+      select: { marketId: true, outcomeIndex: true, balance: true, locked: true },
+    }),
+    loadSidebetExposure(lower),
+  ]);
   const held = shareAccts
     .map((s) => ({
       marketId: s.marketId!,
@@ -36,7 +84,15 @@ export async function GET(
     }))
     .filter((s) => s.qty > 0n);
 
-  if (held.length === 0) return jsonOk({ totalValue: 0, positions: [] });
+  if (held.length === 0) {
+    return jsonOk({
+      totalValue: sidebets.value,
+      positionsValue: 0,
+      sidebetValue: sidebets.value,
+      positions: [],
+      sidebets: sidebets.items,
+    });
+  }
 
   const marketIds = [...new Set(held.map((h) => h.marketId))];
   const [markets, stats, fills] = await Promise.all([
@@ -98,5 +154,12 @@ export async function GET(
   });
   items.sort((a, b) => b.value - a.value);
 
-  return jsonOk({ totalValue: Number(totalValue.toFixed(2)), positions: items });
+  const positionsValue = Number(totalValue.toFixed(2));
+  return jsonOk({
+    totalValue: Number((positionsValue + sidebets.value).toFixed(2)),
+    positionsValue,
+    sidebetValue: sidebets.value,
+    positions: items,
+    sidebets: sidebets.items,
+  });
 }

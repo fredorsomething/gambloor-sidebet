@@ -51,7 +51,8 @@ export async function POST(
   if (market.status !== "Open") return jsonErr("market is not open", 409);
 
   const isSettler = caller.toLowerCase() === market.settler.toLowerCase();
-  if (!isSettler && !isAdminAddress(caller)) {
+  const isAdmin = isAdminAddress(caller);
+  if (!isSettler && !isAdmin) {
     return jsonErr("only the settler or an admin can resolve", 403);
   }
   if (!market.outcomes.some((o) => o.index === parsed.data.winningOutcome)) {
@@ -60,6 +61,29 @@ export async function POST(
 
   const auth = await verifyWalletAuth({ req, address: caller });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
+
+  // Two-step settlement: an outcome must be admin-verified (an Approved
+  // resolution proposal) before the settler can trigger the payout. Admins can
+  // settle directly (their action IS the approval). This makes admin approval
+  // the gate for the actual settlement and payout.
+  if (!isAdmin) {
+    const approved = await prisma.resolutionProposal.findFirst({
+      where: { subjectType: "market", subjectId: id, status: "Approved" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!approved) {
+      return jsonErr(
+        "an admin must verify the outcome before it can be settled",
+        409,
+      );
+    }
+    if (approved.proposedOutcome !== parsed.data.winningOutcome) {
+      return jsonErr(
+        "winning outcome must match the admin-verified outcome",
+        409,
+      );
+    }
+  }
 
   // Settle in the engine first (redeem shares, drain reserve, clear book).
   try {

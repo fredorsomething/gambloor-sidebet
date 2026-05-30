@@ -18,6 +18,9 @@ export function MarketCard({ market }: { market: MarketRow }) {
   const quotes = market.quotes ?? [];
   const resolved = market.status === "Resolved";
   const binary = outcomes.length === 2;
+  const verifiedIdx =
+    !resolved && market.verifiedOutcome != null ? market.verifiedOutcome : null;
+  const awaitingSettlement = verifiedIdx != null;
 
   const q = (idx: number): MarketQuote | undefined =>
     quotes.find((x) => x.index === idx);
@@ -41,8 +44,16 @@ export function MarketCard({ market }: { market: MarketRow }) {
       <div className="pointer-events-none relative z-10 flex h-full flex-col">
         <div className="flex items-center justify-between gap-2 px-4 pt-4">
           <TypeTag kind="market" />
-          <span className="text-xs font-medium text-muted-foreground">
-            {resolved ? "Resolved" : `${outcomes.length} outcomes`}
+          <span
+            className={`text-xs font-medium ${
+              awaitingSettlement ? "text-primary" : "text-muted-foreground"
+            }`}
+          >
+            {resolved
+              ? "Resolved"
+              : awaitingSettlement
+                ? "Awaiting settlement"
+                : `${outcomes.length} outcomes`}
           </span>
         </div>
 
@@ -71,6 +82,15 @@ export function MarketCard({ market }: { market: MarketRow }) {
                 {market.winningOutcome != null
                   ? outcomes[market.winningOutcome]?.label ?? "—"
                   : "—"}
+              </p>
+            </div>
+          ) : awaitingSettlement ? (
+            <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-4 text-center">
+              <span className="text-xs font-medium uppercase tracking-wide text-primary">
+                Verified · awaiting settlement
+              </span>
+              <p className="mt-1 text-lg font-bold">
+                {outcomes[verifiedIdx]?.label ?? "—"}
               </p>
             </div>
           ) : binary ? (

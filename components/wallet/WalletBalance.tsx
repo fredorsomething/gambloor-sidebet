@@ -66,13 +66,18 @@ export function WalletBalance() {
     query: { enabled: !!address, refetchInterval: 12_000 },
   });
 
-  const { data: positions } = useQuery<{ totalValue: number }>({
+  const { data: positions } = useQuery<{
+    totalValue: number;
+    sidebetValue?: number;
+  }>({
     queryKey: ["walletPositions", address?.toLowerCase()],
     enabled: !!address,
     queryFn: () => jsonFetch(`/api/users/${address}/positions`),
     refetchInterval: 10_000,
   });
+  // `totalValue` includes both CLOB market positions and live sidebet stakes.
   const positionsValue = positions?.totalValue ?? 0;
+  const sidebetValue = positions?.sidebetValue ?? 0;
 
   const { data: polPrice } = useQuery<{ usdPerPol: number }>({
     queryKey: ["pol-usd"],
@@ -153,6 +158,15 @@ export function WalletBalance() {
               <span className="flex items-center gap-1.5 text-sm font-medium">
                 <PieChart className="h-4 w-4 text-primary" />
                 Positions
+                {sidebetValue > 0 && (
+                  <span className="text-[10px] font-normal text-muted-foreground">
+                    incl. $
+                    {sidebetValue.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    sidebets
+                  </span>
+                )}
               </span>
               <span className="font-mono text-sm font-semibold tabular-nums">
                 $

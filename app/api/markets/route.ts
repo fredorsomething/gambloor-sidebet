@@ -226,12 +226,34 @@ export async function GET(req: NextRequest) {
   // Compute compact per-outcome quotes (best bid/ask/mid) for card odds from the
   // engine's denormalized OutcomeStat read model (micro prices).
   const ids = rows.map((r) => r.id);
-  const stats = ids.length
-    ? await prisma.outcomeStat.findMany({
-        where: { marketId: { in: ids } },
-        select: { marketId: true, outcomeIndex: true, bestBid: true, bestAsk: true },
-      })
-    : [];
+  const [stats, approvedProposals] = await Promise.all([
+    ids.length
+      ? prisma.outcomeStat.findMany({
+          where: { marketId: { in: ids } },
+          select: { marketId: true, outcomeIndex: true, bestBid: true, bestAsk: true },
+        })
+      : Promise.resolve([]),
+    // Latest admin-verified outcome per market, so cards can show
+    // "verified — awaiting settlement" before the market is resolved.
+    ids.length
+      ? prisma.resolutionProposal.findMany({
+          where: {
+            subjectType: "market",
+            subjectId: { in: ids },
+            status: "Approved",
+          },
+          orderBy: { createdAt: "desc" },
+          select: { subjectId: true, proposedOutcome: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const verifiedByMarket = new Map<number, number>();
+  for (const p of approvedProposals) {
+    if (!verifiedByMarket.has(p.subjectId)) {
+      verifiedByMarket.set(p.subjectId, p.proposedOutcome);
+    }
+  }
 
   const levels = new Map<
     number,
@@ -261,7 +283,10 @@ export async function GET(req: NextRequest) {
           : (bestAsk ?? bestBid);
       return { index: o.index, bestBid, bestAsk, mid };
     });
-    return { ...r, quotes };
+    // Only surface a verified outcome while still open (pre-settlement).
+    const verifiedOutcome =
+      r.status === "Open" ? verifiedByMarket.get(r.id) ?? null : null;
+    return { ...r, quotes, verifiedOutcome };
   });
 
   return jsonOk({ items, total });

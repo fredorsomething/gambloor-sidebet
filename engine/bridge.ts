@@ -54,6 +54,10 @@ const AUTO_LIMIT = BigInt(process.env.WITHDRAWAL_AUTO_LIMIT || "0");
 const MAX_BLOCK_RANGE = BigInt(process.env.BRIDGE_BLOCK_RANGE || "500");
 const DEPOSIT_LOOKBACK = BigInt(process.env.BRIDGE_LOOKBACK_BLOCKS || "2000");
 const POLL_MS = 15_000;
+// Funds are never held custodially: any free collateral (order-cancel refunds,
+// sell proceeds, price-improvement leftovers, settlement winnings) is swept back
+// to the user's wallet automatically. Skip dust below this to avoid gas waste.
+const SWEEP_MIN = BigInt(process.env.SWEEP_MIN_MICRO || "10000"); // 0.01 USDC.e
 
 export class Bridge {
   private ledger: Ledger;
@@ -84,11 +88,45 @@ export class Bridge {
     while (this.running) {
       try {
         await this.scanDeposits();
+        await this.sweepBalances();
         await this.processWithdrawals();
       } catch (err) {
         console.error("[bridge] loop error", err);
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
+    }
+  }
+
+  /**
+   * Sweep every user's free collateral back to their wallet. This keeps the
+   * model fully wallet-centric: nothing sits idle in the exchange. Locked funds
+   * (resting orders, in-flight withdrawals) are untouched — only free `balance`
+   * is swept, so re-running is safe and idempotent.
+   */
+  private async sweepBalances() {
+    if (!TREASURY_KEY) return;
+    const accounts = await this.prisma.account.findMany({
+      where: { kind: "COLLATERAL", balance: { gt: SWEEP_MIN } },
+      select: { owner: true, balance: true },
+      take: 50,
+    });
+    for (const a of accounts) {
+      if (!a.owner || !a.owner.startsWith("0x")) continue;
+      try {
+        await this.ledger.requestWithdrawal({
+          address: a.owner,
+          amount: a.balance,
+          fee: 0n,
+          status: "Pending",
+        });
+        console.log(`[bridge] sweep ${a.balance} -> ${a.owner}`);
+      } catch (err) {
+        // A concurrent order may have locked the balance first; skip and retry.
+        const msg = err instanceof Error ? err.message : "sweep failed";
+        if (!msg.includes("insufficient")) {
+          console.warn(`[bridge] sweep for ${a.owner} failed: ${msg}`);
+        }
+      }
     }
   }
 

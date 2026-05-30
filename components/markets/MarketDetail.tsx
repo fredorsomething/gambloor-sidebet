@@ -5,8 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { ImagePlus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import { parseUnits, type Address } from "viem";
-import { useAccount } from "wagmi";
+import { formatUnits, type Address } from "viem";
+import { useAccount, usePublicClient, useReadContract } from "wagmi";
+import { polygon } from "wagmi/chains";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
@@ -63,6 +64,9 @@ export function MarketDetail({ id }: { id: number }) {
   const { getAccessToken } = usePrivy();
   const { push } = useToast();
   const searchParams = useSearchParams();
+  const { writeContract } = useTxSender();
+  const ensurePolygon = useEnsurePolygon();
+  const publicClient = usePublicClient({ chainId: polygon.id });
 
   const viewerQ = account ? `?viewer=${account}` : "";
   const query = useQuery<MarketDetailResponse>({
@@ -76,6 +80,21 @@ export function MarketDetail({ id }: { id: number }) {
     queryFn: () => jsonFetch(`/api/exchange/config`),
     staleTime: 60_000,
   });
+
+  // Latest resolution proposal — drives the "verified · awaiting settlement"
+  // banner once an admin has verified the outcome but before final settlement.
+  const resolutionQ = useQuery<{
+    proposal: { status: string; proposedOutcome: number } | null;
+  }>({
+    queryKey: ["market-resolution", id],
+    queryFn: () =>
+      jsonFetch(`/api/resolutions?subjectType=market&subjectId=${id}`),
+    refetchInterval: 15_000,
+  });
+  const verifiedProposal =
+    resolutionQ.data?.proposal?.status === "Approved"
+      ? resolutionQ.data.proposal
+      : null;
 
   const live = useMarketSocket(id, WS_URL ?? config.data?.wsUrl ?? null);
 
@@ -97,6 +116,21 @@ export function MarketDetail({ id }: { id: number }) {
 
   const fallback = getMarketCollateralToken();
   const sym = market?.tokenSymbol ?? fallback.symbol;
+  const tokenAddress = (config.data?.token.address ?? fallback.address) as Address;
+  const tokenDecimals = config.data?.token.decimals ?? fallback.decimals;
+
+  // Funds live in the wallet; buying power is the on-chain USDC.e balance.
+  const { data: walletBalRaw } = useReadContract({
+    address: tokenAddress,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: account ? [account as Address] : undefined,
+    chainId: polygon.id,
+    query: { enabled: !!account, refetchInterval: 10_000 },
+  });
+  const walletBalance = Number(
+    formatUnits((walletBalRaw as bigint | undefined) ?? 0n, tokenDecimals),
+  );
 
   // ---- folded (unified) book for the selected outcome --------------------
   const folded = useMemo(() => {
@@ -184,6 +218,49 @@ export function MarketDetail({ id }: { id: number }) {
     }
     setSubmitting(true);
     try {
+      // Just-in-time funding: a BUY moves exactly its collateral (cost + fee)
+      // from the wallet to the treasury now, then the order is placed. Unused
+      // funds and all proceeds are auto-returned to the wallet by the engine.
+      let fundingTxHash: string | undefined;
+      if (args.side === "BUY") {
+        const treasury = config.data?.treasury;
+        if (!treasury) {
+          push({
+            title: "Trading unavailable",
+            description: "Treasury not configured.",
+            variant: "danger",
+          });
+          setSubmitting(false);
+          return;
+        }
+        const qtyMicro = BigInt(Math.round(sharesNum * 1_000_000));
+        // Market buys lock the worst case (~$1/share); leftover is refunded.
+        const priceMicro =
+          args.type === "LIMIT"
+            ? BigInt(Math.round((args.price ?? 0) * 1_000_000))
+            : 999_999n;
+        const costMicro = (priceMicro * qtyMicro) / 1_000_000n;
+        const feeMicro =
+          market.feeBps > 0 ? (costMicro * BigInt(market.feeBps)) / 10_000n : 0n;
+        const requiredMicro = costMicro + feeMicro;
+        if (requiredMicro <= 0n) {
+          push({ title: "Order too small", variant: "danger" });
+          setSubmitting(false);
+          return;
+        }
+        await ensurePolygon();
+        const hash = await writeContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [treasury as Address, requiredMicro],
+        });
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash });
+        }
+        fundingTxHash = hash;
+      }
+
       const res = (await authFetch(`/api/markets/${id}/orders`, {
         method: "POST",
         body: JSON.stringify({
@@ -193,6 +270,7 @@ export function MarketDetail({ id }: { id: number }) {
           type: args.type,
           ...(args.type === "LIMIT" ? { price: args.price } : {}),
           shares: sharesNum,
+          ...(fundingTxHash ? { fundingTxHash } : {}),
         }),
       })) as { filledQty: string; restId: string | null };
       const filled = microToNum(res.filledQty);
@@ -231,8 +309,15 @@ export function MarketDetail({ id }: { id: number }) {
   }
 
   function takeLevel(level: Level, takeSide: Side) {
-    // Cross immediately: market order sized to the level's available shares.
-    void placeOrder({ side: takeSide, type: "MARKET", sharesStr: String(level.shares) });
+    // Cross immediately at the level's price. Using a LIMIT (rather than a raw
+    // market order) means a BUY funds exactly this price rather than reserving
+    // the worst-case $1/share; it still crosses the resting liquidity here.
+    void placeOrder({
+      side: takeSide,
+      type: "LIMIT",
+      price: level.price,
+      sharesStr: String(level.shares),
+    });
   }
 
   if (query.isLoading) {
@@ -254,11 +339,11 @@ export function MarketDetail({ id }: { id: number }) {
   const collateralLocked = microToNum(viewer?.collateral.locked);
   const myShares = microToNum(viewer?.shares[selected.index]?.balance);
 
+  const isAdminAcct = !!account && isAdminAddress(account);
+  const isSettlerAcct =
+    !!account && account.toLowerCase() === market.settler.toLowerCase();
   const canResolve =
-    !!account &&
-    !resolved &&
-    market.status === "Open" &&
-    (account.toLowerCase() === market.settler.toLowerCase() || isAdminAddress(account));
+    !resolved && market.status === "Open" && (isSettlerAcct || isAdminAcct);
 
   async function resolveMarket(winningOutcome: number) {
     if (!account) return;
@@ -314,6 +399,16 @@ export function MarketDetail({ id }: { id: number }) {
         {resolved && market.winningOutcome != null && (
           <div className="rounded-md bg-success/10 p-3 text-sm text-success">
             Winning outcome: <b>{outcomes[market.winningOutcome]?.label}</b>
+          </div>
+        )}
+        {!resolved && market.status === "Open" && verifiedProposal && (
+          <div className="rounded-md border border-primary/40 bg-primary/10 p-3 text-sm text-primary">
+            Verified outcome:{" "}
+            <b>
+              {outcomes[verifiedProposal.proposedOutcome]?.label ??
+                `Outcome ${verifiedProposal.proposedOutcome}`}
+            </b>{" "}
+            · awaiting settlement. An admin will approve the final payout.
           </div>
         )}
       </div>
@@ -374,22 +469,50 @@ export function MarketDetail({ id }: { id: number }) {
           {canResolve && (
             <section className="card p-5 space-y-3">
               <h3 className="font-semibold">Resolve market</h3>
-              <p className="text-xs text-muted-foreground">
-                As the settler you can resolve this market. Winning shares redeem
-                to {sym} 1:1; the book is cleared and locks refunded.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {outcomes.map((o) => (
+              {isAdminAcct ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    As an admin you approve the final settlement. Winning shares
+                    redeem to {sym} 1:1; the book is cleared and locks refunded.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {outcomes.map((o) => (
+                      <Button
+                        key={o.index}
+                        size="sm"
+                        variant={
+                          verifiedProposal?.proposedOutcome === o.index
+                            ? "success"
+                            : "outline"
+                        }
+                        onClick={() => resolveMarket(o.index)}
+                      >
+                        {o.label} wins
+                      </Button>
+                    ))}
+                  </div>
+                </>
+              ) : verifiedProposal ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    The outcome is verified. Settle to pay out — winning shares
+                    redeem to {sym} 1:1; the book is cleared and locks refunded.
+                  </p>
                   <Button
-                    key={o.index}
                     size="sm"
-                    variant="outline"
-                    onClick={() => resolveMarket(o.index)}
+                    variant="success"
+                    onClick={() => resolveMarket(verifiedProposal.proposedOutcome)}
                   >
-                    {o.label} wins
+                    Settle: {outcomes[verifiedProposal.proposedOutcome]?.label ?? "—"}{" "}
+                    wins
                   </Button>
-                ))}
-              </div>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Propose the winning outcome below. An admin must verify it
+                  before this market can be settled and paid out.
+                </p>
+              )}
             </section>
           )}
 
@@ -399,18 +522,16 @@ export function MarketDetail({ id }: { id: number }) {
         <aside className="order-1 space-y-4 lg:order-none lg:col-start-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
           {!account ? (
             <div className="card p-5 text-sm text-muted-foreground">
-              Sign in to deposit funds and trade.
+              Sign in to trade.
             </div>
           ) : (
             <>
-              <WalletCard
+              <TradingWallet
                 account={account}
                 sym={sym}
-                balance={collateralBal}
+                walletBalance={walletBalance}
                 locked={collateralLocked}
-                treasury={config.data?.treasury ?? null}
-                tokenAddress={config.data?.token.address ?? fallback.address}
-                tokenDecimals={config.data?.token.decimals ?? fallback.decimals}
+                pendingReturn={collateralBal}
                 onChanged={() => query.refetch()}
                 authFetch={authFetch}
               />
@@ -432,7 +553,7 @@ export function MarketDetail({ id }: { id: number }) {
                 bestAsk={bestAsk}
                 bestBid={bestBid}
                 myPosition={myShares}
-                balance={collateralBal}
+                balance={walletBalance}
                 resolved={resolved}
                 tradeable={market.status === "Open"}
                 submitting={submitting}
@@ -444,7 +565,10 @@ export function MarketDetail({ id }: { id: number }) {
                   Settler: <span className="font-mono">{shortAddr(market.settler)}</span>{" "}
                   · fee {(market.feeBps / 100).toFixed(2)}%
                 </div>
-                <div>Custodial off-chain exchange · USDC.e collateral</div>
+                <div>
+                  No deposit needed — funds move from your wallet only when you
+                  buy, and proceeds return automatically.
+                </div>
               </section>
             </>
           )}
@@ -455,89 +579,48 @@ export function MarketDetail({ id }: { id: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Wallet (deposit / withdraw)
+// Trading wallet (wallet-centric: funds move per order, proceeds auto-return)
 // ---------------------------------------------------------------------------
 
-function WalletCard({
+function TradingWallet({
   account,
   sym,
-  balance,
+  walletBalance,
   locked,
-  treasury,
-  tokenAddress,
-  tokenDecimals,
+  pendingReturn,
   onChanged,
   authFetch,
 }: {
   account: string;
   sym: string;
-  balance: number;
+  walletBalance: number;
   locked: number;
-  treasury: string | null;
-  tokenAddress: string;
-  tokenDecimals: number;
+  /** Free custodial balance awaiting the auto-sweep back to the wallet. */
+  pendingReturn: number;
   onChanged: () => void;
   authFetch: (path: string, init: RequestInit) => Promise<unknown>;
 }) {
   const { push } = useToast();
-  const { writeContract } = useTxSender();
-  const ensurePolygon = useEnsurePolygon();
-  const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
-  const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function deposit() {
-    if (!treasury) {
-      push({ title: "Deposits unavailable", description: "Treasury not configured.", variant: "danger" });
-      return;
-    }
-    const amt = Number(amount);
-    if (!(amt > 0)) return;
-    setBusy(true);
-    try {
-      await ensurePolygon();
-      await writeContract({
-        address: tokenAddress as Address,
-        abi: ERC20_ABI,
-        functionName: "transfer",
-        args: [treasury as Address, parseUnits(amount, tokenDecimals)],
-      });
-      push({
-        title: "Deposit sent",
-        description: "Your balance will credit once the transfer confirms.",
-        variant: "success",
-      });
-      setAmount("");
-    } catch (err) {
-      const { title, description } = formatCryptoError(err, { fallbackTitle: "Deposit failed" });
-      push({ title, description, variant: "danger" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function withdraw() {
-    const amt = Number(amount);
-    if (!(amt > 0)) return;
-    if (amt > balance) {
-      push({ title: "Amount exceeds balance", variant: "danger" });
-      return;
-    }
+  async function returnNow() {
+    if (!(pendingReturn > 0)) return;
     setBusy(true);
     try {
       await authFetch(`/api/users/${account}/withdraw`, {
         method: "POST",
-        body: JSON.stringify({ amount: amt }),
+        body: JSON.stringify({ amount: pendingReturn }),
       });
       push({
-        title: "Withdrawal requested",
-        description: `${sym} will be sent to your wallet shortly.`,
+        title: "Returning to wallet",
+        description: `${sym} is being sent back to your wallet.`,
         variant: "success",
       });
-      setAmount("");
       onChanged();
     } catch (err) {
-      const { title, description } = formatCryptoError(err, { fallbackTitle: "Withdrawal failed" });
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Return failed",
+      });
       push({ title, description, variant: "danger" });
     } finally {
       setBusy(false);
@@ -547,47 +630,29 @@ function WalletCard({
   return (
     <section className="card p-5 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Balance</h3>
+        <h3 className="font-semibold">Buying power</h3>
         <span className="inline-flex items-center gap-1 font-mono text-sm">
-          {money(balance)} <TokenSymbol symbol={sym} size={13} />
+          {money(walletBalance)} <TokenSymbol symbol={sym} size={13} />
         </span>
       </div>
       {locked > 0 && (
         <div className="text-xs text-muted-foreground">
-          {money(locked)} {sym} locked in open orders / withdrawals
+          {money(locked)} {sym} committed to your open orders
         </div>
       )}
-      <div className="flex rounded-lg bg-muted/50 p-0.5 text-sm">
-        {(["deposit", "withdraw"] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={`flex-1 rounded-md py-1.5 font-semibold capitalize transition-colors ${
-              mode === m ? "bg-foreground text-background" : "text-muted-foreground"
-            }`}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-      <input
-        className="input font-mono"
-        inputMode="decimal"
-        placeholder={`Amount (${sym})`}
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-      />
-      <Button
-        className="w-full"
-        disabled={busy}
-        onClick={() => (mode === "deposit" ? void deposit() : void withdraw())}
-      >
-        {busy ? "Working…" : mode === "deposit" ? `Deposit ${sym}` : `Withdraw ${sym}`}
-      </Button>
-      <p className="text-center text-[11px] text-muted-foreground">
-        {mode === "deposit"
-          ? `Sends ${sym} to the exchange treasury and credits your balance.`
-          : `Sends ${sym} from your balance back to your wallet.`}
+      {pendingReturn > 0 && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 p-2.5 text-xs">
+          <span className="text-muted-foreground">
+            {money(pendingReturn)} {sym} returning to your wallet
+          </span>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void returnNow()}>
+            {busy ? "…" : "Return now"}
+          </Button>
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground">
+        Your {sym} stays in your wallet. Buying an order moves only that order&apos;s
+        cost to the treasury; cancels, sales, and winnings come straight back.
       </p>
     </section>
   );

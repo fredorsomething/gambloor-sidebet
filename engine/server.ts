@@ -68,6 +68,20 @@ export function startServer(engine: ExchangeEngine) {
       });
       return { id: w.id };
     },
+
+    // Credit a confirmed on-chain transfer into a user's collateral. Used by the
+    // orders API to fund a buy at order time (just-in-time funding). Idempotent
+    // per (txHash, logIndex) — shares the Deposit table with the bridge indexer.
+    creditDeposit: async (p) => {
+      const credited = await engine.ledger.creditDeposit({
+        address: String(p.address),
+        amount: BigInt(p.amount),
+        txHash: String(p.txHash),
+        logIndex: Number(p.logIndex),
+        chainId: Number(p.chainId ?? 137),
+      });
+      return { credited };
+    },
   };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {

@@ -106,3 +106,18 @@ export function engineRequestWithdrawal(params: {
 }): Promise<{ id: number }> {
   return rpc<{ id: number }>("requestWithdrawal", params);
 }
+
+/**
+ * Credit a confirmed on-chain USDC.e transfer into a user's collateral so an
+ * order can be funded at placement time. Idempotent per (txHash, logIndex);
+ * returns { credited: false } if it was already credited (e.g. by the bridge).
+ */
+export function engineCreditDeposit(params: {
+  address: string;
+  amount: string;
+  txHash: string;
+  logIndex: number;
+  chainId: number;
+}): Promise<{ credited: boolean }> {
+  return rpc<{ credited: boolean }>("creditDeposit", params);
+}

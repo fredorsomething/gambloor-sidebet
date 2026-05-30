@@ -23,13 +23,26 @@ type Position = {
   isWinner: boolean;
   shares: number;
   sharesRaw: string;
-  costBasis: number;
+  value: number;
   avgPrice: number;
+};
+
+type SidebetExposure = {
+  id: number;
+  title: string;
+  imageUrl: string | null;
+  status: string;
+  tokenSymbol: string | null;
+  role: string;
+  stake: number;
 };
 
 type PositionsResponse = {
   totalValue: number;
+  positionsValue?: number;
+  sidebetValue?: number;
   positions: Position[];
+  sidebets?: SidebetExposure[];
 };
 
 export default function PortfolioPage() {
@@ -58,6 +71,8 @@ export default function PortfolioPage() {
   }
 
   const positions = data?.positions ?? [];
+  const sidebets = data?.sidebets ?? [];
+  const sidebetValue = data?.sidebetValue ?? 0;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -77,9 +92,21 @@ export default function PortfolioPage() {
       </div>
 
       <div className="card flex items-center justify-between p-5">
-        <span className="flex items-center gap-2 text-sm text-muted-foreground">
-          <PieChart className="h-4 w-4 text-primary" />
-          Total positions value
+        <span className="flex flex-col gap-0.5 text-sm text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <PieChart className="h-4 w-4 text-primary" />
+            Total positions value
+          </span>
+          {sidebetValue > 0 && (
+            <span className="text-xs">
+              incl. $
+              {sidebetValue.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{" "}
+              committed to sidebets
+            </span>
+          )}
         </span>
         <span className="font-mono text-2xl font-bold tabular-nums">
           $
@@ -98,7 +125,7 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {!isLoading && positions.length === 0 && (
+      {!isLoading && positions.length === 0 && sidebets.length === 0 && (
         <div className="card p-10 text-center">
           <p className="text-muted-foreground">No open positions yet.</p>
           <Link
@@ -151,7 +178,7 @@ export default function PortfolioPage() {
                 <div className="shrink-0 text-right">
                   <div className="inline-flex items-center font-mono text-sm font-semibold tabular-nums">
                     $
-                    {p.costBasis.toLocaleString(undefined, {
+                    {p.value.toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
@@ -168,6 +195,62 @@ export default function PortfolioPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {sidebets.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              Sidebet stakes
+            </h2>
+            <Link
+              href="/me"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Manage →
+            </Link>
+          </div>
+          <ul className="space-y-3">
+            {sidebets.map((s) => (
+              <li key={s.id}>
+                <Link
+                  href={`/bets/${s.id}`}
+                  className="card flex items-center gap-4 p-4 transition-colors hover:bg-muted/40"
+                >
+                  <BetThumbnail
+                    imageUrl={s.imageUrl}
+                    title={s.title}
+                    size="sm"
+                    fallback
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{s.title}</span>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {s.status === "Open" ? "Awaiting match" : "Awaiting settlement"}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-xs capitalize text-muted-foreground">
+                      Your {s.role} stake
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="inline-flex items-center gap-0.5 font-mono text-sm font-semibold tabular-nums">
+                      $
+                      {s.stake.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="flex items-center justify-end gap-0.5 text-[11px] text-muted-foreground">
+                      <TokenSymbol symbol={s.tokenSymbol || "USDC.e"} size={10} />
+                    </div>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

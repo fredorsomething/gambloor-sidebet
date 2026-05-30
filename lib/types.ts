@@ -109,6 +109,8 @@ export type MarketRow = {
   nonce: string;
   status: string;
   winningOutcome: number | null;
+  /** Admin-verified winning outcome while still Open (awaiting settlement). */
+  verifiedOutcome?: number | null;
   estimatedEndDate: string | null;
   createdAt: string;
   updatedAt: string;
