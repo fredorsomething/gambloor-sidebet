@@ -1,0 +1,20 @@
+import type { Metadata } from "next";
+
+import { buildMetadataForPath } from "@/lib/og/metadata";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: { address: string };
+}): Promise<Metadata> {
+  const handle = decodeURIComponent(params.address);
+  return buildMetadataForPath(`/u/${handle}`);
+}
+
+export default function ProfileLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return children;
+}

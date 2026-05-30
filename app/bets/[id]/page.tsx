@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 
@@ -22,6 +23,15 @@ import {
 } from "@/lib/utils";
 import { betShowMatchup } from "@/lib/betStatus";
 import type { GetBetResponse } from "@/lib/types";
+import { buildMetadataForPath } from "@/lib/og/metadata";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: { id: string };
+}): Promise<Metadata> {
+  return buildMetadataForPath(`/bets/${params.id}`);
+}
 
 async function fetchBet(id: string): Promise<GetBetResponse | null> {
   const h = headers();

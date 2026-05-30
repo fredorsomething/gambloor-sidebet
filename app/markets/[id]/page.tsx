@@ -1,6 +1,16 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 
 import { MarketDetail } from "@/components/markets/MarketDetail";
+import { buildMetadataForPath } from "@/lib/og/metadata";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: { id: string };
+}): Promise<Metadata> {
+  return buildMetadataForPath(`/markets/${params.id}`);
+}
 
 export default function MarketDetailPage({
   params,

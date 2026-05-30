@@ -10,6 +10,7 @@ import { SearchBar } from "@/components/SearchBar";
 import { NavLinks } from "@/components/NavLinks";
 import { MobileNav } from "@/components/MobileNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { getSiteUrl } from "@/lib/siteUrl";
 import "./globals.css";
 
 // Applies the saved theme before paint (defaults to dark) to avoid FOUC.
@@ -22,12 +23,28 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
   title: "Sidebet — P2P bets on Polygon",
   description:
     "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon. Funds escrowed on-chain, resolved by a trusted settler.",
   icons: {
     icon: "/favicon.png",
     apple: "/favicon.png",
+  },
+  openGraph: {
+    siteName: "Sidebet",
+    type: "website",
+    title: "Sidebet — P2P bets on Polygon",
+    description:
+      "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon.",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Sidebet" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Sidebet — P2P bets on Polygon",
+    description:
+      "Create and accept peer-to-peer side bets settled in USDC or pUSD on Polygon.",
+    images: ["/opengraph-image"],
   },
 };
 
