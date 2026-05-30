@@ -22,6 +22,8 @@ export type LinkPreviewData = {
   status?: string;
   tokenSymbol?: string | null;
   stakeLabel?: string;
+  /** Proposer's backed outcome label (bets). */
+  proposerPosition?: string;
 };
 
 const TRAILING_PUNCT = /[)\].,;:!?]+$/;
@@ -255,6 +257,8 @@ export async function resolveLinkPreview(
         decimals: true,
         tokenSymbol: true,
         acceptorStake: true,
+        outcomes: true,
+        proposerOutcome: true,
       },
     });
     if (!bet) return null;
@@ -266,17 +270,23 @@ export async function resolveLinkPreview(
 
     const stakeWei = BigInt(bet.proposerStake || bet.amount || "0");
     const stake = formatStake(stakeWei, bet.decimals, bet.tokenSymbol);
+    const outcomes = Array.isArray(bet.outcomes) ? (bet.outcomes as string[]) : [];
+    const proposerPosition = outcomes[bet.proposerOutcome]?.trim() || undefined;
+    const proposerLabel = proposerUser?.username
+      ? `@${proposerUser.username}`
+      : "Proposer";
 
     return {
       kind: "bet",
       url: `/bets/${bet.id}`,
       id: bet.id,
       title: bet.title,
-      subtitle: `${proposerUser?.username ? `@${proposerUser.username}` : "Proposer"} · ${stake}`,
+      subtitle: betPreviewSubtitle(proposerLabel, stake, proposerPosition),
       imageUrl: bet.imageUrl,
       status: bet.status,
       tokenSymbol: bet.tokenSymbol,
       stakeLabel: stake,
+      proposerPosition,
     };
   }
 
@@ -308,6 +318,15 @@ export async function resolveLinkPreview(
     status: market.status,
     tokenSymbol: market.tokenSymbol,
   };
+}
+
+function betPreviewSubtitle(
+  proposer: string,
+  stake: string,
+  position?: string,
+): string {
+  if (position) return `${proposer} · ${stake} on "${position}"`;
+  return `${proposer} · ${stake}`;
 }
 
 function formatStake(wei: bigint, decimals: number, symbol: string | null): string {

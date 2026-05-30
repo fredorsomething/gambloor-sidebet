@@ -26,5 +26,10 @@ export default async function Image({
       )
     : null;
 
-  return renderOgCard(preview, { thumbDataUrl });
+  try {
+    return renderOgCard(preview, { thumbDataUrl });
+  } catch (err) {
+    console.error("bet opengraph-image render failed", params.id, err);
+    return renderOgCard(preview, { thumbDataUrl: null });
+  }
 }
