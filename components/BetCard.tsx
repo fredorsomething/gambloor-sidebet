@@ -32,7 +32,7 @@ function statusLabel(bet: BetRow): React.ReactNode {
     case "Cancelled":
       return <span className="text-muted-foreground">Cancelled</span>;
     default:
-      return <>fee {(bet.feeBps / 100).toFixed(1)}%</>;
+      return <span className="text-primary">Open</span>;
   }
 }
 

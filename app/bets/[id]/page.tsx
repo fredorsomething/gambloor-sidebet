@@ -7,9 +7,9 @@ import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { Identity } from "@/components/profile/Identity";
 import { BetDetailLive } from "@/components/BetDetailLive";
 import { Comments } from "@/components/Comments";
+import { LiveBetStatusBadge } from "@/components/LiveBetStatusBadge";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
 import { Resolvers } from "@/components/Resolvers";
-import { StatusBadge } from "@/components/ui/badge";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
 import { explorerAddress, explorerTx } from "@/lib/chains";
@@ -66,7 +66,7 @@ export default async function BetDetailPage({
       <div className="card p-6 space-y-3">
         <div className="flex items-center gap-2">
           <TypeTag kind="sidebet" />
-          <StatusBadge status={bet.status} />
+          <LiveBetStatusBadge id={bet.id} initialStatus={bet.status} />
           <span className="text-xs text-muted-foreground">
             #{bet.onchainId} on chain {bet.chainId}
           </span>

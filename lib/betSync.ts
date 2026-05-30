@@ -1,0 +1,93 @@
+import { getAddress } from "viem";
+import type { Bet } from "@prisma/client";
+
+import { prisma } from "@/lib/db";
+import { readBetV2 } from "@/lib/onchain";
+import { reconcileSettledBetProposals } from "@/lib/resolutionReconcile";
+
+const ZERO = "0x0000000000000000000000000000000000000000";
+
+// Bets that have reached a final state never change again on-chain.
+const TERMINAL = new Set(["Settled", "Cancelled", "Refunded"]);
+
+// In-memory throttle so a single bet is read from chain at most once per window
+// no matter how many list/feed requests arrive — keeps RPC usage bounded while
+// still letting status (e.g. Open -> Matched) propagate to the UI quickly.
+const lastSync = new Map<number, number>();
+const SYNC_THROTTLE_MS = 8_000;
+
+/**
+ * Opportunistically sync a single bet's mutable on-chain state (status,
+ * acceptor, winner) into the DB. Lightweight (no notifications) and safe to call
+ * from list endpoints. Returns the (possibly mutated) bet row.
+ */
+export async function syncBetOnchain(
+  bet: Bet,
+  opts: { force?: boolean } = {},
+): Promise<Bet> {
+  if (TERMINAL.has(bet.status)) return bet;
+
+  const now = Date.now();
+  if (!opts.force) {
+    const last = lastSync.get(bet.id) ?? 0;
+    if (now - last < SYNC_THROTTLE_MS) return bet;
+  }
+  lastSync.set(bet.id, now);
+
+  const onchain = await readBetV2(
+    bet.chainId,
+    getAddress(bet.escrowAddress) as `0x${string}`,
+    BigInt(bet.onchainId),
+  ).catch(() => null);
+  if (!onchain) return bet;
+
+  const updates: Record<string, unknown> = {};
+  if (onchain.status !== bet.status) updates.status = onchain.status;
+  if (
+    onchain.acceptor &&
+    onchain.acceptor !== ZERO &&
+    onchain.acceptor.toLowerCase() !== (bet.acceptor || "").toLowerCase()
+  ) {
+    updates.acceptor = getAddress(onchain.acceptor);
+  }
+  if (onchain.status === "Settled") {
+    const win = onchain.winningOutcome;
+    if (bet.winningOutcome !== win) updates.winningOutcome = win;
+    const winnerAddr =
+      win === onchain.proposerOutcome
+        ? getAddress(onchain.proposer)
+        : win === onchain.acceptorOutcome && onchain.acceptor !== ZERO
+          ? getAddress(onchain.acceptor)
+          : null;
+    if ((bet.winner || null) !== winnerAddr) updates.winner = winnerAddr;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    try {
+      await prisma.bet.update({ where: { id: bet.id }, data: updates });
+      Object.assign(bet, updates);
+    } catch (err) {
+      console.warn("bet list sync failed", err);
+    }
+  }
+
+  if (onchain.status === "Settled") {
+    await reconcileSettledBetProposals(bet.id, onchain.winningOutcome).catch(
+      () => {},
+    );
+  }
+
+  return bet;
+}
+
+/** Sync many bets in parallel (terminal ones skipped, capped to bound RPC). */
+export async function syncBetsOnchain(bets: Bet[], cap = 40): Promise<Bet[]> {
+  let budget = cap;
+  return Promise.all(
+    bets.map((b) => {
+      if (TERMINAL.has(b.status) || budget <= 0) return b;
+      budget -= 1;
+      return syncBetOnchain(b);
+    }),
+  );
+}

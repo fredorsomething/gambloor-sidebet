@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
+import { syncBetsOnchain } from "@/lib/betSync";
 import { prisma } from "@/lib/db";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -227,5 +228,10 @@ export async function GET(req: NextRequest) {
     prisma.bet.count({ where }),
   ]);
 
-  return jsonOk({ items: rows, total });
+  // Opportunistically refresh non-terminal bets from chain so matches/settles
+  // show up in feeds and "my bets" without waiting for someone to open the
+  // detail page. Throttled per-bet (see betSync) to keep RPC usage bounded.
+  const items = await syncBetsOnchain(rows);
+
+  return jsonOk({ items, total });
 }

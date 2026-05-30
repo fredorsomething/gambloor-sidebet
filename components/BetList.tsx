@@ -41,7 +41,7 @@ export function BetList({
   const query = useQuery<ListBetsResponse>({
     queryKey: ["bets", { status, who, role, chainId }],
     queryFn: () => jsonFetch(`/api/bets?${params.toString()}`),
-    refetchInterval: 15_000,
+    refetchInterval: 6_000,
   });
 
   return (
