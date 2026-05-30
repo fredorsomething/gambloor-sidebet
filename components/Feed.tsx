@@ -2,12 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { BetCard } from "@/components/BetCard";
 import { MarketCard } from "@/components/markets/MarketCard";
 import { Button } from "@/components/ui/button";
+import { resolveBetStatus } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
+import { cn } from "@/lib/utils";
 import type {
   BetRow,
   ListBetsResponse,
@@ -19,11 +21,39 @@ type FeedItem =
   | { kind: "sidebet"; createdAt: string; bet: BetRow }
   | { kind: "market"; createdAt: string; market: MarketRow };
 
+const FEED_FILTERS = ["Open", "Matched", "Filled"] as const;
+type FeedFilter = (typeof FEED_FILTERS)[number];
+
+function matchesFeedFilter(item: FeedItem, filter: FeedFilter): boolean {
+  if (item.kind === "sidebet") {
+    const status = resolveBetStatus(item.bet);
+    if (filter === "Open") return status === "Open";
+    if (filter === "Matched") return status === "Matched";
+    return status === "Settled" || status === "Refunded";
+  }
+  if (filter === "Open") return item.market.status === "Open";
+  if (filter === "Matched") return false;
+  return item.market.status === "Resolved";
+}
+
+function emptyMessage(filter: FeedFilter): string {
+  switch (filter) {
+    case "Open":
+      return "No open markets right now.";
+    case "Matched":
+      return "No matched bets awaiting settlement.";
+    case "Filled":
+      return "No settled bets yet.";
+  }
+}
+
 /**
  * Unified markets feed: sidebets (open, matched, and settled) plus CLOB
  * markets (open and resolved), interleaved by recency.
  */
 export function Feed() {
+  const [filter, setFilter] = useState<FeedFilter>("Open");
+
   const betsQ = useQuery<ListBetsResponse>({
     queryKey: ["feed", "bets"],
     queryFn: () =>
@@ -50,16 +80,34 @@ export function Feed() {
       createdAt: market.createdAt,
       market,
     }));
-    return [...bets, ...markets].sort(
-      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
-    );
-  }, [betsQ.data, marketsQ.data]);
+    return [...bets, ...markets]
+      .filter((item) => matchesFeedFilter(item, filter))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  }, [betsQ.data, marketsQ.data, filter]);
 
   const loading = betsQ.isLoading || marketsQ.isLoading;
   const errored = betsQ.isError || marketsQ.isError;
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {FEED_FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              filter === f
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            )}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
       {loading && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -79,10 +127,12 @@ export function Feed() {
 
       {!loading && !errored && items.length === 0 && (
         <div className="card p-10 text-center">
-          <p className="text-muted-foreground">No markets yet.</p>
-          <Button asChild className="mt-4">
-            <Link href="/create">Create the first one</Link>
-          </Button>
+          <p className="text-muted-foreground">{emptyMessage(filter)}</p>
+          {filter === "Open" && (
+            <Button asChild className="mt-4">
+              <Link href="/create">Create the first one</Link>
+            </Button>
+          )}
         </div>
       )}
 
