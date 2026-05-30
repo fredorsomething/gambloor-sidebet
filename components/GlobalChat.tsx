@@ -19,7 +19,7 @@ import { GifPicker } from "@/components/GifPicker";
 import { RichMessageBody } from "@/components/chat/RichMessageBody";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
-import { lockBodyScroll } from "@/lib/bodyScrollLock";
+import { lockBodyScroll, resetBodyScrollLock } from "@/lib/bodyScrollLock";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn, shortAddr } from "@/lib/utils";
 
@@ -140,6 +140,25 @@ export function GlobalChat() {
     if (typeof window === "undefined") return;
     if (window.matchMedia("(min-width: 768px)").matches) return;
     return lockBodyScroll();
+  }, [open]);
+
+  // Push main layout right on desktop; clear mobile scroll lock after resize.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 768px)");
+
+    const sync = () => {
+      const desktop = mq.matches;
+      document.body.classList.toggle("sb-chat-open", open && desktop);
+      if (desktop) resetBodyScrollLock();
+    };
+
+    sync();
+    mq.addEventListener("change", sync);
+    return () => {
+      mq.removeEventListener("change", sync);
+      document.body.classList.remove("sb-chat-open");
+    };
   }, [open]);
 
   const chatQ = useQuery<ChatResponse>({

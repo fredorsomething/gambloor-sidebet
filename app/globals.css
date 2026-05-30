@@ -129,6 +129,28 @@
     @apply bg-background text-foreground antialiased;
   }
 
+  .site-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .site-header-spacer {
+    height: calc(7.5rem + env(safe-area-inset-top, 0px));
+  }
+
+  @media (min-width: 1024px) {
+    .site-header-spacer {
+      height: calc(5.5625rem + env(safe-area-inset-top, 0px));
+    }
+  }
+
+  /* Desktop chat sidebar — push page content right instead of overlaying the nav. */
+  @media (min-width: 768px) {
+    body.sb-chat-open #app-shell {
+      margin-left: 327px;
+      transition: margin-left 200ms ease;
+    }
+  }
+
   * {
     @apply border-border;
   }

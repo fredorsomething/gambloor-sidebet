@@ -61,7 +61,7 @@ export default function RootLayout({
       <body className="font-sans">
         <Providers>
           <div id="app-shell" className="flex min-h-screen flex-col">
-            <header className="sticky top-0 z-40 overflow-visible border-b border-border bg-card/95 backdrop-blur">
+            <header className="site-header fixed inset-x-0 top-0 z-40 overflow-visible border-b border-border bg-card/95 backdrop-blur">
               <div className="container flex items-center gap-2 py-3 sm:gap-3 sm:py-4">
                 <MobileNav />
                 <div className="hidden lg:block">
@@ -87,6 +87,9 @@ export default function RootLayout({
                 <SearchBar />
               </div>
             </header>
+
+            {/* Reserve space for the fixed header (mobile has a second search row). */}
+            <div aria-hidden className="site-header-spacer shrink-0" />
 
             <main className="container flex-1 py-6 sm:py-8">{children}</main>
 
