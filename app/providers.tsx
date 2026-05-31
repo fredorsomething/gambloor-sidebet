@@ -7,8 +7,10 @@ import { useState } from "react";
 import { polygon } from "wagmi/chains";
 
 import { wagmiConfig } from "@/lib/wagmi";
+import { pickActiveWalletForWagmi } from "@/lib/privyWallets";
 import { AppReadyGate } from "@/components/AppReadyGate";
 import { ToastProvider } from "@/components/ui/Toast";
+import { EnsureLinkedActiveWallet } from "@/components/wallet/EnsureLinkedActiveWallet";
 import { FundWalletProvider } from "@/components/wallet/FundWalletModal";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -72,7 +74,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       }}
     >
       <QueryClientProvider client={queryClient}>
-        <WagmiProvider config={wagmiConfig}>
+        <WagmiProvider
+          config={wagmiConfig}
+          setActiveWalletForWagmi={pickActiveWalletForWagmi}
+        >
+          <EnsureLinkedActiveWallet />
           <FundWalletProvider>
             <ToastProvider>
               <AppReadyGate>{children}</AppReadyGate>
