@@ -46,7 +46,9 @@ export async function GET(
 
   // Match by address case-insensitively so no on-chain activity is ever missed
   // due to checksum casing differences. Identity is the wallet, not the name.
-  await syncUserParticipantBets(address);
+  await syncUserParticipantBets(address).catch((err) => {
+    console.error("syncUserParticipantBets failed", address, err);
+  });
 
   const bets = await prisma.bet.findMany({
     where: {
@@ -70,12 +72,21 @@ export async function GET(
   }));
   const stats = computeUserStats(statBets, address);
 
-  // CLOB markets this user created.
+  // CLOB markets this user created. Select only fields we return so profile
+  // loads stay up when the DB lags behind schema migrations.
   const createdMarkets = await prisma.market.findMany({
     where: { creator: { equals: address, mode: "insensitive" } },
     orderBy: { createdAt: "desc" },
     take: 100,
-    include: { _count: { select: { outcomes: true } } },
+    select: {
+      id: true,
+      title: true,
+      imageUrl: true,
+      status: true,
+      tokenSymbol: true,
+      feeBps: true,
+      _count: { select: { outcomes: true } },
+    },
   });
   const markets = createdMarkets.map((m) => ({
     id: m.id,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,13 +13,12 @@ import { AvatarUploadZone } from "@/components/profile/AvatarUploadZone";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { jsonFetch } from "@/lib/fetcher";
-import type { PublicProfile } from "@/lib/hooks/useProfile";
+import {
+  useProfile,
+  type PublicProfile,
+} from "@/lib/hooks/useProfile";
 import { validateBio, validateSocial, validateUsername } from "@/lib/profile";
 import { cn } from "@/lib/utils";
-
-type ProfilePayload = {
-  user: PublicProfile;
-};
 
 export default function EditProfilePage() {
   return (
@@ -39,15 +38,29 @@ function EditProfileForm() {
   const { push } = useToast();
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery<ProfilePayload>({
-    queryKey: ["profileEdit", address?.toLowerCase()],
-    enabled: !!address,
-    queryFn: () => jsonFetch(`/api/users/${address}`).then((r) => ({
-      user: (r as { user: PublicProfile }).user,
-    })),
-  });
+  const {
+    data: savedProfile,
+    isLoading,
+    isError,
+    error: loadError,
+    refetch,
+  } = useProfile(address);
 
-  const initial = data?.user;
+  const baseline = useMemo((): PublicProfile | null => {
+    if (!address) return null;
+    return {
+      address,
+      username: null,
+      avatarUrl: null,
+      bio: null,
+      twitter: null,
+      discord: null,
+      verified: false,
+      badges: ["User"],
+    };
+  }, [address]);
+
+  const initial = savedProfile ?? baseline;
 
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
@@ -61,13 +74,13 @@ function EditProfileForm() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    if (!initial || hydrated) return;
+    if (!initial || hydrated || isLoading) return;
     setUsername(initial.username ?? "");
     setBio(initial.bio ?? "");
     setTwitter(initial.twitter ?? "");
     setDiscord(initial.discord ?? "");
     setHydrated(true);
-  }, [initial, hydrated]);
+  }, [initial, hydrated, isLoading]);
 
   // Revoke object URLs on unmount / replace.
   useEffect(() => {
@@ -94,7 +107,7 @@ function EditProfileForm() {
   }, [previewUrl]);
 
   const dirty = useMemo(() => {
-    if (!initial) return false;
+    if (!initial || !hydrated) return false;
     const u = username.trim();
     const b = bio.trim();
     const initU = (initial.username ?? "").trim();
@@ -109,7 +122,7 @@ function EditProfileForm() {
       avatarFile !== null ||
       (removeAvatar && !!initial.avatarUrl)
     );
-  }, [initial, username, bio, twitter, discord, avatarFile, removeAvatar]);
+  }, [initial, hydrated, username, bio, twitter, discord, avatarFile, removeAvatar]);
 
   const usernameError = validateUsername(username);
   const bioError = validateBio(bio);
@@ -185,7 +198,6 @@ function EditProfileForm() {
 
       await qc.invalidateQueries({ queryKey: ["profile"] });
       await qc.invalidateQueries({ queryKey: ["userPage"] });
-      await qc.invalidateQueries({ queryKey: ["profileEdit"] });
 
       push({ title: "Profile saved", variant: "success" });
       router.push(`/u/${address}`);
@@ -356,6 +368,24 @@ function EditProfileForm() {
             </p>
           </div>
         </section>
+
+        {isError && (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+            <p>
+              Could not load your saved profile
+              {loadError instanceof Error ? `: ${loadError.message}` : ""}.
+              You can still edit and save — changes will be stored to your
+              wallet.
+            </p>
+            <button
+              type="button"
+              className="mt-2 text-xs font-medium underline hover:no-underline"
+              onClick={() => refetch()}
+            >
+              Retry load
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
