@@ -22,6 +22,8 @@ export type LinkPreviewData = {
   /** Bet / market */
   id?: number;
   status?: string;
+  /** Busts OG image CDN caches when lifecycle state changes. */
+  ogImageVersion?: string;
   tokenSymbol?: string | null;
   stakeLabel?: string;
   /** Proposer's backed outcome label (bets). */
@@ -289,6 +291,7 @@ export async function resolveLinkPreview(
         acceptorOutcome: true,
         winner: true,
         feeBps: true,
+        updatedAt: true,
       },
     });
     if (!bet) return null;
@@ -404,6 +407,7 @@ export async function resolveLinkPreview(
       subtitle: betMatchupSubtitle(betMatchup, resolvedStatus),
       imageUrl: bet.imageUrl,
       status: resolvedStatus,
+      ogImageVersion: betOgImageVersion(resolvedStatus, bet.updatedAt, bet.winner),
       tokenSymbol: bet.tokenSymbol,
       stakeLabel: proposerStake,
       proposerPosition,
@@ -420,6 +424,7 @@ export async function resolveLinkPreview(
       status: true,
       tokenSymbol: true,
       creator: true,
+      updatedAt: true,
     },
   });
   if (!market) return null;
@@ -437,8 +442,18 @@ export async function resolveLinkPreview(
     subtitle: `${creator?.username ? `@${creator.username}` : "Creator"} · ${market.status}`,
     imageUrl: market.imageUrl,
     status: market.status,
+    ogImageVersion: `${market.status}-${market.updatedAt.getTime()}`,
     tokenSymbol: market.tokenSymbol,
   };
+}
+
+function betOgImageVersion(
+  status: BetStatusName,
+  updatedAt: Date,
+  winner: string | null,
+): string {
+  const winnerKey = winner?.toLowerCase() ?? "none";
+  return `${status}-${updatedAt.getTime()}-${winnerKey}`;
 }
 
 function partyLabel(address: string, username: string | null): string {

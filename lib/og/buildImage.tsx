@@ -342,8 +342,10 @@ function OgPartySide({
         opacity: isLoser ? 0.72 : 1,
         padding: isWinner ? 16 : 0,
         borderRadius: isWinner ? 18 : 0,
-        backgroundColor: isWinner ? "rgba(45, 165, 98, 0.1)" : undefined,
-        border: isWinner ? `2px solid rgba(45, 165, 98, 0.45)` : undefined,
+        backgroundColor: isWinner ? "rgba(45, 165, 98, 0.1)" : "transparent",
+        border: isWinner
+          ? "2px solid rgba(45, 165, 98, 0.45)"
+          : "2px solid transparent",
       }}
     >
       <span

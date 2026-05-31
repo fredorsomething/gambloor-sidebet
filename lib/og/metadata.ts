@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { resolveLinkPreview } from "@/lib/linkPreview";
-import { absoluteUrl, openGraphImagePath } from "@/lib/siteUrl";
+import { absoluteUrl, openGraphImageUrl } from "@/lib/siteUrl";
 
 export async function buildMetadataForPath(path: string): Promise<Metadata> {
   const preview = await resolveLinkPreview(path);
@@ -13,8 +13,7 @@ export async function buildMetadataForPath(path: string): Promise<Metadata> {
   }
 
   const pageUrl = absoluteUrl(preview.url);
-  const imagePath = openGraphImagePath(preview.url);
-  const imageUrl = absoluteUrl(imagePath);
+  const imageUrl = openGraphImageUrl(preview.url, preview.ogImageVersion);
   const description =
     preview.kind === "profile"
       ? (preview.subtitle ?? "Sidebet profile")

@@ -46,3 +46,11 @@ export function openGraphImagePath(pagePath: string): string {
   if (path === "/") return "/opengraph-image";
   return `${path}/opengraph-image`;
 }
+
+/** Absolute OG image URL; optional version busts Discord/CDN caches on status changes. */
+export function openGraphImageUrl(pagePath: string, version?: string | null): string {
+  const path = openGraphImagePath(pagePath);
+  const base = absoluteUrl(path);
+  if (!version) return base;
+  return `${base}?v=${encodeURIComponent(version)}`;
+}
