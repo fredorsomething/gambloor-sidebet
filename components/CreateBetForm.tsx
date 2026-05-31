@@ -19,6 +19,7 @@ import { usePrivy } from "@privy-io/react-auth";
 
 import { BetImageField } from "@/components/bets/BetImageField";
 import { SettlerSelect } from "@/components/SettlerSelect";
+import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
@@ -40,7 +41,6 @@ import {
 } from "@/lib/utils";
 
 type Step = "idle" | "approving" | "creating" | "indexing" | "done";
-type Mode = "binary" | "custom";
 type BinaryStyle = "yes-no" | "up-down";
 
 export function CreateBetForm() {
@@ -65,12 +65,8 @@ export function CreateBetForm() {
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
   // Outcomes + stance
-  const [mode, setMode] = useState<Mode>("binary");
   const [binaryStyle, setBinaryStyle] = useState<BinaryStyle>("yes-no");
   const [stance, setStance] = useState<"yes" | "no">("yes");
-  const [customOutcomes, setCustomOutcomes] = useState<string[]>(["", ""]);
-  const [proposerOutcome, setProposerOutcome] = useState(0);
-  const [acceptorOutcome, setAcceptorOutcome] = useState(1);
 
   // Stakes
   const [yourStakeStr, setYourStakeStr] = useState("");
@@ -112,14 +108,10 @@ export function CreateBetForm() {
       ? `If BTC closes above $100k on Dec 31, "Up" wins. Otherwise "Down" wins.`
       : `If the Knicks play in the 2026 ECF, "Yes" wins. Otherwise "No" wins.`;
 
-  // Resolve the active outcomes + the indices each side backs.
-  const outcomes = useMemo(() => {
-    if (mode === "binary") return [...binaryOutcomes];
-    return customOutcomes.map((o) => o.trim());
-  }, [mode, binaryOutcomes, customOutcomes]);
+  const outcomes = useMemo(() => [...binaryOutcomes], [binaryOutcomes]);
 
-  const myOutcome = mode === "binary" ? (stance === "yes" ? 0 : 1) : proposerOutcome;
-  const theirOutcome = mode === "binary" ? (stance === "yes" ? 1 : 0) : acceptorOutcome;
+  const myOutcome = stance === "yes" ? 0 : 1;
+  const theirOutcome = stance === "yes" ? 1 : 0;
 
   const yourStake = useMemo(() => {
     try {
@@ -167,23 +159,6 @@ export function CreateBetForm() {
       if (coverPreview?.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
     };
   }, [coverPreview]);
-
-  function addOutcome() {
-    setCustomOutcomes((prev) => (prev.length >= 16 ? prev : [...prev, ""]));
-  }
-  function removeOutcome(idx: number) {
-    setCustomOutcomes((prev) => {
-      if (prev.length <= 2) return prev;
-      const next = prev.filter((_, i) => i !== idx);
-      // Keep selected indices valid.
-      setProposerOutcome((p) => Math.min(p, next.length - 1));
-      setAcceptorOutcome((a) => Math.min(a, next.length - 1));
-      return next;
-    });
-  }
-  function setOutcomeLabel(idx: number, label: string) {
-    setCustomOutcomes((prev) => prev.map((o, i) => (i === idx ? label : o)));
-  }
 
   function validate(): string | null {
     if (!account) return "Connect a wallet first";
@@ -511,158 +486,78 @@ export function CreateBetForm() {
             <div className="flex gap-1 text-xs">
               <button
                 type="button"
-                onClick={() => setMode("binary")}
-                className={`rounded-md px-2 py-1 ${mode === "binary" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
+                onClick={() => setBinaryStyle("yes-no")}
+                className={`rounded-md px-2 py-1 ${binaryStyle === "yes-no" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
               >
                 Yes / No
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setMode("custom");
-                  setCustomOutcomes([...binaryOutcomes]);
-                  setProposerOutcome(0);
-                  setAcceptorOutcome(1);
-                }}
-                className={`rounded-md px-2 py-1 ${mode === "custom" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
+                onClick={() => setBinaryStyle("up-down")}
+                className={`rounded-md px-2 py-1 ${binaryStyle === "up-down" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
               >
-                Custom outcomes
+                Up / Down
               </button>
             </div>
           </div>
 
-          {mode === "binary" && (
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                className="rounded border-border"
-                checked={binaryStyle === "up-down"}
-                onChange={(e) =>
-                  setBinaryStyle(e.target.checked ? "up-down" : "yes-no")
-                }
-              />
-              Display outcomes as Up / Down
-            </label>
-          )}
-
-          {mode === "binary" ? (
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setStance("yes")}
-                className={`rounded-lg border-2 p-4 text-center font-bold transition-all ${
-                  stance === "yes"
-                    ? "border-success bg-success/15 text-success"
-                    : "border-border text-muted-foreground hover:border-success/40"
-                }`}
-              >
-                <div className="text-lg">
-                  {binaryStyle === "up-down" ? "UP" : "YES"}
-                </div>
-                <div className="mt-1 text-[11px] font-normal">You back this</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setStance("no")}
-                className={`rounded-lg border-2 p-4 text-center font-bold transition-all ${
-                  stance === "no"
-                    ? "border-danger bg-danger/15 text-danger"
-                    : "border-border text-muted-foreground hover:border-danger/40"
-                }`}
-              >
-                <div className="text-lg">
-                  {binaryStyle === "up-down" ? "DOWN" : "NO"}
-                </div>
-                <div className="mt-1 text-[11px] font-normal">You back this</div>
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {customOutcomes.map((o, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    className="input flex-1"
-                    value={o}
-                    onChange={(e) => setOutcomeLabel(i, e.target.value)}
-                    placeholder={`Outcome ${i + 1}`}
-                    maxLength={80}
-                  />
-                  {customOutcomes.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removeOutcome(i)}
-                      className="text-muted-foreground hover:text-[hsl(var(--danger))]"
-                      aria-label="Remove outcome"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
-              {customOutcomes.length < 16 && (
-                <button
-                  type="button"
-                  onClick={addOutcome}
-                  className="text-sm text-[hsl(var(--primary))] hover:underline"
-                >
-                  + Add outcome
-                </button>
-              )}
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <Field label="You back">
-                  <select
-                    className="select"
-                    value={proposerOutcome}
-                    onChange={(e) => setProposerOutcome(Number(e.target.value))}
-                  >
-                    {customOutcomes.map((o, i) => (
-                      <option key={i} value={i}>
-                        {o.trim() || `Outcome ${i + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Counterparty backs">
-                  <select
-                    className="select"
-                    value={acceptorOutcome}
-                    onChange={(e) => setAcceptorOutcome(Number(e.target.value))}
-                  >
-                    {customOutcomes.map((o, i) => (
-                      <option key={i} value={i}>
-                        {o.trim() || `Outcome ${i + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setStance("yes")}
+              className={`rounded-lg border-2 p-4 text-center font-bold transition-all ${
+                stance === "yes"
+                  ? "border-success bg-success/15 text-success"
+                  : "border-border text-muted-foreground hover:border-success/40"
+              }`}
+            >
+              <div className="text-lg">
+                {binaryStyle === "up-down" ? "UP" : "YES"}
               </div>
-            </div>
-          )}
+              <div className="mt-1 text-[11px] font-normal">You back this</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStance("no")}
+              className={`rounded-lg border-2 p-4 text-center font-bold transition-all ${
+                stance === "no"
+                  ? "border-danger bg-danger/15 text-danger"
+                  : "border-border text-muted-foreground hover:border-danger/40"
+              }`}
+            >
+              <div className="text-lg">
+                {binaryStyle === "up-down" ? "DOWN" : "NO"}
+              </div>
+              <div className="mt-1 text-[11px] font-normal">You back this</div>
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Token" hint="All new sidebets settle in USDC.e.">
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm font-medium">
-              USDC.e — USD Coin (bridged)
-            </div>
-          </Field>
-          <Field
-            label="Your stake"
-            hint={
-              live.balance !== undefined && tokenMeta
-                ? `Balance: ${formatToken(live.balance, effectiveDecimals)} ${tokenMeta.symbol}`
-                : undefined
-            }
-          >
-            <input
-              className="input font-mono"
-              inputMode="decimal"
-              value={yourStakeStr}
-              onChange={(e) => setYourStakeStr(e.target.value)}
-              placeholder="100"
-            />
-          </Field>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="label">Token:</span>
+          <TokenSymbol
+            symbol={tokenMeta?.symbol ?? "USDC.e"}
+            size={16}
+            className="font-medium text-foreground"
+          />
         </div>
+
+        <Field
+          label="Your stake"
+          hint={
+            live.balance !== undefined && tokenMeta
+              ? `Balance: ${formatToken(live.balance, effectiveDecimals)} ${tokenMeta.symbol}`
+              : undefined
+          }
+        >
+          <input
+            className="input font-mono"
+            inputMode="decimal"
+            value={yourStakeStr}
+            onChange={(e) => setYourStakeStr(e.target.value)}
+            placeholder="100"
+          />
+        </Field>
 
         <Field
           label="Their stake"
@@ -679,7 +574,7 @@ export function CreateBetForm() {
 
         <Field
           label="Settler"
-          hint="Pick @admin, an approved settler, or paste a custom wallet to declare the outcome off-chain. Payout still auto-settles on-chain when both sides agree."
+          hint="Pick @admin, an approved settler, or paste a custom wallet to declare the outcome. Payouts auto-settle on-chain when both sides agree."
         >
           <SettlerSelect
             value={customSettler ?? settler}

@@ -163,9 +163,7 @@ export function SettlerSelect({
           Add custom settler
         </span>
         <p className="text-[11px] text-muted-foreground">
-          Paste a wallet that will declare the winning outcome for this sidebet.
-          Escrow stays with @admin on-chain — when both sides agree on the
-          result, payout settles automatically.
+          Paste a wallet that will declare the winning outcome for this sidebet. Once they've determined the outcome, payout settles automatically.
         </p>
         <div className="flex gap-2">
           <input
