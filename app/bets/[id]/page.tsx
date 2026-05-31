@@ -17,15 +17,20 @@ import { ShareLinkButton } from "@/components/ShareLinkButton";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
 import { explorerAddress, explorerTx } from "@/lib/chains";
+import { isAdminAddress } from "@/lib/admin";
+import {
+  betShowMatchup,
+  betShowOpenMatchup,
+  resolveBetStatus,
+} from "@/lib/betStatus";
+import type { GetBetResponse } from "@/lib/types";
+import { buildMetadataForPath } from "@/lib/og/metadata";
 import {
   formatTimestamp,
   formatToken,
   fromNowUnix,
   shortAddr,
 } from "@/lib/utils";
-import { betShowMatchup, betShowOpenMatchup } from "@/lib/betStatus";
-import type { GetBetResponse } from "@/lib/types";
-import { buildMetadataForPath } from "@/lib/og/metadata";
 
 export async function generateMetadata({
   params,
@@ -54,7 +59,11 @@ export default async function BetDetailPage({
 }) {
   const data = await fetchBet(params.id);
   if (!data) notFound();
-  const { bet } = data;
+  const { bet, onchain } = data;
+  const resolverRequestEligible =
+    resolveBetStatus(bet, onchain) === "Matched" &&
+    !bet.customSettler &&
+    isAdminAddress(bet.settler);
 
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
   const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
@@ -198,6 +207,10 @@ export default async function BetDetailPage({
             subjectId={bet.id}
             settler={bet.settler}
             customSettler={bet.customSettler}
+            participants={[bet.proposer, bet.acceptor].filter(
+              (a): a is string => !!a,
+            )}
+            requestEligible={resolverRequestEligible}
           />
 
           <section className="card p-5">

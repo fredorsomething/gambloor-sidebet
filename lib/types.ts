@@ -129,6 +129,7 @@ export type MarketRow = {
   txHash: string | null;
   creator: string;
   settler: string;
+  customSettler: string | null;
   feeBps: number;
   token: string;
   tokenSymbol: string | null;

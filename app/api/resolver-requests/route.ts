@@ -2,11 +2,16 @@ import { NextRequest } from "next/server";
 import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 
-import { ADMIN_ADDRESS } from "@/lib/admin";
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
+import {
+  applyApprovedResolver,
+  resolverCounterparty,
+  validateResolverRequest,
+} from "@/lib/resolverRequests";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import { shortAddr } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +37,11 @@ const PostSchema = z.object({
   requestedBy: z.string().refine(isAddress, "bad address"),
   subjectType: z.enum(["bet", "market"]),
   subjectId: z.number().int().positive(),
-  suggested: z.string().refine(isAddress, "bad address").optional(),
+  suggested: z.string().refine(isAddress, "bad address"),
   reason: z.string().max(1000).optional(),
 });
 
-/** POST /api/resolver-requests — ask admins to add an additional resolver. */
+/** POST /api/resolver-requests — ask the counterparty to approve a new resolver. */
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -54,29 +59,23 @@ export async function POST(req: NextRequest) {
   const auth = await verifyWalletAuth({ req, address: requester });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
-  // Confirm the subject exists and grab its title for the notification.
-  let title = "";
-  if (d.subjectType === "bet") {
-    const bet = await prisma.bet.findUnique({ where: { id: d.subjectId } });
-    if (!bet) return jsonErr("bet not found", 404);
-    title = bet.title;
-  } else {
-    const market = await prisma.market.findUnique({ where: { id: d.subjectId } });
-    if (!market) return jsonErr("market not found", 404);
-    title = market.title;
-  }
+  const gate = await validateResolverRequest(
+    d.subjectType,
+    d.subjectId,
+    requester,
+    d.suggested,
+  );
+  if (!gate.ok) return jsonErr(gate.reason, gate.status ?? 400);
 
-  // One open request per (subject, requester).
   const existing = await prisma.resolverRequest.findFirst({
     where: {
       subjectType: d.subjectType,
       subjectId: d.subjectId,
-      requestedBy: requester.toLowerCase(),
       status: "Pending",
     },
   });
   if (existing) {
-    return jsonErr("you already have a pending request for this", 409);
+    return jsonErr("a resolver request is already pending approval", 409);
   }
 
   const request = await prisma.resolverRequest.create({
@@ -84,20 +83,18 @@ export async function POST(req: NextRequest) {
       subjectType: d.subjectType,
       subjectId: d.subjectId,
       requestedBy: requester.toLowerCase(),
-      suggested: d.suggested ? getAddress(d.suggested).toLowerCase() : null,
+      suggested: gate.suggested.toLowerCase(),
       reason: d.reason?.trim() || null,
       status: "Pending",
     },
   });
 
-  const link =
-    d.subjectType === "bet" ? `/bets/${d.subjectId}` : `/markets/${d.subjectId}`;
   await notify({
-    recipient: ADMIN_ADDRESS,
+    recipient: gate.counterparty,
     type: "status",
-    title: "Additional resolver requested",
-    body: `Someone requested an extra resolver for "${title}".`,
-    link,
+    title: "Resolver change requested",
+    body: `Your counterparty wants ${shortAddr(gate.suggested)} to resolve "${gate.title}". Review and approve or decline.`,
+    link: gate.link,
   });
 
   return jsonOk({ request }, { status: 201 });

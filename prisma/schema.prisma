@@ -224,10 +224,11 @@ model ResolverRequest {
   subjectType String // "bet" | "market"
   subjectId   Int
   requestedBy String // lowercase address of the requester
-  suggested   String? // optional suggested resolver address (lowercase)
+  suggested   String? // suggested resolver address (lowercase)
   reason      String?
   status      String   @default("Pending") // Pending | Approved | Rejected
-  reviewedBy  String? // lowercase admin address
+  reviewedBy  String? // lowercase admin address (legacy admin review)
+  approvedBy  String? // lowercase counterparty who approved
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -331,9 +332,10 @@ model Market {
   txHash          String?
 
   // Roles + collateral
-  creator     String
-  settler     String
-  feeBps      Int     @default(200) // settler fee snapshot
+  creator       String
+  settler         String
+  customSettler   String? // optional counterparty-approved resolver after creation
+  feeBps          Int     @default(200) // settler fee snapshot
   token       String
   tokenSymbol String?
   decimals    Int     @default(6)

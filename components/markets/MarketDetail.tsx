@@ -21,6 +21,7 @@ import { TypeTag } from "@/components/ui/TypeTag";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI } from "@/lib/abi";
 import { isAdminAddress } from "@/lib/admin";
+import { displayResolver } from "@/lib/settlerUtils";
 import { getMarketCollateralToken } from "@/lib/chains";
 import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
@@ -351,9 +352,10 @@ export function MarketDetail({ id }: { id: number }) {
   }
   if (!Number.isFinite(completeSetsHeld)) completeSetsHeld = 0;
 
+  const effectiveResolver = displayResolver(market);
   const isAdminAcct = !!account && isAdminAddress(account);
   const isSettlerAcct =
-    !!account && account.toLowerCase() === market.settler.toLowerCase();
+    !!account && account.toLowerCase() === effectiveResolver.toLowerCase();
   const canResolve =
     !resolved && market.status === "Open" && (isSettlerAcct || isAdminAcct);
 
@@ -466,6 +468,9 @@ export function MarketDetail({ id }: { id: number }) {
             subjectType="market"
             subjectId={market.id}
             settler={market.settler}
+            customSettler={market.customSettler}
+            participants={[market.creator, market.settler]}
+            requestEligible={market.status === "Open" && !market.customSettler}
           />
 
           {market.status === "Open" && (
@@ -473,7 +478,11 @@ export function MarketDetail({ id }: { id: number }) {
               subjectType="market"
               subjectId={market.id}
               outcomes={outcomes.map((o) => o.label)}
-              participants={[market.creator, market.settler]}
+              participants={[
+                market.creator,
+                market.settler,
+                ...(market.customSettler ? [market.customSettler] : []),
+              ]}
             />
           )}
 

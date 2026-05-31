@@ -38,6 +38,8 @@ export type BetPartyPreview = {
   label: string;
   stakeLabel: string;
   outcomeLabel?: string;
+  address?: string | null;
+  avatarUrl?: string | null;
 };
 
 const TRAILING_PUNCT = /[)\].,;:!?]+$/;
@@ -290,11 +292,13 @@ export async function resolveLinkPreview(
     ];
     const users = await prisma.user.findMany({
       where: { address: { in: lookupAddresses } },
-      select: { address: true, username: true },
+      select: { address: true, username: true, avatarUrl: true },
     });
+    const userFor = (address: string) =>
+      users.find((u) => u.address.toLowerCase() === address.toLowerCase());
     const usernameFor = (address: string) =>
-      users.find((u) => u.address.toLowerCase() === address.toLowerCase())
-        ?.username ?? null;
+      userFor(address)?.username ?? null;
+    const avatarFor = (address: string) => userFor(address)?.avatarUrl ?? null;
 
     const proposerStakeWei = BigInt(bet.proposerStake || bet.amount || "0");
     const acceptorStakeWei = BigInt(bet.acceptorStake || bet.amount || "0");
@@ -324,6 +328,8 @@ export async function resolveLinkPreview(
     } as Parameters<typeof resolveBetStatus>[0]);
 
     const acceptorAddress = bet.acceptor?.trim() || null;
+    const acceptorPartyAddress =
+      acceptorAddress ?? bet.intendedAcceptor?.trim() ?? null;
     const acceptorSideLabel = acceptorAddress
       ? partyLabel(acceptorAddress, usernameFor(acceptorAddress))
       : bet.intendedAcceptor
@@ -335,11 +341,17 @@ export async function resolveLinkPreview(
         label: proposerLabel,
         stakeLabel: proposerStake,
         outcomeLabel: proposerPosition,
+        address: bet.proposer,
+        avatarUrl: avatarFor(bet.proposer),
       },
       acceptor: {
         label: acceptorSideLabel,
         stakeLabel: acceptorStake,
         outcomeLabel: acceptorPosition,
+        address: acceptorPartyAddress,
+        avatarUrl: acceptorPartyAddress
+          ? avatarFor(acceptorPartyAddress)
+          : null,
       },
       poolLabel:
         resolvedStatus === "Matched" ||

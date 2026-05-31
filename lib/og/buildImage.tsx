@@ -20,6 +20,11 @@ const C = {
 type OgCardOptions = {
   /** Pre-fetched data URL for the thumbnail (avoids Satori remote fetch failures). */
   thumbDataUrl?: string | null;
+  /** Pre-fetched party avatar data URLs for bet matchup rows. */
+  partyAvatars?: {
+    proposer?: string | null;
+    acceptor?: string | null;
+  };
 };
 
 function kindLabel(p: LinkPreviewData): string {
@@ -224,6 +229,75 @@ function OgVsPill() {
   );
 }
 
+function partyInitials(label: string, address?: string | null): string {
+  if (address) {
+    return address.slice(2, 4).toUpperCase();
+  }
+  const clean = label.replace(/^@/, "").trim();
+  if (clean.startsWith("0x")) return clean.slice(2, 4).toUpperCase();
+  if (clean.toLowerCase() === "open") return "?";
+  return clean.slice(0, 2).toUpperCase() || "?";
+}
+
+function OgAvatar({
+  dataUrl,
+  label,
+  address,
+  size = 56,
+  muted,
+}: {
+  dataUrl?: string | null;
+  label: string;
+  address?: string | null;
+  size?: number;
+  muted?: boolean;
+}) {
+  const seed = address ?? label;
+  if (dataUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={dataUrl}
+        alt=""
+        width={size}
+        height={size}
+        style={{
+          borderRadius: size / 2,
+          objectFit: "cover",
+          border: `2px solid ${C.border}`,
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  const openSlot = label.toLowerCase() === "open" && !address;
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        backgroundColor: openSlot
+          ? "rgba(139, 148, 158, 0.12)"
+          : colorFromSeed(seed),
+        border: openSlot
+          ? `2px dashed ${C.border}`
+          : `2px solid ${C.border}`,
+        fontSize: Math.round(size * 0.34),
+        fontWeight: 700,
+        color: muted || openSlot ? C.muted : "rgba(255,255,255,0.92)",
+      }}
+    >
+      {partyInitials(label, address)}
+    </div>
+  );
+}
+
 function OgPartySide({
   role,
   label,
@@ -231,6 +305,8 @@ function OgPartySide({
   outcomeLabel,
   align,
   mutedLabel,
+  avatarDataUrl,
+  address,
 }: {
   role: string;
   label: string;
@@ -238,6 +314,8 @@ function OgPartySide({
   outcomeLabel?: string;
   align: "start" | "end";
   mutedLabel?: boolean;
+  avatarDataUrl?: string | null;
+  address?: string | null;
 }) {
   return (
     <div
@@ -262,16 +340,31 @@ function OgPartySide({
       >
         {role}
       </span>
-      <span
+      <div
         style={{
-          fontSize: 30,
-          fontWeight: 700,
-          color: mutedLabel ? C.muted : C.text,
-          lineHeight: 1.1,
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          flexDirection: align === "end" ? "row-reverse" : "row",
         }}
       >
-        {truncate(label, 22)}
-      </span>
+        <OgAvatar
+          dataUrl={avatarDataUrl}
+          label={label}
+          address={address}
+          muted={mutedLabel}
+        />
+        <span
+          style={{
+            fontSize: 30,
+            fontWeight: 700,
+            color: mutedLabel ? C.muted : C.text,
+            lineHeight: 1.1,
+          }}
+        >
+          {truncate(label, 22)}
+        </span>
+      </div>
       {outcomeLabel && (
         <span
           style={{
@@ -439,6 +532,8 @@ function renderBetOgCard(
                 stakeLabel={matchup.proposer.stakeLabel}
                 outcomeLabel={matchup.proposer.outcomeLabel}
                 align="start"
+                avatarDataUrl={options.partyAvatars?.proposer}
+                address={matchup.proposer.address}
               />
               <OgVsPill />
               <OgPartySide
@@ -448,6 +543,8 @@ function renderBetOgCard(
                 outcomeLabel={matchup.acceptor.outcomeLabel}
                 align="end"
                 mutedLabel={acceptorMuted}
+                avatarDataUrl={options.partyAvatars?.acceptor}
+                address={matchup.acceptor.address}
               />
             </div>
           )}

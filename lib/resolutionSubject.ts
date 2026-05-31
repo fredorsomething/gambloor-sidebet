@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { displayResolver } from "@/lib/settlerUtils";
 
 export type SubjectType = "bet" | "market";
 
@@ -44,10 +45,10 @@ export async function loadSubject(
     title: market.title,
     link: `/markets/${market.id}`,
     outcomes: market.outcomes.map((o) => o.label),
-    participants: [market.creator, market.settler].filter(
+    participants: [market.creator, market.settler, market.customSettler].filter(
       (a): a is string => !!a,
     ),
-    settler: market.settler,
+    settler: displayResolver(market),
     status: market.status,
   };
 }
@@ -69,5 +70,8 @@ export async function canProposeResolution(
   }
   const market = await prisma.market.findUnique({ where: { id: subjectId } });
   if (!market) return false;
-  return [market.creator, market.settler].some((x) => x.toLowerCase() === a);
+  const parties = [market.creator, market.settler, market.customSettler].filter(
+    (x): x is string => !!x,
+  );
+  return parties.some((x) => x.toLowerCase() === a);
 }

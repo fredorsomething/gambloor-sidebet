@@ -3,6 +3,7 @@ import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 
 import { isAdminAddress } from "@/lib/admin";
+import { displayResolver } from "@/lib/settlerUtils";
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
@@ -50,7 +51,8 @@ export async function POST(
   if (market.status === "Resolved") return jsonErr("already resolved", 409);
   if (market.status !== "Open") return jsonErr("market is not open", 409);
 
-  const isSettler = caller.toLowerCase() === market.settler.toLowerCase();
+  const resolver = displayResolver(market);
+  const isSettler = caller.toLowerCase() === resolver.toLowerCase();
   const isAdmin = isAdminAddress(caller);
   if (!isSettler && !isAdmin) {
     return jsonErr("only the settler or an admin can resolve", 403);
