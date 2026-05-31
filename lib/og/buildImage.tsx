@@ -245,14 +245,17 @@ function OgAvatar({
   address,
   size = 56,
   muted,
+  highlight,
 }: {
   dataUrl?: string | null;
   label: string;
   address?: string | null;
   size?: number;
   muted?: boolean;
+  highlight?: boolean;
 }) {
   const seed = address ?? label;
+  const borderColor = highlight ? C.success : C.border;
   if (dataUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
@@ -264,7 +267,7 @@ function OgAvatar({
         style={{
           borderRadius: size / 2,
           objectFit: "cover",
-          border: `2px solid ${C.border}`,
+          border: `3px solid ${borderColor}`,
           flexShrink: 0,
         }}
       />
@@ -287,7 +290,7 @@ function OgAvatar({
           : colorFromSeed(seed),
         border: openSlot
           ? `2px dashed ${C.border}`
-          : `2px solid ${C.border}`,
+          : `3px solid ${borderColor}`,
         fontSize: Math.round(size * 0.34),
         fontWeight: 700,
         color: muted || openSlot ? C.muted : "rgba(255,255,255,0.92)",
@@ -307,6 +310,9 @@ function OgPartySide({
   mutedLabel,
   avatarDataUrl,
   address,
+  isWinner,
+  isLoser,
+  payoutLabel,
 }: {
   role: string;
   label: string;
@@ -316,7 +322,13 @@ function OgPartySide({
   mutedLabel?: boolean;
   avatarDataUrl?: string | null;
   address?: string | null;
+  isWinner?: boolean;
+  isLoser?: boolean;
+  payoutLabel?: string;
 }) {
+  const dimmed = mutedLabel || isLoser;
+  const roleLabel = isWinner ? "Winner" : role;
+
   return (
     <div
       style={{
@@ -327,6 +339,11 @@ function OgPartySide({
         minWidth: 0,
         alignItems: align === "end" ? "flex-end" : "flex-start",
         textAlign: align === "end" ? "right" : "left",
+        opacity: isLoser ? 0.72 : 1,
+        padding: isWinner ? 16 : 0,
+        borderRadius: isWinner ? 18 : 0,
+        backgroundColor: isWinner ? "rgba(45, 165, 98, 0.1)" : undefined,
+        border: isWinner ? `2px solid rgba(45, 165, 98, 0.45)` : undefined,
       }}
     >
       <span
@@ -335,10 +352,10 @@ function OgPartySide({
           fontWeight: 600,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
-          color: C.muted,
+          color: isWinner ? C.success : C.muted,
         }}
       >
-        {role}
+        {roleLabel}
       </span>
       <div
         style={{
@@ -352,13 +369,14 @@ function OgPartySide({
           dataUrl={avatarDataUrl}
           label={label}
           address={address}
-          muted={mutedLabel}
+          muted={dimmed}
+          highlight={isWinner}
         />
         <span
           style={{
             fontSize: 30,
             fontWeight: 700,
-            color: mutedLabel ? C.muted : C.text,
+            color: dimmed ? C.muted : C.text,
             lineHeight: 1.1,
           }}
         >
@@ -370,25 +388,53 @@ function OgPartySide({
           style={{
             fontSize: 18,
             fontWeight: 600,
-            color: C.muted,
+            color: isWinner ? C.success : C.muted,
             padding: "4px 12px",
             borderRadius: 999,
-            backgroundColor: "rgba(139, 148, 158, 0.12)",
+            backgroundColor: isWinner
+              ? "rgba(45, 165, 98, 0.12)"
+              : "rgba(139, 148, 158, 0.12)",
           }}
         >
           {truncate(outcomeLabel, 24)}
         </span>
       )}
-      <span
-        style={{
-          fontSize: 34,
-          fontWeight: 700,
-          color: C.text,
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-        }}
-      >
-        {stakeLabel}
-      </span>
+      {isWinner && payoutLabel ? (
+        <>
+          <span
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: C.success,
+            }}
+          >
+            Won
+          </span>
+          <span
+            style={{
+              fontSize: 38,
+              fontWeight: 700,
+              color: C.success,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            }}
+          >
+            {payoutLabel}
+          </span>
+        </>
+      ) : (
+        <span
+          style={{
+            fontSize: 34,
+            fontWeight: 700,
+            color: dimmed ? C.muted : C.text,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          }}
+        >
+          {stakeLabel}
+        </span>
+      )}
     </div>
   );
 }
@@ -400,7 +446,9 @@ function renderBetOgCard(
   const matchup = preview.betMatchup;
   const statusColors = betStatusColors(preview.status);
   const isOpen = preview.status === "Open";
+  const isSettled = preview.status === "Settled";
   const acceptorMuted = isOpen && preview.betMatchup?.acceptor.label === "Open";
+  const hasWinner = isSettled && !!matchup?.resultLabel;
 
   return new ImageResponse(
     (
@@ -510,7 +558,18 @@ function renderBetOgCard(
               </span>
               {matchup?.poolLabel && (
                 <span style={{ fontSize: 22, color: C.muted }}>
-                  Pool {matchup.poolLabel}
+                  {isSettled ? "Final pool" : "Pool"} {matchup.poolLabel}
+                </span>
+              )}
+              {hasWinner && matchup.resultLabel && (
+                <span
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 700,
+                    color: C.success,
+                  }}
+                >
+                  {truncate(matchup.resultLabel, 80)}
                 </span>
               )}
             </div>
@@ -534,6 +593,9 @@ function renderBetOgCard(
                 align="start"
                 avatarDataUrl={options.partyAvatars?.proposer}
                 address={matchup.proposer.address}
+                isWinner={matchup.proposer.isWinner}
+                isLoser={isSettled && !matchup.proposer.isWinner && !!matchup.resultLabel}
+                payoutLabel={matchup.proposer.payoutLabel}
               />
               <OgVsPill />
               <OgPartySide
@@ -545,6 +607,9 @@ function renderBetOgCard(
                 mutedLabel={acceptorMuted}
                 avatarDataUrl={options.partyAvatars?.acceptor}
                 address={matchup.acceptor.address}
+                isWinner={matchup.acceptor.isWinner}
+                isLoser={isSettled && !matchup.acceptor.isWinner && !!matchup.resultLabel}
+                payoutLabel={matchup.acceptor.payoutLabel}
               />
             </div>
           )}

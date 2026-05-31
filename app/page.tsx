@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Feed } from "@/components/Feed";
 import { DiscordWidget } from "@/components/DiscordWidget";
 import { Button } from "@/components/ui/button";
-import { TokenIcon } from "@/components/ui/TokenIcon";
+import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 
 export default function HomePage() {
   return (
@@ -66,8 +66,13 @@ export default function HomePage() {
       <section id="markets" className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Markets</h2>
-            <p className="text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-semibold">Markets</h2>
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2.5 py-0.5 text-xs text-muted-foreground">
+                All sidebets in <TokenSymbol symbol="USDC.e" size={14} />
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
               Find a sidebet here. Can&apos;t find one? Create your own.
             </p>
           </div>

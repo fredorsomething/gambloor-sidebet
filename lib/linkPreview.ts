@@ -31,6 +31,8 @@ export type LinkPreviewData = {
     proposer: BetPartyPreview;
     acceptor: BetPartyPreview;
     poolLabel?: string;
+    /** Settled: "@user won 8 USDC.e" line for meta text. */
+    resultLabel?: string;
   };
 };
 
@@ -40,6 +42,10 @@ export type BetPartyPreview = {
   outcomeLabel?: string;
   address?: string | null;
   avatarUrl?: string | null;
+  /** Settled bets: winning party. */
+  isWinner?: boolean;
+  /** Settled bets: gross payout to the winner (pool minus fee). */
+  payoutLabel?: string;
 };
 
 const TRAILING_PUNCT = /[)\].,;:!?]+$/;
@@ -281,6 +287,8 @@ export async function resolveLinkPreview(
         outcomes: true,
         proposerOutcome: true,
         acceptorOutcome: true,
+        winner: true,
+        feeBps: true,
       },
     });
     if (!bet) return null;
@@ -326,15 +334,37 @@ export async function resolveLinkPreview(
       acceptor: bet.acceptor,
       escrowRevisionNeeded: bet.escrowRevisionNeeded,
     } as Parameters<typeof resolveBetStatus>[0]);
+    const isOpen = resolvedStatus === "Open";
+    const isSettled = resolvedStatus === "Settled";
+    const isRefunded = resolvedStatus === "Refunded";
+    const isMatched =
+      resolvedStatus === "Matched" || isSettled || isRefunded;
 
     const acceptorAddress = bet.acceptor?.trim() || null;
-    const acceptorPartyAddress =
-      acceptorAddress ?? bet.intendedAcceptor?.trim() ?? null;
     const acceptorSideLabel = acceptorAddress
       ? partyLabel(acceptorAddress, usernameFor(acceptorAddress))
-      : bet.intendedAcceptor
-        ? partyLabel(bet.intendedAcceptor, usernameFor(bet.intendedAcceptor))
-        : "Open";
+      : isOpen
+        ? "Open"
+        : bet.intendedAcceptor
+          ? partyLabel(bet.intendedAcceptor, usernameFor(bet.intendedAcceptor))
+          : "Open";
+    const acceptorPartyAddress = acceptorAddress ?? (isOpen ? null : bet.intendedAcceptor?.trim() ?? null);
+
+    const payoutWei = betPayoutWei(
+      proposerStakeWei,
+      acceptorStakeWei,
+      bet.feeBps ?? 0,
+    );
+    const payoutLabel = formatStake(payoutWei, bet.decimals, bet.tokenSymbol);
+    const proposerWon =
+      isSettled && eqAddr(bet.winner, bet.proposer);
+    const acceptorWon =
+      isSettled && eqAddr(bet.winner, acceptorAddress);
+    const winnerLabel = proposerWon
+      ? proposerLabel
+      : acceptorWon
+        ? acceptorSideLabel
+        : undefined;
 
     const betMatchup = {
       proposer: {
@@ -343,6 +373,8 @@ export async function resolveLinkPreview(
         outcomeLabel: proposerPosition,
         address: bet.proposer,
         avatarUrl: avatarFor(bet.proposer),
+        isWinner: proposerWon || undefined,
+        payoutLabel: proposerWon ? payoutLabel : undefined,
       },
       acceptor: {
         label: acceptorSideLabel,
@@ -352,13 +384,16 @@ export async function resolveLinkPreview(
         avatarUrl: acceptorPartyAddress
           ? avatarFor(acceptorPartyAddress)
           : null,
+        isWinner: acceptorWon || undefined,
+        payoutLabel: acceptorWon ? payoutLabel : undefined,
       },
-      poolLabel:
-        resolvedStatus === "Matched" ||
-        resolvedStatus === "Settled" ||
-        resolvedStatus === "Refunded"
-          ? poolLabel
-          : undefined,
+      poolLabel: isMatched ? poolLabel : undefined,
+      resultLabel:
+        isSettled && winnerLabel
+          ? `${winnerLabel} won ${payoutLabel}`
+          : isRefunded
+            ? "Refunded — stakes returned"
+            : undefined,
     };
 
     return {
@@ -416,12 +451,29 @@ function betMatchupSubtitle(
   matchup: NonNullable<LinkPreviewData["betMatchup"]>,
   status: BetStatusName,
 ): string {
+  if (matchup.resultLabel) return matchup.resultLabel;
   const left = `${matchup.proposer.label} · ${matchup.proposer.stakeLabel}`;
   const right = `${matchup.acceptor.label} · ${matchup.acceptor.stakeLabel}`;
   if (status === "Open") {
     return `${left} vs ${matchup.acceptor.stakeLabel} to take`;
   }
+  if (status === "Matched") {
+    return `${left} vs ${right} · Matched`;
+  }
   return `${left} vs ${right}`;
+}
+
+function eqAddr(a?: string | null, b?: string | null): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
+}
+
+function betPayoutWei(
+  proposerStakeWei: bigint,
+  acceptorStakeWei: bigint,
+  feeBps: number,
+): bigint {
+  const pool = proposerStakeWei + acceptorStakeWei;
+  return (pool * BigInt(10000 - feeBps)) / 10000n;
 }
 
 function formatStake(wei: bigint, decimals: number, symbol: string | null): string {

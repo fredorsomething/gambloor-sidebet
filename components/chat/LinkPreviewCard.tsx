@@ -121,15 +121,30 @@ function PreviewMeta({ preview: p }: { preview: LinkPreviewData }) {
   }
 
   if (p.kind === "bet") {
+    const settled = p.status === "Settled";
+    const matched = p.status === "Matched";
     return (
       <>
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span
+          className={cn(
+            "text-[10px] font-semibold uppercase tracking-wide",
+            settled
+              ? "text-success"
+              : matched
+                ? "text-warning"
+                : "text-muted-foreground",
+          )}
+        >
           Sidebet · {p.status}
         </span>
         <span className="truncate text-sm font-semibold leading-snug">{p.title}</span>
-        {p.subtitle && (
+        {p.betMatchup?.resultLabel ? (
+          <span className="truncate text-xs font-semibold text-success">
+            {p.betMatchup.resultLabel}
+          </span>
+        ) : p.subtitle ? (
           <span className="truncate text-xs text-muted-foreground">{p.subtitle}</span>
-        )}
+        ) : null}
       </>
     );
   }
