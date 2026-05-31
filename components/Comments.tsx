@@ -7,6 +7,8 @@ import { CommentBoard } from "@/components/CommentBoard";
  * collection endpoint, e.g. `/api/bets/12/comments` or `/api/markets/4/comments`.
  */
 export function Comments({ basePath }: { basePath: string }) {
+  const cooldownHint = "You can post one comment every minute.";
+
   return (
     <CommentBoard
       basePath={basePath}
@@ -14,6 +16,7 @@ export function Comments({ basePath }: { basePath: string }) {
       title="Comments"
       placeholder="Add to the discussion…"
       maxLength={2000}
+      cooldownHint={cooldownHint}
     />
   );
 }

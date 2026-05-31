@@ -2,43 +2,69 @@ import { prisma } from "@/lib/db";
 
 export type CommentScope = "thread" | "profile";
 
-/** One comment per author per this window, across both comment surfaces. */
-export const COMMENT_RATE_LIMIT_MS = 10 * 60 * 1000; // 10 minutes
+export const MARKET_COMMENT_RATE_LIMIT_MS = 60 * 1000; // 1 minute
+export const BET_COMMENT_RATE_LIMIT_MS = 60 * 1000; // 1 minute
+export const PROFILE_COMMENT_RATE_LIMIT_MS = 10 * 60 * 1000; // 10 minutes
 
-/**
- * Enforce the global "1 comment / 10 minutes / user" limit. Looks at the
- * author's most recent comment in either the profile wall or thread tables.
- */
-export async function checkCommentRateLimit(
+export function formatCommentRetryAfter(retryAfterSec: number): string {
+  return retryAfterSec >= 60
+    ? `${Math.ceil(retryAfterSec / 60)} min`
+    : `${retryAfterSec} sec`;
+}
+
+async function checkRateLimit(
+  lastAt: Date | undefined,
+  windowMs: number,
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
+  if (!lastAt) return { ok: true };
+  const elapsed = Date.now() - lastAt.getTime();
+  if (elapsed >= windowMs) return { ok: true };
+  return {
+    ok: false,
+    retryAfterSec: Math.ceil((windowMs - elapsed) / 1000),
+  };
+}
+
+/** One market comment per author per minute (any market). */
+export async function checkMarketCommentRateLimit(
   author: string,
 ): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
   const addr = author.toLowerCase();
-  const since = new Date(Date.now() - COMMENT_RATE_LIMIT_MS);
+  const since = new Date(Date.now() - MARKET_COMMENT_RATE_LIMIT_MS);
+  const last = await prisma.threadComment.findFirst({
+    where: { author: addr, subjectType: "market", createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  return checkRateLimit(last?.createdAt, MARKET_COMMENT_RATE_LIMIT_MS);
+}
 
-  const [profile, thread] = await Promise.all([
-    prisma.profileComment.findFirst({
-      where: { author: addr, createdAt: { gte: since } },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    }),
-    prisma.threadComment.findFirst({
-      where: { author: addr, createdAt: { gte: since } },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    }),
-  ]);
+/** One sidebet comment per author per minute (any bet). */
+export async function checkBetCommentRateLimit(
+  author: string,
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
+  const addr = author.toLowerCase();
+  const since = new Date(Date.now() - BET_COMMENT_RATE_LIMIT_MS);
+  const last = await prisma.threadComment.findFirst({
+    where: { author: addr, subjectType: "bet", createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  return checkRateLimit(last?.createdAt, BET_COMMENT_RATE_LIMIT_MS);
+}
 
-  const last = [profile?.createdAt, thread?.createdAt]
-    .filter((d): d is Date => !!d)
-    .sort((a, b) => b.getTime() - a.getTime())[0];
-
-  if (!last) return { ok: true };
-  const elapsed = Date.now() - last.getTime();
-  if (elapsed >= COMMENT_RATE_LIMIT_MS) return { ok: true };
-  return {
-    ok: false,
-    retryAfterSec: Math.ceil((COMMENT_RATE_LIMIT_MS - elapsed) / 1000),
-  };
+/** One profile-wall comment per author per 10 minutes (any profile). */
+export async function checkProfileCommentRateLimit(
+  author: string,
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
+  const addr = author.toLowerCase();
+  const since = new Date(Date.now() - PROFILE_COMMENT_RATE_LIMIT_MS);
+  const last = await prisma.profileComment.findFirst({
+    where: { author: addr, createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  return checkRateLimit(last?.createdAt, PROFILE_COMMENT_RATE_LIMIT_MS);
 }
 
 /** Like counts + the viewer's own likes for a set of comment ids in a scope. */

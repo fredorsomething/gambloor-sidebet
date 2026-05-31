@@ -4,7 +4,8 @@ import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import {
-  checkCommentRateLimit,
+  checkProfileCommentRateLimit,
+  formatCommentRetryAfter,
   isAllowedGifUrl,
 } from "@/lib/commentInteractions";
 import { listProfileComments } from "@/lib/comments";
@@ -79,13 +80,12 @@ export async function POST(
     parentId = parsed.data.parentId;
   }
 
-  // Global rate limit: one comment per author per 10 minutes.
-  const rate = await checkCommentRateLimit(author);
+  const rate = await checkProfileCommentRateLimit(author);
   if (!rate.ok) {
     return jsonErr(
-      `You're commenting too fast. Try again in ${Math.ceil(
-        rate.retryAfterSec / 60,
-      )} min.`,
+      `You're commenting too fast. Try again in ${formatCommentRetryAfter(
+        rate.retryAfterSec,
+      )}.`,
       429,
     );
   }

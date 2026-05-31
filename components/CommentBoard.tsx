@@ -45,12 +45,14 @@ export function CommentBoard({
   title = "Comments",
   placeholder = "Add to the discussion…",
   maxLength = 2000,
+  cooldownHint = "You can post one comment every 10 minutes.",
 }: {
   basePath: string;
   scope: CommentScope;
   title?: string;
   placeholder?: string;
   maxLength?: number;
+  cooldownHint?: string;
 }) {
   const { authenticated, getAccessToken, login } = usePrivy();
   const { address } = useAccount();
@@ -241,9 +243,7 @@ export function CommentBoard({
             {post.isPending ? "Posting…" : "Post comment"}
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          You can post one comment every 10 minutes.
-        </p>
+        <p className="text-[11px] text-muted-foreground">{cooldownHint}</p>
       </form>
 
       {isLoading ? (

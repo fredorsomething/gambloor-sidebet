@@ -4,7 +4,9 @@ import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import {
-  checkCommentRateLimit,
+  checkBetCommentRateLimit,
+  checkMarketCommentRateLimit,
+  formatCommentRetryAfter,
   isAllowedGifUrl,
 } from "@/lib/commentInteractions";
 import { prisma } from "@/lib/db";
@@ -98,13 +100,15 @@ export async function handlePostComment(
     parentId = parsed.data.parentId;
   }
 
-  // Global rate limit: one comment per author per 10 minutes.
-  const rate = await checkCommentRateLimit(author);
+  const rate =
+    subjectType === "market"
+      ? await checkMarketCommentRateLimit(author)
+      : await checkBetCommentRateLimit(author);
   if (!rate.ok) {
     return jsonErr(
-      `You're commenting too fast. Try again in ${Math.ceil(
-        rate.retryAfterSec / 60,
-      )} min.`,
+      `You're commenting too fast. Try again in ${formatCommentRetryAfter(
+        rate.retryAfterSec,
+      )}.`,
       429,
     );
   }
