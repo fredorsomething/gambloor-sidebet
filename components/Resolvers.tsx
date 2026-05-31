@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
-import { BadgeCheck, Gavel, Plus, ShieldCheck, X } from "lucide-react";
+import { BadgeCheck, Gavel, Plus, ShieldCheck, UserCog, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 
@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/Toast";
 import { isAdminAddress } from "@/lib/admin";
 import type { BetResolutionConsensus } from "@/lib/betResolution";
 import { jsonFetch } from "@/lib/fetcher";
-import { cn } from "@/lib/utils";
+import { displayResolver, hasCustomSettler } from "@/lib/settlerUtils";
 
 type Settler = { address: string; username: string | null; feeBps: number };
 type ResolverRequest = {
@@ -24,18 +24,19 @@ type ResolverRequest = {
 };
 
 /**
- * Clearly shows who can resolve a bet/market (the on-chain settler, plus any
- * additional resolvers approved by request) and lets signed-in users ask admins
- * to add another resolver.
+ * Shows who resolves a bet/market. Custom per-bet settlers are shown at creation;
+ * @admin is always available as an on-chain fallback but is not listed here.
  */
 export function Resolvers({
   subjectType,
   subjectId,
   settler,
+  customSettler,
 }: {
   subjectType: "bet" | "market";
   subjectId: number;
   settler: string;
+  customSettler?: string | null;
 }) {
   const { address } = useAccount();
 
@@ -47,6 +48,11 @@ export function Resolvers({
   const approved = settlerData?.settlers ?? [];
   const isApproved = (addr: string) =>
     approved.some((s) => s.address.toLowerCase() === addr.toLowerCase());
+  const customResolver =
+    subjectType === "bet" && hasCustomSettler({ customSettler });
+  const resolverAddress = customResolver
+    ? displayResolver({ settler, customSettler })
+    : settler;
 
   const { data: resolutionData } = useQuery<{ consensus: BetResolutionConsensus }>({
     queryKey: ["resolution", "bet", subjectId],
@@ -54,7 +60,7 @@ export function Resolvers({
       jsonFetch(
         `/api/resolutions?subjectType=bet&subjectId=${subjectId}`,
       ),
-    enabled: subjectType === "bet",
+    enabled: subjectType === "bet" && !customResolver,
     refetchInterval: 8_000,
   });
   const showAutomaticBadge =
@@ -96,13 +102,17 @@ export function Resolvers({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        The resolver declares the winning outcome. Picked when the{" "}
-        {subjectType === "bet" ? "bet" : "market"} was created.
+        {customResolver
+          ? "The proposer named this wallet to declare the winning outcome. When both sides agree, payout auto-settles on-chain."
+          : `The resolver declares the winning outcome. Picked when the ${
+              subjectType === "bet" ? "bet" : "market"
+            } was created.`}
       </p>
 
       <ResolverRow
-        address={settler}
-        verified={isApproved(settler)}
+        address={resolverAddress}
+        verified={isApproved(resolverAddress)}
+        custom={customResolver}
         primary
         automatic={showAutomaticBadge}
       />
@@ -111,30 +121,32 @@ export function Resolvers({
         <ResolverRow key={r.id} address={r.suggested!} added />
       ))}
 
-      <div className="border-t border-border pt-3">
-        {myPending ? (
-          <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2.5 text-xs text-warning">
-            <ShieldCheck className="h-4 w-4 shrink-0" />
-            Your request for an additional resolver is under review.
-          </div>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full gap-1.5"
-            onClick={() => setOpen(true)}
-            disabled={!address}
-          >
-            <Plus className="h-4 w-4" />
-            {address ? "Request an additional resolver" : "Sign in to request a resolver"}
-          </Button>
-        )}
-        {pendingCount > 0 && !myPending && (
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">
-            {pendingCount} request{pendingCount > 1 ? "s" : ""} pending admin review.
-          </p>
-        )}
-      </div>
+      {!customResolver && (
+        <div className="border-t border-border pt-3">
+          {myPending ? (
+            <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2.5 text-xs text-warning">
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              Your request for an additional resolver is under review.
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={() => setOpen(true)}
+              disabled={!address}
+            >
+              <Plus className="h-4 w-4" />
+              {address ? "Request an additional resolver" : "Sign in to request a resolver"}
+            </Button>
+          )}
+          {pendingCount > 0 && !myPending && (
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              {pendingCount} request{pendingCount > 1 ? "s" : ""} pending admin review.
+            </p>
+          )}
+        </div>
+      )}
 
       {open && (
         <RequestResolverModal
@@ -155,12 +167,14 @@ function ResolverRow({
   primary,
   added,
   automatic,
+  custom,
 }: {
   address: string;
   verified?: boolean;
   primary?: boolean;
   added?: boolean;
   automatic?: boolean;
+  custom?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-3">
@@ -171,7 +185,12 @@ function ResolverRow({
             Automatic
           </span>
         )}
-        {added ? (
+        {custom ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
+            <UserCog className="h-3 w-3" />
+            Custom settler
+          </span>
+        ) : added ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
             <Plus className="h-3 w-3" />
             Added

@@ -101,6 +101,7 @@ function OpenAcceptorSide({
   symbol,
   viewerAddress,
   isProposerView,
+  intendedAcceptor,
 }: {
   outcomeLabel?: string;
   outcomeTone: "success" | "danger" | "muted";
@@ -109,14 +110,46 @@ function OpenAcceptorSide({
   symbol: string;
   viewerAddress?: string;
   isProposerView: boolean;
+  intendedAcceptor?: string | null;
 }) {
-  const showViewer = !!viewerAddress && !isProposerView;
+  const viewer = viewerAddress?.toLowerCase();
+  const reserved = !!intendedAcceptor;
+  const intended = intendedAcceptor?.toLowerCase();
+  const isIntendedViewer = !!viewer && viewer === intended;
+  const showViewerPreview = !!viewer && !isProposerView && (!reserved || isIntendedViewer);
+  const displayAddress = reserved
+    ? intendedAcceptor
+    : showViewerPreview
+      ? viewerAddress
+      : undefined;
+
+  const sideLabel = isProposerView
+    ? reserved
+      ? "Reserved acceptor"
+      : "Acceptor"
+    : reserved
+      ? isIntendedViewer
+        ? "Your side"
+        : "Reserved for"
+      : "Your side";
+
+  const helperText = isProposerView
+    ? reserved
+      ? "Negotiated — waiting for them to take"
+      : "Open — waiting for a taker"
+    : reserved
+      ? isIntendedViewer
+        ? "Your stake if you take this bet"
+        : "Only the invited counterparty can take this side"
+      : showViewerPreview
+        ? "Your stake if you take this bet"
+        : "Stake required to take this side";
 
   return (
     <div className="flex min-w-0 flex-1 flex-col items-end gap-2 text-right">
-      <span className="label">{isProposerView ? "Acceptor" : "Your side"}</span>
-      {showViewer ? (
-        <Identity address={viewerAddress} size={32} weight="semibold" link={false} />
+      <span className="label">{sideLabel}</span>
+      {displayAddress ? (
+        <Identity address={displayAddress} size={32} weight="semibold" link={false} />
       ) : (
         <div
           className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-border bg-muted/20 text-muted-foreground"
@@ -132,13 +165,7 @@ function OpenAcceptorSide({
         {formatToken(stake, decimals)}
         <TokenIcon symbol={symbol} size={18} />
       </div>
-      <span className="text-xs text-muted-foreground">
-        {isProposerView
-          ? "Open — waiting for a taker"
-          : showViewer
-            ? "Your stake if you take this bet"
-            : "Stake required to take this side"}
-      </span>
+      <span className="text-xs text-muted-foreground">{helperText}</span>
     </div>
   );
 }
@@ -233,6 +260,7 @@ export function BetMatchup({
             symbol={symbol}
             viewerAddress={connected}
             isProposerView={isProposerView}
+            intendedAcceptor={bet.intendedAcceptor}
           />
         )}
       </div>

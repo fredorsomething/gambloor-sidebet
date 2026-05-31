@@ -197,6 +197,7 @@ export default async function BetDetailPage({
             subjectType="bet"
             subjectId={bet.id}
             settler={bet.settler}
+            customSettler={bet.customSettler}
           />
 
           <section className="card p-5">
@@ -205,7 +206,11 @@ export default async function BetDetailPage({
             {bet.acceptor && (
               <Party label="Acceptor" addr={bet.acceptor} />
             )}
-            <Party label="Settler" addr={bet.settler} />
+            {bet.customSettler ? (
+              <Party label="Custom settler" addr={bet.customSettler} />
+            ) : (
+              <Party label="Settler" addr={bet.settler} />
+            )}
           </section>
 
           <section className="card p-5 text-xs space-y-2">

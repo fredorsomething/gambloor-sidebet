@@ -4,6 +4,7 @@ import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
 import { syncBetsOnchain } from "@/lib/betSync";
 import { PUBLIC_BET_FEED_FILTER } from "@/lib/betVisibility";
+import { getMarketCollateralToken, getTokenByAddress } from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -21,6 +22,7 @@ const CreateBetSchema = z.object({
 
   proposer: z.string().refine(isAddress, "bad proposer"),
   settler: z.string().refine(isAddress, "bad settler"),
+  customSettler: z.string().refine(isAddress, "bad customSettler").optional().nullable(),
   token: z.string().refine(isAddress, "bad token"),
   tokenSymbol: z.string().max(16).optional(),
   decimals: z.number().int().min(0).max(36),
@@ -73,6 +75,16 @@ export async function POST(req: NextRequest) {
     return jsonErr("proposer and acceptor must back different outcomes", 400);
   }
 
+  const sidebetCollateral = getMarketCollateralToken(d.chainId);
+  const submittedToken = getTokenByAddress(d.chainId, getAddress(d.token));
+  if (
+    !submittedToken ||
+    submittedToken.address.toLowerCase() !==
+      sidebetCollateral.address.toLowerCase()
+  ) {
+    return jsonErr("sidebets must use USDC.e collateral only", 400);
+  }
+
   // Confirm the off-chain content matches the committed termsHash.
   const expected = keccak256(
     toBytes(
@@ -110,6 +122,7 @@ export async function POST(req: NextRequest) {
 
         proposer: getAddress(d.proposer),
         settler: getAddress(d.settler),
+        customSettler: d.customSettler ? getAddress(d.customSettler) : null,
         token: getAddress(d.token),
         tokenSymbol: d.tokenSymbol,
         decimals: d.decimals,

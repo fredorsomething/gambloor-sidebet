@@ -258,10 +258,11 @@ model Bet {
   txHash        String?
 
   // Roles + token snapshot (kept in sync with chain on read)
-  proposer    String
-  acceptor    String?
-  settler     String
-  token       String
+  proposer      String
+  acceptor      String?
+  settler       String // on-chain settler (always @admin for auto-settle)
+  customSettler String? // optional off-chain resolver chosen at creation
+  token         String
   tokenSymbol String?
   decimals    Int     @default(6)
 

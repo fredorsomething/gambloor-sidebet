@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  ExternalLink,
   Gavel,
   Handshake,
   Layers,
@@ -11,6 +12,13 @@ import {
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import {
+  ESCROW_ADDRESS,
+  ESCROW_V2_ADDRESS,
+  explorerAddress,
+  POLYGON_CHAIN_ID,
+} from "@/lib/chains";
+
 export const metadata: Metadata = {
   title: "How it works",
   description:
@@ -18,6 +26,13 @@ export const metadata: Metadata = {
 };
 
 export default function HowItWorksPage() {
+  const escrowV2Url = ESCROW_V2_ADDRESS
+    ? explorerAddress(POLYGON_CHAIN_ID, ESCROW_V2_ADDRESS)
+    : null;
+  const escrowV1Url = ESCROW_ADDRESS
+    ? explorerAddress(POLYGON_CHAIN_ID, ESCROW_ADDRESS)
+    : null;
+
   return (
     <div className="mx-auto max-w-3xl space-y-10 pb-16">
       <header className="space-y-3">
@@ -180,8 +195,33 @@ export default function HowItWorksPage() {
         </div>
         <ul className="space-y-2 text-sm text-muted-foreground">
           <Bullet>
-            Stakes live in audited escrow / exchange smart contracts — sidebet
-            never custodies your money.
+            Stakes live in open-source escrow smart contracts on Polygon — sidebet
+            never custodies your money.{" "}
+            {escrowV2Url ? (
+              <a
+                href={escrowV2Url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
+              >
+                View SidebetEscrowV2 on Polygonscan
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : null}
+            {escrowV1Url ? (
+              <>
+                {escrowV2Url ? " · " : null}
+                <a
+                  href={escrowV1Url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
+                >
+                  legacy v1 contract
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </>
+            ) : null}
           </Bullet>
           <Bullet>
             Bet terms are committed on-chain as a hash, so the rules can&apos;t be

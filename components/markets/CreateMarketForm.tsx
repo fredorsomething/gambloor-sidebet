@@ -58,6 +58,7 @@ export function CreateMarketForm() {
   const chainId = useChainId() || POLYGON_CHAIN_ID;
   const platformQ = usePlatformSettings();
   const allowMarketCreation = platformQ.data?.allowMarketCreation ?? false;
+  const platformFeeBps = platformQ.data?.sidebetFeeBps ?? 0;
 
   const marketToken = getMarketCollateralToken();
   const tokenAddress = marketToken.address;
@@ -334,6 +335,7 @@ export function CreateMarketForm() {
             setSettler(addr);
             setSettlerFeeBps(feeBps);
           }}
+          platformFeeBps={platformFeeBps}
           excludeAddress={account}
         />
       </Field>

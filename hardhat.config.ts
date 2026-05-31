@@ -31,9 +31,8 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    apiKey: {
-      polygon: POLYGONSCAN_API_KEY,
-    },
+    // Single Etherscan.io key uses API v2 (multi-chain, incl. Polygon mainnet).
+    apiKey: POLYGONSCAN_API_KEY,
   },
   paths: {
     sources: "./contracts",

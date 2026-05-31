@@ -10,6 +10,7 @@ export type BetRow = {
   proposer: string;
   acceptor: string | null;
   settler: string;
+  customSettler: string | null;
   token: string;
   tokenSymbol: string | null;
   decimals: number;

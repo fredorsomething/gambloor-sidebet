@@ -11,8 +11,10 @@ const C = {
   border: "#30363d",
   text: "#e6edf3",
   muted: "#8b949e",
-  success: "#3fb950",
+  success: "#2da562",
   danger: "#f85149",
+  primary: "#1a6ef5",
+  warning: "#e8850a",
 };
 
 type OgCardOptions = {
@@ -22,9 +24,58 @@ type OgCardOptions = {
 
 function kindLabel(p: LinkPreviewData): string {
   if (p.kind === "profile") return "Profile";
-  if (p.kind === "bet") return `Sidebet · ${p.status ?? "Open"}`;
+  if (p.kind === "bet") return "Sidebet";
   if (p.kind === "market") return `Market · ${p.status ?? "Open"}`;
   return "Sidebet";
+}
+
+function betStatusDisplay(status?: string): string {
+  switch (status) {
+    case "Matched":
+      return "Matched";
+    case "Settled":
+      return "Settled";
+    case "Refunded":
+      return "Refunded";
+    case "Cancelled":
+      return "Cancelled";
+    default:
+      return "Open";
+  }
+}
+
+function betStatusColors(status?: string): {
+  text: string;
+  bg: string;
+  border: string;
+} {
+  switch (status) {
+    case "Matched":
+      return {
+        text: C.warning,
+        bg: "rgba(232, 133, 10, 0.12)",
+        border: "rgba(232, 133, 10, 0.35)",
+      };
+    case "Settled":
+      return {
+        text: C.success,
+        bg: "rgba(45, 165, 98, 0.12)",
+        border: "rgba(45, 165, 98, 0.35)",
+      };
+    case "Refunded":
+    case "Cancelled":
+      return {
+        text: C.muted,
+        bg: "rgba(139, 148, 158, 0.12)",
+        border: "rgba(139, 148, 158, 0.35)",
+      };
+    default:
+      return {
+        text: C.primary,
+        bg: "rgba(26, 110, 245, 0.12)",
+        border: "rgba(26, 110, 245, 0.35)",
+      };
+  }
 }
 
 function colorFromSeed(seed: string): string {
@@ -126,6 +177,284 @@ function SquareThumb({
     >
       {initialsFor(preview)}
     </div>
+  );
+}
+
+function OgStatusBadge({ status }: { status?: string }) {
+  const colors = betStatusColors(status);
+  return (
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        padding: "8px 18px",
+        borderRadius: 999,
+        fontSize: 22,
+        fontWeight: 700,
+        color: colors.text,
+        backgroundColor: colors.bg,
+        border: `2px solid ${colors.border}`,
+      }}
+    >
+      {betStatusDisplay(status)}
+    </span>
+  );
+}
+
+function OgVsPill() {
+  return (
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "10px 18px",
+        borderRadius: 999,
+        fontSize: 20,
+        fontWeight: 800,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: C.muted,
+        backgroundColor: "rgba(139, 148, 158, 0.12)",
+        border: `2px solid ${C.border}`,
+      }}
+    >
+      vs
+    </span>
+  );
+}
+
+function OgPartySide({
+  role,
+  label,
+  stakeLabel,
+  outcomeLabel,
+  align,
+  mutedLabel,
+}: {
+  role: string;
+  label: string;
+  stakeLabel: string;
+  outcomeLabel?: string;
+  align: "start" | "end";
+  mutedLabel?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        flex: 1,
+        minWidth: 0,
+        alignItems: align === "end" ? "flex-end" : "flex-start",
+        textAlign: align === "end" ? "right" : "left",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: C.muted,
+        }}
+      >
+        {role}
+      </span>
+      <span
+        style={{
+          fontSize: 30,
+          fontWeight: 700,
+          color: mutedLabel ? C.muted : C.text,
+          lineHeight: 1.1,
+        }}
+      >
+        {truncate(label, 22)}
+      </span>
+      {outcomeLabel && (
+        <span
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: C.muted,
+            padding: "4px 12px",
+            borderRadius: 999,
+            backgroundColor: "rgba(139, 148, 158, 0.12)",
+          }}
+        >
+          {truncate(outcomeLabel, 24)}
+        </span>
+      )}
+      <span
+        style={{
+          fontSize: 34,
+          fontWeight: 700,
+          color: C.text,
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        }}
+      >
+        {stakeLabel}
+      </span>
+    </div>
+  );
+}
+
+function renderBetOgCard(
+  preview: LinkPreviewData,
+  options: OgCardOptions = {},
+): ImageResponse {
+  const matchup = preview.betMatchup;
+  const statusColors = betStatusColors(preview.status);
+  const isOpen = preview.status === "Open";
+  const acceptorMuted = isOpen && preview.betMatchup?.acceptor.label === "Open";
+
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          background: C.bg,
+          padding: 48,
+          fontFamily:
+            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 32,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={absoluteUrl("/favicon.png")}
+              alt=""
+              width={40}
+              height={40}
+              style={{ borderRadius: 10 }}
+            />
+            <span style={{ fontSize: 28, fontWeight: 700, color: C.text }}>
+              sidebet.lol
+            </span>
+          </div>
+          <OgStatusBadge status={preview.status} />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            flexDirection: "column",
+            gap: 28,
+            background: C.card,
+            border: `2px solid ${statusColors.border}`,
+            borderRadius: 24,
+            padding: 36,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 28,
+            }}
+          >
+            <div
+              style={{
+                width: 120,
+                height: 120,
+                borderRadius: 18,
+                overflow: "hidden",
+                border: `2px solid ${C.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#21262d",
+                flexShrink: 0,
+              }}
+            >
+              <SquareThumb
+                preview={preview}
+                thumbDataUrl={options.thumbDataUrl}
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: C.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                Sidebet
+              </span>
+              <span
+                style={{
+                  fontSize: 38,
+                  fontWeight: 700,
+                  color: C.text,
+                  lineHeight: 1.12,
+                }}
+              >
+                {truncate(preview.title, 70)}
+              </span>
+              {matchup?.poolLabel && (
+                <span style={{ fontSize: 22, color: C.muted }}>
+                  Pool {matchup.poolLabel}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {matchup && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 24,
+                borderTop: `2px solid ${C.border}`,
+                paddingTop: 28,
+              }}
+            >
+              <OgPartySide
+                role="Proposer"
+                label={matchup.proposer.label}
+                stakeLabel={matchup.proposer.stakeLabel}
+                outcomeLabel={matchup.proposer.outcomeLabel}
+                align="start"
+              />
+              <OgVsPill />
+              <OgPartySide
+                role="Acceptor"
+                label={matchup.acceptor.label}
+                stakeLabel={matchup.acceptor.stakeLabel}
+                outcomeLabel={matchup.acceptor.outcomeLabel}
+                align="end"
+                mutedLabel={acceptorMuted}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+    { ...OG_SIZE },
   );
 }
 
@@ -347,7 +676,10 @@ export function renderOgCard(
   preview: LinkPreviewData,
   options: OgCardOptions = {},
 ): ImageResponse {
-  if (preview.kind === "bet" || preview.kind === "market") {
+  if (preview.kind === "bet") {
+    return renderBetOgCard(preview, options);
+  }
+  if (preview.kind === "market") {
     return renderBetMarketOgCard(preview, options);
   }
   if (preview.kind === "profile") {

@@ -20,6 +20,8 @@ prisma/*.db-journal
 artifacts
 cache
 typechain-types
+.verify-backup
+.verify-stash
 
 # misc
 .DS_Store

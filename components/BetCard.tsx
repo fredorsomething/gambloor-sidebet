@@ -50,6 +50,7 @@ export function BetCard({ bet }: { bet: BetRow }) {
   const proposerPick = outcomes[bet.proposerOutcome];
   const acceptorPick = outcomes[bet.acceptorOutcome];
   const isOpen = status === "Open";
+  const reservedOpen = isOpen && !!bet.intendedAcceptor;
   const isMatched = status === "Matched";
   const isSettled = status === "Settled";
   const isRefunded = status === "Refunded";
@@ -122,10 +123,15 @@ export function BetCard({ bet }: { bet: BetRow }) {
               </span>{" "}
               <TokenSymbol symbol={sym} size={11} />
             </p>
+            {reservedOpen && (
+              <p className="text-[10px] font-medium text-muted-foreground">
+                Reserved for a negotiated counterparty
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2 text-center">
               <div className="rounded-lg bg-card/80 px-2 py-2">
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Your stake
+                  {reservedOpen ? "Acceptor stake" : "Your stake"}
                 </div>
                 <div className="mt-0.5 font-mono text-sm font-bold">
                   {formatToken(acceptorStake, bet.decimals)}
@@ -133,7 +139,7 @@ export function BetCard({ bet }: { bet: BetRow }) {
               </div>
               <div className="rounded-lg bg-success/10 px-2 py-2">
                 <div className="text-[10px] uppercase tracking-wide text-success">
-                  You win
+                  {reservedOpen ? "Payout" : "You win"}
                 </div>
                 <div className="mt-0.5 font-mono text-sm font-bold text-success">
                   {formatToken(payoutWei, bet.decimals)}

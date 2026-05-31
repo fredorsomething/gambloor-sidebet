@@ -9,6 +9,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
+import { Identity } from "@/components/profile/Identity";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
@@ -23,6 +24,7 @@ import {
 } from "@/lib/betStatus";
 import { isAdminAddress } from "@/lib/admin";
 import { settlerMaySettle } from "@/lib/betResolution";
+import { displayResolver, hasCustomSettler } from "@/lib/settlerUtils";
 import { formatToken, shortAddr } from "@/lib/utils";
 import type { AutoSettleStatus, BetResolutionSummary, BetRow, GetBetResponse } from "@/lib/types";
 
@@ -52,6 +54,8 @@ export function BetActions({
   const me = account?.toLowerCase();
   const isProposer = me === bet.proposer.toLowerCase();
   const isSettler = me === bet.settler.toLowerCase();
+  const customSettler = hasCustomSettler(bet);
+  const resolverAddr = displayResolver(bet);
 
   const acceptorAddr = betAcceptor(bet, onchain);
   const hasAcceptor = betHasAcceptor(bet, onchain);
@@ -318,8 +322,7 @@ export function BetActions({
   if (status === "Open" && !isProposer && !isAcceptor) {
     const reserved =
       !!bet.intendedAcceptor &&
-      !!me &&
-      me !== bet.intendedAcceptor.toLowerCase();
+      (!me || me !== bet.intendedAcceptor.toLowerCase());
     if (reserved) {
       return (
         <div className="card p-5 text-sm text-muted-foreground">
@@ -353,6 +356,23 @@ export function BetActions({
               (needsApproval ? "Approve & take bet" : "Take bet")}
           </Button>
         </div>
+
+        {customSettler && (
+          <div className="rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm">
+            <p className="font-medium text-warning">Custom settler</p>
+            <p className="mt-1 text-muted-foreground">
+              The proposer chose this wallet to declare the winning outcome.
+              Escrow is held by @admin — when you both declare the same result,
+              payout settles automatically on-chain.
+            </p>
+            <div className="mt-2">
+              <Identity address={resolverAddr} size={24} weight="semibold" />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Only take this bet if you trust them to call the outcome fairly.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3">
           <div>
@@ -552,6 +572,13 @@ export function BetActions({
               ) : (
                 <>Payout is being finalized automatically on-chain.</>
               )
+            ) : customSettler ? (
+              <>
+                Once both sides declare the same outcome, payout auto-settles
+                on-chain. Custom settler{" "}
+                <Identity address={resolverAddr} size={20} className="inline-flex" />{" "}
+                is expected to declare the result.
+              </>
             ) : (
               <>
                 Settler{" "}

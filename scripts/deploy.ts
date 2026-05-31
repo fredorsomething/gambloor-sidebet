@@ -1,7 +1,10 @@
 import hre from "hardhat";
 import { getAddress } from "viem";
 
-import { ADMIN_ADDRESS } from "../lib/admin";
+/** Default platform settler / admin wallet (matches lib/admin.ts). */
+const ADMIN_ADDRESS = getAddress(
+  "0x445525f628D4840e2F14148f2547e6F270Caa3eb",
+);
 
 async function verify(address: string, constructorArguments: unknown[]) {
   try {

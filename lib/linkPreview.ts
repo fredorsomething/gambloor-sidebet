@@ -1,5 +1,7 @@
 import { getAddress, isAddress } from "viem";
 
+import type { BetStatusName } from "@/lib/abi";
+import { resolveBetStatus } from "@/lib/betStatus";
 import { prisma } from "@/lib/db";
 import { computeUserStats, type StatBet } from "@/lib/stats";
 
@@ -24,6 +26,18 @@ export type LinkPreviewData = {
   stakeLabel?: string;
   /** Proposer's backed outcome label (bets). */
   proposerPosition?: string;
+  /** Bet OG card: resolved lifecycle + both sides. */
+  betMatchup?: {
+    proposer: BetPartyPreview;
+    acceptor: BetPartyPreview;
+    poolLabel?: string;
+  };
+};
+
+export type BetPartyPreview = {
+  label: string;
+  stakeLabel: string;
+  outcomeLabel?: string;
 };
 
 const TRAILING_PUNCT = /[)\].,;:!?]+$/;
@@ -254,6 +268,9 @@ export async function resolveLinkPreview(
         imageUrl: true,
         status: true,
         proposer: true,
+        acceptor: true,
+        intendedAcceptor: true,
+        escrowRevisionNeeded: true,
         proposerStake: true,
         amount: true,
         decimals: true,
@@ -261,34 +278,89 @@ export async function resolveLinkPreview(
         acceptorStake: true,
         outcomes: true,
         proposerOutcome: true,
+        acceptorOutcome: true,
       },
     });
     if (!bet) return null;
 
-    const proposerUser = await prisma.user.findUnique({
-      where: { address: getAddress(bet.proposer) },
-      select: { username: true },
+    const lookupAddresses = [
+      getAddress(bet.proposer),
+      ...(bet.acceptor ? [getAddress(bet.acceptor)] : []),
+      ...(bet.intendedAcceptor ? [getAddress(bet.intendedAcceptor)] : []),
+    ];
+    const users = await prisma.user.findMany({
+      where: { address: { in: lookupAddresses } },
+      select: { address: true, username: true },
     });
+    const usernameFor = (address: string) =>
+      users.find((u) => u.address.toLowerCase() === address.toLowerCase())
+        ?.username ?? null;
 
-    const stakeWei = BigInt(bet.proposerStake || bet.amount || "0");
-    const stake = formatStake(stakeWei, bet.decimals, bet.tokenSymbol);
+    const proposerStakeWei = BigInt(bet.proposerStake || bet.amount || "0");
+    const acceptorStakeWei = BigInt(bet.acceptorStake || bet.amount || "0");
+    const proposerStake = formatStake(
+      proposerStakeWei,
+      bet.decimals,
+      bet.tokenSymbol,
+    );
+    const acceptorStake = formatStake(
+      acceptorStakeWei,
+      bet.decimals,
+      bet.tokenSymbol,
+    );
+    const poolLabel = formatStake(
+      proposerStakeWei + acceptorStakeWei,
+      bet.decimals,
+      bet.tokenSymbol,
+    );
     const outcomes = Array.isArray(bet.outcomes) ? (bet.outcomes as string[]) : [];
     const proposerPosition = outcomes[bet.proposerOutcome]?.trim() || undefined;
-    const proposerLabel = proposerUser?.username
-      ? `@${proposerUser.username}`
-      : "Proposer";
+    const acceptorPosition = outcomes[bet.acceptorOutcome]?.trim() || undefined;
+    const proposerLabel = partyLabel(bet.proposer, usernameFor(bet.proposer));
+    const resolvedStatus = resolveBetStatus({
+      status: bet.status as BetStatusName,
+      acceptor: bet.acceptor,
+      escrowRevisionNeeded: bet.escrowRevisionNeeded,
+    } as Parameters<typeof resolveBetStatus>[0]);
+
+    const acceptorAddress = bet.acceptor?.trim() || null;
+    const acceptorSideLabel = acceptorAddress
+      ? partyLabel(acceptorAddress, usernameFor(acceptorAddress))
+      : bet.intendedAcceptor
+        ? partyLabel(bet.intendedAcceptor, usernameFor(bet.intendedAcceptor))
+        : "Open";
+
+    const betMatchup = {
+      proposer: {
+        label: proposerLabel,
+        stakeLabel: proposerStake,
+        outcomeLabel: proposerPosition,
+      },
+      acceptor: {
+        label: acceptorSideLabel,
+        stakeLabel: acceptorStake,
+        outcomeLabel: acceptorPosition,
+      },
+      poolLabel:
+        resolvedStatus === "Matched" ||
+        resolvedStatus === "Settled" ||
+        resolvedStatus === "Refunded"
+          ? poolLabel
+          : undefined,
+    };
 
     return {
       kind: "bet",
       url: `/bets/${bet.id}`,
       id: bet.id,
       title: bet.title,
-      subtitle: betPreviewSubtitle(proposerLabel, stake, proposerPosition),
+      subtitle: betMatchupSubtitle(betMatchup, resolvedStatus),
       imageUrl: bet.imageUrl,
-      status: bet.status,
+      status: resolvedStatus,
       tokenSymbol: bet.tokenSymbol,
-      stakeLabel: stake,
+      stakeLabel: proposerStake,
       proposerPosition,
+      betMatchup,
     };
   }
 
@@ -322,13 +394,22 @@ export async function resolveLinkPreview(
   };
 }
 
-function betPreviewSubtitle(
-  proposer: string,
-  stake: string,
-  position?: string,
+function partyLabel(address: string, username: string | null): string {
+  if (username) return `@${username}`;
+  const a = getAddress(address);
+  return `${a.slice(0, 6)}…${a.slice(-4)}`;
+}
+
+function betMatchupSubtitle(
+  matchup: NonNullable<LinkPreviewData["betMatchup"]>,
+  status: BetStatusName,
 ): string {
-  if (position) return `${proposer} · ${stake} on "${position}"`;
-  return `${proposer} · ${stake}`;
+  const left = `${matchup.proposer.label} · ${matchup.proposer.stakeLabel}`;
+  const right = `${matchup.acceptor.label} · ${matchup.acceptor.stakeLabel}`;
+  if (status === "Open") {
+    return `${left} vs ${matchup.acceptor.stakeLabel} to take`;
+  }
+  return `${left} vs ${right}`;
 }
 
 function formatStake(wei: bigint, decimals: number, symbol: string | null): string {

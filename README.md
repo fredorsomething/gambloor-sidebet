@@ -65,13 +65,14 @@ Key vars:
 | Var | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_DEFAULT_CHAIN_ID` | `137` (Polygon mainnet) |
-| `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` | Deployed `SidebetEscrow` on Polygon |
-| `NEXT_PUBLIC_DEFAULT_SETTLER` | Your wallet address as default settler |
+| `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` | Legacy `SidebetEscrow` (v1) on Polygon |
+| `NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON` | Current `SidebetEscrowV2` on Polygon |
+| `NEXT_PUBLIC_DEFAULT_SETTLER` | Platform default settler (also V2 deploy/verify ctor arg) |
 | `NEXT_PUBLIC_PRIVY_APP_ID` | Privy app id (from the Privy dashboard) |
 | `PRIVY_APP_SECRET` | Privy app secret (server-only; verifies access tokens) |
 | `NEXT_PUBLIC_PRIVY_CLIENT_ID` | Optional Privy client id |
 | `DEPLOYER_PRIVATE_KEY` | Funded deployer key (server-only) |
-| `POLYGONSCAN_API_KEY` | Optional, enables auto-verification |
+| `POLYGONSCAN_API_KEY` | Required for `npm run hh:verify` (Polygonscan source verification) |
 
 ### 3. Migrate the database
 
@@ -88,7 +89,27 @@ npm run hh:compile
 npm run hh:deploy
 ```
 
-Copy the printed address into `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` in `.env` and Vercel.
+Copy the printed address into `NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON` in `.env` and Vercel.
+
+### 4b. Verify on Polygonscan (post-deploy)
+
+After deployment — or anytime later — publish the contract source on Polygonscan so anyone can audit it:
+
+1. Get a free API key at [etherscan.io/apidashboard](https://etherscan.io/apidashboard) (works for Polygon via API v2).
+2. Add `POLYGONSCAN_API_KEY` to `.env` (local only; never Vercel).
+3. Ensure `NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON` (and legacy `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` if needed) are set.
+4. Run:
+
+```bash
+npm run hh:compile
+npm run hh:verify
+```
+
+V2 verification uses `NEXT_PUBLIC_DEFAULT_SETTLER` as the constructor `platformFeeRecipient` unless you override with `VERIFY_V2_PLATFORM_FEE_RECIPIENT`. If the fee recipient was changed on-chain after deploy, set the **original deploy-time** address for verify.
+
+If your deployed V2 predates the platform-fee update, `npm run hh:verify` automatically falls back to `scripts/legacy/SidebetEscrowV2.sol` (no constructor args). Legacy `SidebetEscrow` at `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` uses `scripts/legacy/SidebetEscrow.sol` with `viaIR: false`.
+
+Fresh deploys also auto-verify when `POLYGONSCAN_API_KEY` is set (`scripts/deploy.ts`).
 
 ### 5. Run the dev server
 
@@ -117,14 +138,14 @@ Open <http://localhost:3000>.
 
 ## Smart contract
 
-- `contracts/SidebetEscrow.sol` — see inline NatSpec.
-- Status machine: `Open → Matched → Settled | Refunded`, or
-  `Open → Cancelled`.
+- `contracts/SidebetEscrowV2.sol` — current 1v1 escrow (asymmetric stakes, multi-outcome).
+- `contracts/SidebetEscrow.sol` — legacy v1 escrow (symmetric stakes).
+- Status machine (v2): `Open → Matched → Settled | Refunded`, or `Open → Cancelled`.
 - Re-entrancy guarded; explicitly rejects fee-on-transfer tokens (the
   pull/push helpers check that `balanceOf(this)` increased by exactly
   `amount`).
 - Max settler fee is hard-capped at **10% (1000 bps)**.
-- `winner == address(0)` in `settleBet` means **push** (split refund).
+- Verified source appears on Polygonscan after `npm run hh:verify`.
 
 ## Trust model
 
@@ -164,7 +185,8 @@ All three are 6 decimals.
 | `npm run db:studio` | Prisma Studio UI |
 | `npm run hh:compile` | Compile Solidity |
 | `npm run hh:test` | Run Hardhat tests |
-| `npm run hh:deploy` | Deploy escrow to Polygon mainnet |
+| `npm run hh:deploy` | Deploy SidebetEscrowV2 to Polygon mainnet |
+| `npm run hh:verify` | Verify deployed escrow contracts on Polygonscan |
 
 ## Database (Neon Postgres)
 

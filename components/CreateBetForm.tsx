@@ -30,6 +30,8 @@ import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useEscrow } from "@/lib/hooks/useEscrow";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { jsonFetch } from "@/lib/fetcher";
+import { ADMIN_ADDRESS } from "@/lib/admin";
+import { getMarketCollateralToken } from "@/lib/chains";
 import {
   buildTermsHash,
   formatToken,
@@ -39,6 +41,7 @@ import {
 
 type Step = "idle" | "approving" | "creating" | "indexing" | "done";
 type Mode = "binary" | "custom";
+type BinaryStyle = "yes-no" | "up-down";
 
 export function CreateBetForm() {
   const router = useRouter();
@@ -46,16 +49,13 @@ export function CreateBetForm() {
   const { address: account } = useAccount();
   const { getAccessToken } = usePrivy();
   const chainId = useChainId();
-  const { escrow, tokens } = useEscrow();
+  const { escrow } = useEscrow();
   const publicClient = usePublicClient();
   const ensurePolygon = useEnsurePolygon();
 
-  const [tokenAddress, setTokenAddress] = useState<Address | "">(
-    (tokens[0]?.address as Address) ?? "",
-  );
-  const tokenMeta = tokens.find(
-    (t) => t.address.toLowerCase() === (tokenAddress || "").toLowerCase(),
-  );
+  const usdceToken = useMemo(() => getMarketCollateralToken(), []);
+  const tokenAddress = usdceToken.address as Address;
+  const tokenMeta = usdceToken;
 
   // Content
   const [title, setTitle] = useState("");
@@ -66,6 +66,7 @@ export function CreateBetForm() {
 
   // Outcomes + stance
   const [mode, setMode] = useState<Mode>("binary");
+  const [binaryStyle, setBinaryStyle] = useState<BinaryStyle>("yes-no");
   const [stance, setStance] = useState<"yes" | "no">("yes");
   const [customOutcomes, setCustomOutcomes] = useState<string[]>(["", ""]);
   const [proposerOutcome, setProposerOutcome] = useState(0);
@@ -80,18 +81,12 @@ export function CreateBetForm() {
 
   // Settler + end date
   const [settler, setSettler] = useState("");
+  const [customSettler, setCustomSettler] = useState<string | null>(null);
   const [settlerFeeBps, setSettlerFeeBps] = useState(0);
   const [endDate, setEndDate] = useState(""); // yyyy-mm-dd
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!tokens.length) return;
-    if (!tokens.some((t) => t.address.toLowerCase() === (tokenAddress || "").toLowerCase())) {
-      setTokenAddress(tokens[0].address as Address);
-    }
-  }, [chainId, tokens, tokenAddress]);
 
   useEffect(() => {
     if (platformQ.data != null && !settler) {
@@ -107,11 +102,21 @@ export function CreateBetForm() {
   });
   const effectiveDecimals = live.decimals ?? decimals;
 
+  const binaryOutcomes = useMemo(
+    () => (binaryStyle === "up-down" ? (["Up", "Down"] as const) : (["Yes", "No"] as const)),
+    [binaryStyle],
+  );
+
+  const termsPlaceholder =
+    binaryStyle === "up-down"
+      ? `If BTC closes above $100k on Dec 31, "Up" wins. Otherwise "Down" wins.`
+      : `If the Knicks play in the 2026 ECF, "Yes" wins. Otherwise "No" wins.`;
+
   // Resolve the active outcomes + the indices each side backs.
   const outcomes = useMemo(() => {
-    if (mode === "binary") return ["Yes", "No"];
+    if (mode === "binary") return [...binaryOutcomes];
     return customOutcomes.map((o) => o.trim());
-  }, [mode, customOutcomes]);
+  }, [mode, binaryOutcomes, customOutcomes]);
 
   const myOutcome = mode === "binary" ? (stance === "yes" ? 0 : 1) : proposerOutcome;
   const theirOutcome = mode === "binary" ? (stance === "yes" ? 1 : 0) : acceptorOutcome;
@@ -203,8 +208,10 @@ export function CreateBetForm() {
         live.balance,
         effectiveDecimals,
       )} < ${yourStakeStr})`;
-    if (!settler || !isAddress(settler)) return "Pick an approved settler";
-    if (getAddress(settler) === getAddress(account))
+    if (!settler || !isAddress(settler)) return "Pick or add a settler";
+    if (customSettler && getAddress(customSettler) === getAddress(account))
+      return "You can't be your own settler";
+    if (!customSettler && getAddress(settler) === getAddress(account))
       return "You can't be your own settler";
     return null;
   }
@@ -410,6 +417,7 @@ export function CreateBetForm() {
             txHash: createHash,
             proposer: account,
             settler: getAddress(settler),
+            customSettler: customSettler ? getAddress(customSettler) : null,
             token: tokenAddress,
             tokenSymbol: tokenMeta?.symbol,
             decimals: effectiveDecimals,
@@ -491,7 +499,7 @@ export function CreateBetForm() {
               setTerms(e.target.value);
               if (error) setError(null);
             }}
-            placeholder={`If the Knicks play in the 2026 ECF, "Yes" wins. Otherwise "No" wins.`}
+            placeholder={termsPlaceholder}
             maxLength={10_000}
           />
         </Field>
@@ -512,7 +520,7 @@ export function CreateBetForm() {
                 type="button"
                 onClick={() => {
                   setMode("custom");
-                  setCustomOutcomes(["Yes", "No"]);
+                  setCustomOutcomes([...binaryOutcomes]);
                   setProposerOutcome(0);
                   setAcceptorOutcome(1);
                 }}
@@ -522,6 +530,20 @@ export function CreateBetForm() {
               </button>
             </div>
           </div>
+
+          {mode === "binary" && (
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                className="rounded border-border"
+                checked={binaryStyle === "up-down"}
+                onChange={(e) =>
+                  setBinaryStyle(e.target.checked ? "up-down" : "yes-no")
+                }
+              />
+              Display outcomes as Up / Down
+            </label>
+          )}
 
           {mode === "binary" ? (
             <div className="grid grid-cols-2 gap-3">
@@ -534,7 +556,9 @@ export function CreateBetForm() {
                     : "border-border text-muted-foreground hover:border-success/40"
                 }`}
               >
-                <div className="text-lg">YES</div>
+                <div className="text-lg">
+                  {binaryStyle === "up-down" ? "UP" : "YES"}
+                </div>
                 <div className="mt-1 text-[11px] font-normal">You back this</div>
               </button>
               <button
@@ -546,7 +570,9 @@ export function CreateBetForm() {
                     : "border-border text-muted-foreground hover:border-danger/40"
                 }`}
               >
-                <div className="text-lg">NO</div>
+                <div className="text-lg">
+                  {binaryStyle === "up-down" ? "DOWN" : "NO"}
+                </div>
                 <div className="mt-1 text-[11px] font-normal">You back this</div>
               </button>
             </div>
@@ -615,18 +641,10 @@ export function CreateBetForm() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Token">
-            <select
-              className="select"
-              value={tokenAddress}
-              onChange={(e) => setTokenAddress(e.target.value as Address)}
-            >
-              {tokens.map((t) => (
-                <option key={t.address} value={t.address}>
-                  {t.symbol} — {t.name}
-                </option>
-              ))}
-            </select>
+          <Field label="Token" hint="All new sidebets settle in USDC.e.">
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm font-medium">
+              USDC.e — USD Coin (bridged)
+            </div>
           </Field>
           <Field
             label="Your stake"
@@ -661,14 +679,22 @@ export function CreateBetForm() {
 
         <Field
           label="Settler"
-          hint="An approved neutral party who declares the winning outcome. You can't settle your own bet."
+          hint="Pick @admin, an approved settler, or paste a custom wallet to declare the outcome off-chain. Payout still auto-settles on-chain when both sides agree."
         >
           <SettlerSelect
-            value={settler}
-            onChange={(addr, feeBps) => {
-              setSettler(addr);
-              setSettlerFeeBps(feeBps);
+            value={customSettler ?? settler}
+            onChange={(addr, feeBps, isCustom) => {
+              if (isCustom) {
+                setCustomSettler(addr);
+                setSettler(ADMIN_ADDRESS);
+                setSettlerFeeBps(platformFeeBps);
+              } else {
+                setCustomSettler(null);
+                setSettler(addr);
+                setSettlerFeeBps(feeBps);
+              }
             }}
+            platformFeeBps={platformFeeBps}
             excludeAddress={account}
           />
         </Field>
