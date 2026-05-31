@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 import { Feed } from "@/components/Feed";
+import { DiscordWidget } from "@/components/DiscordWidget";
 import { Button } from "@/components/ui/button";
 import { TokenIcon } from "@/components/ui/TokenIcon";
 
@@ -63,13 +64,14 @@ export default function HomePage() {
       </Link>
 
       <section id="markets" className="space-y-4">
-        <div className="flex items-end justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-xl font-semibold">Markets</h2>
             <p className="text-sm text-muted-foreground">
-              Find a sidebet here. Can't find one? Create your own.
+              Find a sidebet here. Can&apos;t find one? Create your own.
             </p>
           </div>
+          <DiscordWidget />
         </div>
         <Feed />
       </section>
