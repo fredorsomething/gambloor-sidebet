@@ -132,7 +132,7 @@ export function SettlerSelect({
       {adminOption && (
         <SettlerOption
           selected={!showCustomSelected && value.toLowerCase() === adminOption.address.toLowerCase()}
-          label={formatSettlerLabel(adminOption.address, adminOption.username)}
+          label={formatSettlerLabel(adminOption.address)}
           sub={`${shortAddr(adminOption.address)} · fee ${(adminOption.feeBps / 100).toFixed(2)}%`}
           onSelect={() => selectApproved(adminOption.address, adminOption.feeBps)}
         />
@@ -141,7 +141,7 @@ export function SettlerSelect({
       {listOptions.length > 0 && (
         <div className="space-y-2">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Approved settlers
+            Whitelisted settlers
           </span>
           {listOptions.map((s) => (
             <SettlerOption
@@ -150,8 +150,8 @@ export function SettlerSelect({
                 !showCustomSelected &&
                 value.toLowerCase() === s.address.toLowerCase()
               }
-              label={formatSettlerLabel(s.address, s.username)}
-              sub={`${shortAddr(s.address)} · fee ${(s.feeBps / 100).toFixed(2)}%`}
+              label={formatSettlerLabel(s.address)}
+              sub={`fee ${(s.feeBps / 100).toFixed(2)}%`}
               onSelect={() => selectApproved(s.address, s.feeBps)}
             />
           ))}

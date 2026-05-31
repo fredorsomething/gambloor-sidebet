@@ -1,5 +1,7 @@
 import { getAddress } from "viem";
 
+import { shortAddr } from "@/lib/utils";
+
 /** Default platform settler / admin wallet. */
 export const ADMIN_ADDRESS = getAddress(
   "0x445525f628D4840e2F14148f2547e6F270Caa3eb",
@@ -25,12 +27,8 @@ export function isAdminUser(user?: {
   return (user.username ?? "").toLowerCase() === ADMIN_USERNAME;
 }
 
-/** Label shown in settler pickers for the platform default. */
-export function formatSettlerLabel(
-  address: string,
-  username: string | null,
-): string {
+/** Label shown in settler pickers. Admin keeps a friendly name; others use wallet only. */
+export function formatSettlerLabel(address: string): string {
   if (isAdminAddress(address)) return "Default - @Admin";
-  if (username) return `@${username}`;
-  return "Settler";
+  return shortAddr(address);
 }
