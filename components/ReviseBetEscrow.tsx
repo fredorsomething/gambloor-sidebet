@@ -1,7 +1,7 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAddress, type Address, type Hex } from "viem";
 import {
   useAccount,
@@ -13,7 +13,12 @@ import { decodeEventLog } from "viem";
 import { Button } from "@/components/ui/button";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
-import { SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
+import {
+  BET_STATUS,
+  ERC20_ABI,
+  SIDEBET_ESCROW_V2_ABI,
+  type BetStatusName,
+} from "@/lib/abi";
 import { cryptoErrorSummary, formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
@@ -30,9 +35,12 @@ type Props = {
   onDone?: () => void;
 };
 
+type Step = "idle" | "cancelling" | "approving" | "creating" | "indexing";
+
 /**
  * After a counter-offer is accepted, the proposer publishes a fresh on-chain
  * offer on the same indexed bet (new escrow id) instead of creating a duplicate.
+ * Cancels the prior open offer first so stake is returned before createBet.
  */
 export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
   const { address } = useAccount();
@@ -42,12 +50,12 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
   const { writeContract } = useTxSender();
   const publicClient = usePublicClient();
 
-  const [step, setStep] = useState<
-    "idle" | "cancelling" | "creating" | "indexing"
-  >("idle");
+  const [step, setStep] = useState<Step>("idle");
   const [cancelHash, setCancelHash] = useState<Hex>();
+  const [approveHash, setApproveHash] = useState<Hex>();
   const [createHash, setCreateHash] = useState<Hex>();
   const cancelWait = useWaitForTransactionReceipt({ hash: cancelHash });
+  const approveWait = useWaitForTransactionReceipt({ hash: approveHash });
   const createWait = useWaitForTransactionReceipt({ hash: createHash });
 
   const me = address?.toLowerCase();
@@ -63,8 +71,6 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
   const decimals = live.decimals ?? bet.decimals;
   const tokenSym = bet.tokenSymbol || live.symbol || "tokens";
 
-  const needsCancel = onchain?.status === "Open";
-
   const createParams = useMemo(() => {
     const endDate = bet.estimatedEndDate
       ? Math.floor(new Date(bet.estimatedEndDate).getTime() / 1000)
@@ -77,10 +83,40 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
     };
   }, [bet.estimatedEndDate, bet.termsHash]);
 
+  const readOnchainStatus = useCallback(async (): Promise<BetStatusName | null> => {
+    if (!publicClient) return onchain?.status ?? null;
+    try {
+      const raw = (await publicClient.readContract({
+        address: escrow,
+        abi: SIDEBET_ESCROW_V2_ABI,
+        functionName: "getBet",
+        args: [BigInt(bet.onchainId)],
+      })) as { status: number };
+      const code = Number(raw.status);
+      return (BET_STATUS[code as keyof typeof BET_STATUS] ?? "None") as BetStatusName;
+    } catch {
+      return onchain?.status ?? null;
+    }
+  }, [bet.onchainId, escrow, onchain?.status, publicClient]);
+
+  const readAllowance = useCallback(async (): Promise<bigint> => {
+    if (!publicClient || !address) return live.allowance ?? 0n;
+    try {
+      return await publicClient.readContract({
+        address: token,
+        abi: ERC20_ABI,
+        functionName: "allowance",
+        args: [address, escrow],
+      });
+    } catch {
+      return live.allowance ?? 0n;
+    }
+  }, [address, escrow, live.allowance, publicClient, token]);
+
   async function authHeader() {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Your session expired. Please sign in again.");
-    return { Authorization: `Bearer ${token}` };
+    const tokenAuth = await getAccessToken();
+    if (!tokenAuth) throw new Error("Your session expired. Please sign in again.");
+    return { Authorization: `Bearer ${tokenAuth}` };
   }
 
   async function runCreate() {
@@ -111,14 +147,72 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
     setCreateHash(hash);
   }
 
+  const beginCreateFlow = useCallback(async () => {
+    if (!address) return;
+    try {
+      await live.refetch();
+      const allowance = await readAllowance();
+      if (proposerStake > 0n && allowance < proposerStake) {
+        setStep("approving");
+        push({
+          title: "Approving token",
+          description:
+            "Confirm the approval in your wallet, then we'll publish the updated offer.",
+        });
+        await ensurePolygon();
+        const hash = await writeContract({
+          address: token,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [escrow, proposerStake],
+        });
+        setApproveHash(hash);
+        return;
+      }
+      await runCreate();
+    } catch (err) {
+      setStep("idle");
+      const { title, description } = formatCryptoError(err, {
+        fallbackTitle: "Couldn't publish offer",
+      });
+      push({ title, description, variant: "danger" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    address,
+    ensurePolygon,
+    escrow,
+    proposerStake,
+    push,
+    readAllowance,
+    token,
+    writeContract,
+  ]);
+
   async function onPublish() {
     if (!address || !isProposer) return;
     try {
+      const chainStatus = await readOnchainStatus();
+      if (chainStatus === "Matched") {
+        push({
+          title: "Can't republish",
+          description:
+            "This sidebet was already matched on-chain. Cancel or settle it before publishing revised terms.",
+          variant: "danger",
+        });
+        return;
+      }
+
+      const needsCancel =
+        chainStatus === "Open" ||
+        (chainStatus == null && onchain?.status === "Open");
+
       if (needsCancel) {
         setStep("cancelling");
         push({
           title: "Cancelling old offer",
-          description: "Reclaiming your stake from the previous on-chain offer.",
+          description:
+            "Reclaiming your stake from the previous on-chain offer first.",
         });
         await ensurePolygon();
         const hash = await writeContract({
@@ -128,9 +222,10 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
           args: [BigInt(bet.onchainId)],
         });
         setCancelHash(hash);
-      } else {
-        await runCreate();
+        return;
       }
+
+      await beginCreateFlow();
     } catch (err) {
       setStep("idle");
       const { title, description } = formatCryptoError(err, {
@@ -142,6 +237,47 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
 
   useEffect(() => {
     if (step !== "cancelling" || !cancelWait.isSuccess) return;
+    push({
+      title: "Stake returned",
+      description: "Publishing the updated offer next…",
+      variant: "success",
+    });
+    void beginCreateFlow();
+  }, [step, cancelWait.isSuccess, beginCreateFlow, push]);
+
+  useEffect(() => {
+    if (step !== "cancelling" || !cancelWait.isError) return;
+    void (async () => {
+      const chainStatus = await readOnchainStatus();
+      if (chainStatus === "Cancelled") {
+        push({
+          title: "Old offer already cancelled",
+          description: "Continuing with the updated offer…",
+        });
+        void beginCreateFlow();
+        return;
+      }
+      setStep("idle");
+      push({
+        title: "Couldn't cancel old offer",
+        description: cryptoErrorSummary(
+          cancelWait.error,
+          "The prior on-chain offer couldn't be cancelled.",
+        ),
+        variant: "danger",
+      });
+    })();
+  }, [
+    step,
+    cancelWait.isError,
+    cancelWait.error,
+    readOnchainStatus,
+    beginCreateFlow,
+    push,
+  ]);
+
+  useEffect(() => {
+    if (step !== "approving" || !approveWait.isSuccess) return;
     void runCreate().catch((err) => {
       setStep("idle");
       push({
@@ -151,7 +287,7 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, cancelWait.isSuccess]);
+  }, [step, approveWait.isSuccess]);
 
   useEffect(() => {
     if (step !== "creating" || !createWait.isSuccess || !createHash) return;
@@ -201,6 +337,9 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
         });
 
         setStep("idle");
+        setCancelHash(undefined);
+        setApproveHash(undefined);
+        setCreateHash(undefined);
         push({
           title: "Offer updated",
           description: "Same sidebet — new on-chain stakes are live.",
@@ -221,6 +360,7 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
   if (!isProposer || !bet.escrowRevisionNeeded) return null;
 
   const busy = step !== "idle";
+  const chainOpen = onchain?.status === "Open";
 
   return (
     <section
@@ -229,9 +369,10 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
     >
       <h3 className="text-sm font-semibold">Publish locked-in terms</h3>
       <p className="text-sm text-muted-foreground">
-        Agreed terms are saved on this sidebet. Confirm below to swap in the new
-        on-chain stakes — this listing stays the same; your wallet may ask for
-        one or two confirmations.
+        Agreed terms are saved on this sidebet. We&apos;ll cancel your previous
+        on-chain offer and return your stake first, then publish the updated
+        offer with the new amounts — your wallet may ask for two or three
+        confirmations.
       </p>
       <div className="flex flex-wrap gap-4 text-sm">
         <span>
@@ -252,12 +393,14 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
       <Button onClick={onPublish} disabled={busy}>
         {busy
           ? step === "cancelling"
-            ? "Cancelling old offer…"
-            : step === "creating"
-              ? "Confirm in wallet…"
-              : "Saving…"
-          : needsCancel
-            ? "Publish agreed stakes"
+            ? "Reclaiming stake…"
+            : step === "approving"
+              ? "Approving token…"
+              : step === "creating"
+                ? "Confirm in wallet…"
+                : "Saving…"
+          : chainOpen
+            ? "Reclaim stake & publish"
             : "Publish on-chain offer"}
       </Button>
     </section>

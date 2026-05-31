@@ -14,7 +14,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "How it works",
   description:
-    "How sidebets and markets work on gambloor — making rules, matching, negotiating, and settlement.",
+    "How sidebets work — making rules, matching, negotiating, and settlement.",
 };
 
 export default function HowItWorksPage() {
@@ -23,7 +23,7 @@ export default function HowItWorksPage() {
       <header className="space-y-3">
         <h1 className="text-3xl font-bold tracking-tight">How it works</h1>
         <p className="text-muted-foreground">
-          gambloor lets you bet on anything with anyone. Stakes are escrowed in
+          sidebet lets you bet on anything with anyone. Stakes are escrowed in
           on-chain smart contracts and only released when the outcome is
           declared — so neither side can run off with the pot. Here&apos;s the
           quick tour.
@@ -180,7 +180,7 @@ export default function HowItWorksPage() {
         </div>
         <ul className="space-y-2 text-sm text-muted-foreground">
           <Bullet>
-            Stakes live in audited escrow / exchange smart contracts — gambloor
+            Stakes live in audited escrow / exchange smart contracts — sidebet
             never custodies your money.
           </Bullet>
           <Bullet>

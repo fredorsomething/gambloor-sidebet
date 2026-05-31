@@ -276,6 +276,31 @@ export default async function BetDetailPage({
           </section>
         </aside>
       </div>
+
+      <section className="card p-4 text-sm">
+        <h3 className="font-semibold">Smart contract</h3>
+        <p className="mt-1 text-muted-foreground">
+          Sidebet #{bet.onchainId} is escrowed in{" "}
+          <a
+            href={explorerAddress(bet.chainId, bet.escrowAddress)}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-[hsl(var(--accent))] hover:underline"
+          >
+            {shortAddr(bet.escrowAddress)}
+          </a>{" "}
+          on Polygon —{" "}
+          <a
+            href={explorerAddress(bet.chainId, bet.escrowAddress)}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-[hsl(var(--accent))] hover:underline"
+          >
+            view on Polygonscan
+          </a>
+          .
+        </p>
+      </section>
     </div>
   );
 }
