@@ -130,6 +130,83 @@ function truncate(text: string, max: number): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
+const USDC_ICON = absoluteUrl("/usdc.png");
+
+function parseStakeLabel(
+  stakeLabel: string,
+  tokenSymbol?: string | null,
+): { amount: string; symbol: string } {
+  const sym = tokenSymbol || "USDC.e";
+  const suffix = ` ${sym}`;
+  if (stakeLabel.endsWith(suffix)) {
+    return { amount: stakeLabel.slice(0, -suffix.length), symbol: sym };
+  }
+  const parts = stakeLabel.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return {
+      amount: parts.slice(0, -1).join(" "),
+      symbol: parts[parts.length - 1]!,
+    };
+  }
+  return { amount: stakeLabel, symbol: sym };
+}
+
+function OgTokenAmount({
+  stakeLabel,
+  tokenSymbol,
+  color,
+  fontSize = 28,
+  iconSize = 24,
+  align = "start",
+  prefix,
+  fontWeight = 700,
+}: {
+  stakeLabel: string;
+  tokenSymbol?: string | null;
+  color: string;
+  fontSize?: number;
+  iconSize?: number;
+  align?: "start" | "end";
+  prefix?: string;
+  fontWeight?: number;
+}) {
+  const { amount, symbol } = parseStakeLabel(stakeLabel, tokenSymbol);
+  const text = prefix
+    ? `${prefix} ${amount} ${symbol}`
+    : `${amount} ${symbol}`;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        flexDirection: align === "end" ? "row-reverse" : "row",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={USDC_ICON}
+        alt=""
+        width={iconSize}
+        height={iconSize}
+        style={{ borderRadius: iconSize / 2, flexShrink: 0 }}
+      />
+      <span
+        style={{
+          fontSize,
+          fontWeight,
+          color,
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          lineHeight: 1.1,
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
+
 function heroSrc(
   preview: LinkPreviewData,
   thumbDataUrl?: string | null,
@@ -313,6 +390,7 @@ function OgPartySide({
   isWinner,
   isLoser,
   payoutLabel,
+  tokenSymbol,
 }: {
   role: string;
   label: string;
@@ -325,32 +403,39 @@ function OgPartySide({
   isWinner?: boolean;
   isLoser?: boolean;
   payoutLabel?: string;
+  tokenSymbol?: string | null;
 }) {
   const dimmed = mutedLabel || isLoser;
   const roleLabel = isWinner ? "Winner" : role;
+  const avatarSize = isWinner ? 44 : 52;
+  const columnGap = isWinner ? 5 : 8;
+  const nameSize = isWinner ? 24 : 28;
 
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 10,
+        gap: columnGap,
         flex: 1,
         minWidth: 0,
+        width: "100%",
+        maxWidth: isWinner ? "100%" : "100%",
         alignItems: align === "end" ? "flex-end" : "flex-start",
         textAlign: align === "end" ? "right" : "left",
         opacity: isLoser ? 0.72 : 1,
-        padding: isWinner ? 16 : 0,
-        borderRadius: isWinner ? 18 : 0,
+        padding: isWinner ? "8px 10px" : "0",
+        borderRadius: isWinner ? 12 : 0,
         backgroundColor: isWinner ? "rgba(45, 165, 98, 0.1)" : "transparent",
         border: isWinner
           ? "2px solid rgba(45, 165, 98, 0.45)"
           : "2px solid transparent",
+        overflow: isWinner ? "hidden" : "visible",
       }}
     >
       <span
         style={{
-          fontSize: 16,
+          fontSize: 15,
           fontWeight: 600,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
@@ -363,35 +448,58 @@ function OgPartySide({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 14,
+          gap: isWinner ? 8 : 12,
           flexDirection: align === "end" ? "row-reverse" : "row",
+          maxWidth: "100%",
         }}
       >
         <OgAvatar
           dataUrl={avatarDataUrl}
           label={label}
           address={address}
+          size={avatarSize}
           muted={dimmed}
           highlight={isWinner}
         />
         <span
           style={{
-            fontSize: 30,
+            fontSize: nameSize,
             fontWeight: 700,
             color: dimmed ? C.muted : C.text,
             lineHeight: 1.1,
+            flexShrink: 1,
           }}
         >
-          {truncate(label, 22)}
+          {truncate(label, isWinner ? 14 : 18)}
         </span>
       </div>
+      {isWinner && payoutLabel ? (
+        <OgTokenAmount
+          stakeLabel={payoutLabel}
+          tokenSymbol={tokenSymbol}
+          color={C.success}
+          fontSize={22}
+          iconSize={20}
+          align={align}
+          prefix="Won"
+        />
+      ) : (
+        <OgTokenAmount
+          stakeLabel={stakeLabel}
+          tokenSymbol={tokenSymbol}
+          color={dimmed ? C.muted : C.text}
+          fontSize={isWinner ? 24 : 28}
+          iconSize={22}
+          align={align}
+        />
+      )}
       {outcomeLabel && (
         <span
           style={{
-            fontSize: 18,
+            fontSize: isWinner ? 16 : 17,
             fontWeight: 600,
             color: isWinner ? C.success : C.muted,
-            padding: "4px 12px",
+            padding: "3px 10px",
             borderRadius: 999,
             backgroundColor: isWinner
               ? "rgba(45, 165, 98, 0.12)"
@@ -399,42 +507,6 @@ function OgPartySide({
           }}
         >
           {truncate(outcomeLabel, 24)}
-        </span>
-      )}
-      {isWinner && payoutLabel ? (
-        <>
-          <span
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: C.success,
-            }}
-          >
-            Won
-          </span>
-          <span
-            style={{
-              fontSize: 38,
-              fontWeight: 700,
-              color: C.success,
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            }}
-          >
-            {payoutLabel}
-          </span>
-        </>
-      ) : (
-        <span
-          style={{
-            fontSize: 34,
-            fontWeight: 700,
-            color: dimmed ? C.muted : C.text,
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-          }}
-        >
-          {stakeLabel}
         </span>
       )}
     </div>
@@ -450,7 +522,7 @@ function renderBetOgCard(
   const isOpen = preview.status === "Open";
   const isSettled = preview.status === "Settled";
   const acceptorMuted = isOpen && preview.betMatchup?.acceptor.label === "Open";
-  const hasWinner = isSettled && !!matchup?.resultLabel;
+  const tokenSymbol = preview.tokenSymbol;
 
   return new ImageResponse(
     (
@@ -495,11 +567,12 @@ function renderBetOgCard(
             display: "flex",
             flex: 1,
             flexDirection: "column",
-            gap: 28,
+            gap: isSettled ? 16 : 20,
             background: C.card,
             border: `2px solid ${statusColors.border}`,
             borderRadius: 24,
-            padding: 36,
+            padding: isSettled ? "24px 36px 28px" : "32px 36px",
+            overflow: "hidden",
           }}
         >
           <div
@@ -550,7 +623,7 @@ function renderBetOgCard(
               </span>
               <span
                 style={{
-                  fontSize: 38,
+                  fontSize: isSettled ? 34 : 38,
                   fontWeight: 700,
                   color: C.text,
                   lineHeight: 1.12,
@@ -559,20 +632,24 @@ function renderBetOgCard(
                 {truncate(preview.title, 70)}
               </span>
               {matchup?.poolLabel && (
-                <span style={{ fontSize: 22, color: C.muted }}>
-                  {isSettled ? "Final pool" : "Pool"} {matchup.poolLabel}
-                </span>
-              )}
-              {hasWinner && matchup.resultLabel && (
-                <span
+                <div
                   style={{
-                    fontSize: 24,
-                    fontWeight: 700,
-                    color: C.success,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
                   }}
                 >
-                  {truncate(matchup.resultLabel, 80)}
-                </span>
+                  <span style={{ fontSize: 20, color: C.muted }}>
+                    {isSettled ? "Final pool" : "Pool"}
+                  </span>
+                  <OgTokenAmount
+                    stakeLabel={matchup.poolLabel}
+                    tokenSymbol={tokenSymbol}
+                    color={C.muted}
+                    fontSize={20}
+                    iconSize={18}
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -581,38 +658,63 @@ function renderBetOgCard(
             <div
               style={{
                 display: "flex",
-                alignItems: "center",
-                gap: 24,
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 12,
                 borderTop: `2px solid ${C.border}`,
-                paddingTop: 28,
+                paddingTop: isSettled ? 16 : 20,
+                width: "100%",
               }}
             >
-              <OgPartySide
-                role="Proposer"
-                label={matchup.proposer.label}
-                stakeLabel={matchup.proposer.stakeLabel}
-                outcomeLabel={matchup.proposer.outcomeLabel}
-                align="start"
-                avatarDataUrl={options.partyAvatars?.proposer}
-                address={matchup.proposer.address}
-                isWinner={matchup.proposer.isWinner}
-                isLoser={isSettled && !matchup.proposer.isWinner && !!matchup.resultLabel}
-                payoutLabel={matchup.proposer.payoutLabel}
-              />
-              <OgVsPill />
-              <OgPartySide
-                role="Acceptor"
-                label={matchup.acceptor.label}
-                stakeLabel={matchup.acceptor.stakeLabel}
-                outcomeLabel={matchup.acceptor.outcomeLabel}
-                align="end"
-                mutedLabel={acceptorMuted}
-                avatarDataUrl={options.partyAvatars?.acceptor}
-                address={matchup.acceptor.address}
-                isWinner={matchup.acceptor.isWinner}
-                isLoser={isSettled && !matchup.acceptor.isWinner && !!matchup.resultLabel}
-                payoutLabel={matchup.acceptor.payoutLabel}
-              />
+              <div style={{ display: "flex", flex: 1, minWidth: 0, maxWidth: "46%" }}>
+                <OgPartySide
+                  role="Proposer"
+                  label={matchup.proposer.label}
+                  stakeLabel={matchup.proposer.stakeLabel}
+                  outcomeLabel={matchup.proposer.outcomeLabel}
+                  align="start"
+                  avatarDataUrl={options.partyAvatars?.proposer}
+                  address={matchup.proposer.address}
+                  isWinner={matchup.proposer.isWinner}
+                  isLoser={isSettled && !matchup.proposer.isWinner && !!matchup.resultLabel}
+                  payoutLabel={matchup.proposer.payoutLabel}
+                  tokenSymbol={tokenSymbol}
+                />
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignSelf: "center",
+                  flexShrink: 0,
+                  paddingTop: 28,
+                }}
+              >
+                <OgVsPill />
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flex: 1,
+                  minWidth: 0,
+                  maxWidth: "46%",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <OgPartySide
+                  role="Acceptor"
+                  label={matchup.acceptor.label}
+                  stakeLabel={matchup.acceptor.stakeLabel}
+                  outcomeLabel={matchup.acceptor.outcomeLabel}
+                  align="end"
+                  mutedLabel={acceptorMuted}
+                  avatarDataUrl={options.partyAvatars?.acceptor}
+                  address={matchup.acceptor.address}
+                  isWinner={matchup.acceptor.isWinner}
+                  isLoser={isSettled && !matchup.acceptor.isWinner && !!matchup.resultLabel}
+                  payoutLabel={matchup.acceptor.payoutLabel}
+                  tokenSymbol={tokenSymbol}
+                />
+              </div>
             </div>
           )}
         </div>
