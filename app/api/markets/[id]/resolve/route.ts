@@ -6,6 +6,7 @@ import { isAdminAddress } from "@/lib/admin";
 import { displayResolver } from "@/lib/settlerUtils";
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { marketForApi, marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { engineSettleMarket, EngineError } from "@/lib/engineClient";
@@ -45,7 +46,7 @@ export async function POST(
 
   const market = await prisma.market.findUnique({
     where: { id },
-    include: { outcomes: true },
+    select: marketWithOutcomesSelect,
   });
   if (!market) return jsonErr("not found", 404);
   if (market.status === "Resolved") return jsonErr("already resolved", 409);
@@ -99,7 +100,7 @@ export async function POST(
   const updated = await prisma.market.update({
     where: { id },
     data: { status: "Resolved", winningOutcome: parsed.data.winningOutcome },
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
 
   const winLabel =
@@ -113,5 +114,5 @@ export async function POST(
     link: `/markets/${market.id}`,
   });
 
-  return jsonOk(updated);
+  return jsonOk(marketForApi(updated));
 }

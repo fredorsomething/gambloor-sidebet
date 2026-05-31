@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/adminAuth";
 import { sanitizeStoredBadges } from "@/lib/badges";
 import { prisma } from "@/lib/db";
+import { resolverRequestSelect } from "@/lib/resolverRequestPrisma";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { DEFAULT_SIDEBET_FEE_BPS } from "@/lib/settlers";
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
     where: { status },
     orderBy: { createdAt: "desc" },
     take: 50,
+    select: resolverRequestSelect,
   });
 
   const enriched = await Promise.all(
@@ -77,6 +79,7 @@ export async function POST(req: NextRequest) {
 
   const row = await prisma.resolverRequest.findUnique({
     where: { id: parsed.data.id },
+    select: resolverRequestSelect,
   });
   if (!row) return jsonErr("not found", 404);
   if (row.status !== "Pending") return jsonErr("already reviewed", 409);

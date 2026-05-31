@@ -3,6 +3,7 @@ import { getAddress, isAddress } from "viem";
 
 import { getMarketCollateralToken, MARKET_COLLATERAL_SYMBOL } from "@/lib/chains";
 import { prisma } from "@/lib/db";
+import { marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { engineOpenOrders, EngineError } from "@/lib/engineClient";
 import { collateralKey } from "@/lib/exchange/keys";
@@ -30,7 +31,7 @@ export async function GET(
 
   const market = await prisma.market.findUnique({
     where: { id },
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
   if (!market) return jsonErr("not found", 404);
   const labelOf = (idx: number) =>

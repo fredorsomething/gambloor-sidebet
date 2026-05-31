@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { resolverRequestSelect } from "@/lib/resolverRequestPrisma";
 import { notify } from "@/lib/notifications";
 import {
   applyApprovedResolver,
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
   const requests = await prisma.resolverRequest.findMany({
     where: { subjectType, subjectId },
     orderBy: { createdAt: "desc" },
+    select: resolverRequestSelect,
   });
   return jsonOk({ requests });
 }
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest) {
       subjectId: d.subjectId,
       status: "Pending",
     },
+    select: { id: true },
   });
   if (existing) {
     return jsonErr("a resolver request is already pending approval", 409);

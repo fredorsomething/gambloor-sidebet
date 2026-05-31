@@ -18,6 +18,7 @@ import {
   type Side,
 } from "../lib/exchange/units";
 import type { IncomingOrder, RestingOrder } from "../lib/exchange/types";
+import { marketWithOutcomesSelect } from "../lib/marketPrisma";
 
 export type PlaceResult = {
   filledQty: string;
@@ -69,7 +70,7 @@ export class ExchangeEngine {
 
     const market = await this.prisma.market.findUnique({
       where: { id: marketId },
-      include: { outcomes: true },
+      select: marketWithOutcomesSelect,
     });
     if (!market) throw new Error("market not found");
 

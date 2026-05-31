@@ -11,6 +11,10 @@ import { prisma } from "@/lib/db";
 import { getPlatformSettings } from "@/lib/platformSettings";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
+import {
+  marketForApi,
+  marketWithOutcomesSelect,
+} from "@/lib/marketPrisma";
 import { getApprovedSettler } from "@/lib/settlers";
 
 export const dynamic = "force-dynamic";
@@ -157,10 +161,10 @@ export async function POST(req: NextRequest) {
           })),
         },
       },
-      include: { outcomes: true },
+      select: marketWithOutcomesSelect,
     });
 
-    return jsonOk(market, { status: 201 });
+    return jsonOk(marketForApi(market), { status: 201 });
   } catch (err) {
     console.error("create market failed", err);
     return jsonErr("failed to create market", 500);
@@ -225,7 +229,7 @@ export async function GET(req: NextRequest) {
       orderBy: [{ createdAt: "desc" }],
       take: q.take,
       skip: q.skip,
-      include: { outcomes: { orderBy: { index: "asc" } } },
+      select: marketWithOutcomesSelect,
     }),
     prisma.market.count({ where }),
   ]);
@@ -293,7 +297,7 @@ export async function GET(req: NextRequest) {
     // Only surface a verified outcome while still open (pre-settlement).
     const verifiedOutcome =
       r.status === "Open" ? verifiedByMarket.get(r.id) ?? null : null;
-    return { ...r, quotes, verifiedOutcome };
+    return marketForApi(r, { quotes, verifiedOutcome });
   });
 
   return jsonOk({ items, total });

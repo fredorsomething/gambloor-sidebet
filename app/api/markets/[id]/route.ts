@@ -9,6 +9,7 @@ import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { engineSnapshot, EngineError } from "@/lib/engineClient";
 import { collateralKey, shareKey } from "@/lib/exchange/keys";
+import { marketForApi, marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import type { BookSnapshot } from "@/lib/exchange/types";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,10 @@ export async function PATCH(
     return jsonErr(parsed.error.errors.map((e) => e.message).join(", "));
   }
 
-  const market = await prisma.market.findUnique({ where: { id } });
+  const market = await prisma.market.findUnique({
+    where: { id },
+    select: { creator: true },
+  });
   if (!market) return jsonErr("not found", 404);
 
   const creator = getAddress(parsed.data.creator);
@@ -55,9 +59,9 @@ export async function PATCH(
   const updated = await prisma.market.update({
     where: { id },
     data: { imageUrl: parsed.data.imageUrl },
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
-  return jsonOk(updated);
+  return jsonOk(marketForApi(updated));
 }
 
 function emptyBook(marketId: number, numOutcomes: number): BookSnapshot {
@@ -82,7 +86,7 @@ export async function GET(
 
   const market = await prisma.market.findUnique({
     where: { id },
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
   if (!market) return jsonErr("not found", 404);
 
@@ -138,11 +142,11 @@ export async function GET(
   }
 
   const fallback = getMarketCollateralToken();
-  const marketOut = {
+  const marketOut = marketForApi({
     ...market,
     tokenSymbol: market.tokenSymbol ?? fallback.symbol,
     decimals: market.decimals ?? fallback.decimals,
-  };
+  });
 
   return jsonOk({ market: marketOut, book, viewer });
 }

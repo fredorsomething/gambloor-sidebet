@@ -2,6 +2,7 @@ import { getAddress, isAddress } from "viem";
 
 import { isAdminAddress } from "@/lib/admin";
 import { prisma } from "@/lib/db";
+import { marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import { displayResolver, hasCustomSettler } from "@/lib/settlerUtils";
 
 export type ResolverSubjectType = "bet" | "market";
@@ -13,7 +14,10 @@ export async function loadResolverSubject(
   if (subjectType === "bet") {
     return prisma.bet.findUnique({ where: { id: subjectId } });
   }
-  return prisma.market.findUnique({ where: { id: subjectId } });
+  return prisma.market.findUnique({
+    where: { id: subjectId },
+    select: marketWithOutcomesSelect,
+  });
 }
 
 /** Who must approve a resolver change (the other party on the subject). */

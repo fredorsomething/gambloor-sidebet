@@ -6,6 +6,7 @@ import { isAdminAddress } from "@/lib/admin";
 import { verifyWalletAuth } from "@/lib/auth";
 import { announceMarketCreatedInChat } from "@/lib/announceFeedChat";
 import { prisma } from "@/lib/db";
+import { marketForApi, marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { engineReloadMarket } from "@/lib/engineClient";
@@ -41,7 +42,10 @@ export async function POST(
   const auth = await verifyWalletAuth({ req, address: admin });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
-  const market = await prisma.market.findUnique({ where: { id } });
+  const market = await prisma.market.findUnique({
+    where: { id },
+    select: { status: true, creator: true, title: true },
+  });
   if (!market) return jsonErr("not found", 404);
   if (market.status !== "Pending") {
     return jsonErr("market is not pending approval", 409);
@@ -51,7 +55,7 @@ export async function POST(
   const updated = await prisma.market.update({
     where: { id },
     data: { status: approved ? "Open" : "Rejected" },
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
 
   // Let the engine pick up the new status (it caches market metadata).
@@ -78,5 +82,5 @@ export async function POST(
     link: approved ? `/markets/${market.id}` : null,
   });
 
-  return jsonOk(updated);
+  return jsonOk(marketForApi(updated));
 }

@@ -5,7 +5,9 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && bash scripts/ensure-db-schema.sh && next build",
+    "db:migrate": "prisma migrate deploy",
+    "db:sync": "bash scripts/ensure-db-schema.sh",
     "start": "next start",
     "lint": "next lint",
     "db:push": "prisma db push",

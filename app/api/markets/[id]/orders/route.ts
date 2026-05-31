@@ -4,6 +4,7 @@ import { getAddress, parseEventLogs, parseAbiItem } from "viem";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import { getPublicClient } from "@/lib/onchain";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import {
@@ -74,7 +75,7 @@ export async function POST(
 
   const market = await prisma.market.findUnique({
     where: { id },
-    include: { outcomes: true },
+    select: marketWithOutcomesSelect,
   });
   if (!market) return jsonErr("market not found", 404);
   if (market.status !== "Open") return jsonErr("market is not open for trading", 400);

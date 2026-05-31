@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 
 import { requireAdmin } from "@/lib/adminAuth";
 import { prisma } from "@/lib/db";
+import { marketForApi, marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +33,8 @@ export async function GET(req: NextRequest) {
     where,
     orderBy: { createdAt: "desc" },
     take: 100,
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
 
-  return jsonOk({ markets });
+  return jsonOk({ markets: markets.map(marketForApi) });
 }

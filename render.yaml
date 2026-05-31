@@ -10,7 +10,7 @@ services:
     runtime: node
     plan: starter
     region: oregon
-    buildCommand: npm install --include=dev && npx prisma generate
+    buildCommand: npm install --include=dev && npx prisma generate && bash scripts/ensure-db-schema.sh
     startCommand: npm run engine:start
     healthCheckPath: /health
     autoDeploy: true

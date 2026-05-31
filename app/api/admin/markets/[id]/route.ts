@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { requireAdmin } from "@/lib/adminAuth";
 import { prisma } from "@/lib/db";
+import { marketForApi, marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 
@@ -48,17 +49,20 @@ export async function PATCH(
   const gate = await requireAdmin(req, parsed.data.admin);
   if (!gate.ok) return jsonErr(gate.error, gate.status);
 
-  const market = await prisma.market.findUnique({ where: { id } });
+  const market = await prisma.market.findUnique({
+    where: { id },
+    select: { id: true },
+  });
   if (!market) return jsonErr("not found", 404);
 
   const { admin: _a, ...fields } = parsed.data;
   const updated = await prisma.market.update({
     where: { id },
     data: fields,
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
 
-  return jsonOk({ market: updated });
+  return jsonOk({ market: marketForApi(updated) });
 }
 
 const DeleteSchema = z.object({
@@ -90,8 +94,8 @@ export async function DELETE(
   const market = await prisma.market.update({
     where: { id },
     data: { status: "Removed" },
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
 
-  return jsonOk({ market });
+  return jsonOk({ market: marketForApi(market) });
 }

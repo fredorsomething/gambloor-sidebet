@@ -4,6 +4,8 @@ import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { marketWithOutcomesSelect } from "@/lib/marketPrisma";
+import { resolverRequestSelect } from "@/lib/resolverRequestPrisma";
 import { notify } from "@/lib/notifications";
 import {
   applyApprovedResolver,
@@ -43,7 +45,10 @@ export async function POST(
   const auth = await verifyWalletAuth({ req, address: caller });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
-  const row = await prisma.resolverRequest.findUnique({ where: { id } });
+  const row = await prisma.resolverRequest.findUnique({
+    where: { id },
+    select: resolverRequestSelect,
+  });
   if (!row) return jsonErr("not found", 404);
   if (row.status !== "Pending") return jsonErr("request is no longer pending", 409);
   if (!row.suggested || !isAddress(row.suggested)) {
@@ -52,7 +57,10 @@ export async function POST(
 
   const subject = await (row.subjectType === "bet"
     ? prisma.bet.findUnique({ where: { id: row.subjectId } })
-    : prisma.market.findUnique({ where: { id: row.subjectId } }));
+    : prisma.market.findUnique({
+        where: { id: row.subjectId },
+        select: marketWithOutcomesSelect,
+      }));
   if (!subject) return jsonErr("subject not found", 404);
 
   const counterparty = resolverCounterparty(

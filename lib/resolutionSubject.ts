@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { marketWithOutcomesSelect } from "@/lib/marketPrisma";
 import { displayResolver } from "@/lib/settlerUtils";
 
 export type SubjectType = "bet" | "market";
@@ -38,7 +39,7 @@ export async function loadSubject(
 
   const market = await prisma.market.findUnique({
     where: { id: subjectId },
-    include: { outcomes: { orderBy: { index: "asc" } } },
+    select: marketWithOutcomesSelect,
   });
   if (!market) return null;
   return {
@@ -68,7 +69,10 @@ export async function canProposeResolution(
       .filter(Boolean)
       .some((x) => x!.toLowerCase() === a);
   }
-  const market = await prisma.market.findUnique({ where: { id: subjectId } });
+  const market = await prisma.market.findUnique({
+    where: { id: subjectId },
+    select: { creator: true, settler: true, customSettler: true },
+  });
   if (!market) return false;
   const parties = [market.creator, market.settler, market.customSettler].filter(
     (x): x is string => !!x,
