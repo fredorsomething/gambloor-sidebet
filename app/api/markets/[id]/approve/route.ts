@@ -79,7 +79,7 @@ export async function POST(
     body: approved
       ? `"${market.title}" is now live and open for trading.`
       : `"${market.title}" was not approved by the admin.`,
-    link: approved ? `/markets/${market.id}` : null,
+    link: approved ? `/markets/${id}` : null,
   });
 
   return jsonOk(marketForApi(updated));

@@ -36,5 +36,5 @@ export async function GET(req: NextRequest) {
     select: marketWithOutcomesSelect,
   });
 
-  return jsonOk({ markets: markets.map(marketForApi) });
+  return jsonOk({ markets: markets.map((m) => marketForApi(m)) });
 }
