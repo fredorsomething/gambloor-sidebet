@@ -20,6 +20,11 @@ import { RichMessageBody } from "@/components/chat/RichMessageBody";
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { lockBodyScroll, resetBodyScrollLock } from "@/lib/bodyScrollLock";
+import {
+  feedChatMessageClass,
+  isFeedChatMessage,
+  parseFeedChatMessage,
+} from "@/lib/chatFeed";
 import { isSupporterChatMessage, supporterChatMessageText, SUPPORTER_CHAT_LINK_HREF } from "@/lib/chatSupporter";
 import { isTipChatMessage, tipChatMessageText } from "@/lib/chatTip";
 import { jsonFetch } from "@/lib/fetcher";
@@ -487,7 +492,32 @@ export function GlobalChat() {
   );
 }
 
+function FeedChatLine({ body }: { body: string }) {
+  const parsed = parseFeedChatMessage(body);
+  if (!parsed) return null;
+  const inner = (
+    <span className={cn("text-sm font-bold", feedChatMessageClass(parsed.kind))}>
+      {parsed.text}
+    </span>
+  );
+  return (
+    <div className="py-0.5">
+      {parsed.href ? (
+        <Link href={parsed.href} className="hover:underline">
+          {inner}
+        </Link>
+      ) : (
+        inner
+      )}
+    </div>
+  );
+}
+
 function ChatRow({ m }: { m: ChatMessage }) {
+  if (isFeedChatMessage(m.body)) {
+    return <FeedChatLine body={m.body} />;
+  }
+
   const name = m.authorUsername ? `@${m.authorUsername}` : shortAddr(m.author);
   const profileHref = `/u/${m.authorUsername ?? m.author}`;
   const pnlPositive = m.authorPnl >= 0;

@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { isAdminAddress } from "@/lib/admin";
 import { verifyWalletAuth } from "@/lib/auth";
+import { announceMarketCreatedInChat } from "@/lib/announceFeedChat";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -56,6 +57,15 @@ export async function POST(
   // Let the engine pick up the new status (it caches market metadata).
   if (approved) {
     await engineReloadMarket(id).catch(() => {});
+    try {
+      await announceMarketCreatedInChat({
+        id: updated.id,
+        title: updated.title,
+        creator: updated.creator,
+      });
+    } catch (err) {
+      console.error("market created chat announce failed", err);
+    }
   }
 
   await notify({

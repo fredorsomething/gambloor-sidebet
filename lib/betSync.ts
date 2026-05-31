@@ -7,6 +7,10 @@ import { betStatusRank } from "@/lib/betStatus";
 import type { BetStatusName } from "@/lib/abi";
 import { readBetV2, type OnchainBetV2 } from "@/lib/onchain";
 import { reconcileSettledBetProposals } from "@/lib/resolutionReconcile";
+import {
+  announceBetMatchedInChat,
+  announceBetSettledInChat,
+} from "@/lib/announceFeedChat";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
@@ -128,6 +132,8 @@ export async function applyBetOnchainSync(
   opts: { notify?: boolean } = {},
 ): Promise<Bet> {
   const updates = buildBetSyncUpdates(bet, onchain);
+  const becameMatched =
+    updates.status === "Matched" && bet.status !== "Matched";
   const becameSettled =
     (updates.status === "Settled" || updates.status === "Refunded") &&
     bet.status !== "Settled" &&
@@ -148,8 +154,20 @@ export async function applyBetOnchainSync(
     );
   }
 
+  if (becameMatched) {
+    await announceBetMatchedInChat(bet).catch((err) => {
+      console.error("bet matched chat announce failed", err);
+    });
+  }
+
   if (opts.notify && becameSettled) {
     await notifyBetSettlement(bet).catch(() => {});
+  }
+
+  if (becameSettled && updates.status === "Settled") {
+    await announceBetSettledInChat(bet).catch((err) => {
+      console.error("bet settled chat announce failed", err);
+    });
   }
 
   return bet;
@@ -184,6 +202,12 @@ export async function persistKnownSettlement(
 
   if (opts.notify && becameSettled) {
     await notifyBetSettlement(bet).catch(() => {});
+  }
+
+  if (becameSettled) {
+    await announceBetSettledInChat(bet).catch((err) => {
+      console.error("bet settled chat announce failed", err);
+    });
   }
 
   return bet;

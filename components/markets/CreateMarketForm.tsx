@@ -113,7 +113,8 @@ export function CreateMarketForm() {
     if (!tokenAddress || !isAddress(tokenAddress)) return "Collateral misconfigured";
     if (title.trim().length < 3) return "Title needs at least 3 characters";
     if (description.trim().length < 1) return "Add a short description";
-    if (terms.trim().length < 1) return "Spell out the resolution terms";
+    if (terms.trim().length < 1)
+      return "Please be as specific as possible with your resolution terms";
     if (outcomes.length < 2) return "Add at least two outcomes";
     if (outcomes.some((o) => o.length < 1)) return "Every outcome needs a label";
     if (new Set(outcomes.map((o) => o.toLowerCase())).size !== outcomes.length)

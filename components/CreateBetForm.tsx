@@ -186,7 +186,8 @@ export function CreateBetForm() {
     if (!tokenAddress || !isAddress(tokenAddress)) return "Pick a valid token";
     if (title.trim().length < 3) return "Title needs at least 3 characters";
     if (description.trim().length < 1) return "Add a short description";
-    if (terms.trim().length < 1) return "Spell out the resolution terms";
+    if (terms.trim().length < 1)
+      return "Please be as specific as possible with your resolution terms";
     if (outcomes.length < 2) return "Add at least two outcomes";
     if (outcomes.some((o) => o.length < 1)) return "Every outcome needs a label";
     if (new Set(outcomes.map((o) => o.toLowerCase())).size !== outcomes.length)
@@ -481,12 +482,15 @@ export function CreateBetForm() {
 
         <Field
           label="Terms"
-          hint="Resolution criteria. Be specific — this is what the settler will read."
+          hint="Resolution criteria — please be as specific as possible about what makes each outcome win."
         >
           <textarea
             className="textarea min-h-[140px]"
             value={terms}
-            onChange={(e) => setTerms(e.target.value)}
+            onChange={(e) => {
+              setTerms(e.target.value);
+              if (error) setError(null);
+            }}
             placeholder={`If the Knicks play in the 2026 ECF, "Yes" wins. Otherwise "No" wins.`}
             maxLength={10_000}
           />
