@@ -219,6 +219,123 @@ function OgTokenAmount({
   );
 }
 
+function OgOpenTakeStrip({
+  youBetLabel,
+  toWinLabel,
+  tokenSymbol,
+  outcomeLabel,
+}: {
+  youBetLabel: string;
+  toWinLabel: string;
+  tokenSymbol?: string | null;
+  outcomeLabel?: string;
+}) {
+  const outcomeColors = outcomeLabel
+    ? outcomeBadgeColors(outcomeLabel)
+    : null;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        width: "100%",
+      }}
+    >
+      {outcomeLabel && outcomeColors && (
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <span
+            style={{
+              fontSize: 18,
+              fontWeight: 700,
+              color: outcomeColors.text,
+              padding: "6px 14px",
+              borderRadius: 999,
+              backgroundColor: outcomeColors.bg,
+              border: `1.5px solid ${outcomeColors.text}55`,
+            }}
+          >
+            Take {truncate(outcomeLabel, 20)}
+          </span>
+        </div>
+      )}
+      <div
+        style={{
+          display: "flex",
+          gap: 14,
+          width: "100%",
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+            padding: "14px 12px",
+            borderRadius: 16,
+            border: `2px solid ${C.border}`,
+            backgroundColor: "rgba(22, 27, 34, 0.8)",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: C.muted,
+            }}
+          >
+            You bet
+          </span>
+          <OgTokenAmount
+            stakeLabel={youBetLabel}
+            tokenSymbol={tokenSymbol}
+            color={C.text}
+            fontSize={24}
+            iconSize={22}
+          />
+        </div>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+            padding: "14px 12px",
+            borderRadius: 16,
+            border: `2px solid rgba(45, 165, 98, 0.45)`,
+            backgroundColor: "rgba(45, 165, 98, 0.12)",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: C.success,
+            }}
+          >
+            To win
+          </span>
+          <OgTokenAmount
+            stakeLabel={toWinLabel}
+            tokenSymbol={tokenSymbol}
+            color={C.success}
+            fontSize={24}
+            iconSize={22}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function heroSrc(
   preview: LinkPreviewData,
   thumbDataUrl?: string | null,
@@ -645,7 +762,14 @@ function renderBetOgCard(
               >
                 {truncate(preview.title, 70)}
               </span>
-              {matchup?.poolLabel && (
+              {isOpen && matchup?.youBetLabel && matchup?.toWinLabel ? (
+                <OgOpenTakeStrip
+                  youBetLabel={matchup.youBetLabel}
+                  toWinLabel={matchup.toWinLabel}
+                  tokenSymbol={tokenSymbol}
+                  outcomeLabel={matchup.acceptor.outcomeLabel}
+                />
+              ) : matchup?.poolLabel ? (
                 <div
                   style={{
                     display: "flex",
@@ -664,11 +788,11 @@ function renderBetOgCard(
                     iconSize={18}
                   />
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
 
-          {matchup && (
+          {matchup && !isOpen && (
             <div
               style={{
                 display: "flex",

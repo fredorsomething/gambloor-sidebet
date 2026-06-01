@@ -2,9 +2,11 @@ import Link from "next/link";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
+import { OpenBetTakePanel } from "@/components/OpenBetTakePanel";
 import { Identity } from "@/components/profile/Identity";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
+import { acceptorTakeEconomics, sidebetPayoutWei } from "@/lib/betEconomics";
 import { resolveBetStatus } from "@/lib/betStatus";
 import { binaryOutcomeIndexTone, outcomeToneClass } from "@/lib/outcomeTone";
 import { formatToken, fromNowUnix } from "@/lib/utils";
@@ -35,11 +37,15 @@ export function BetCard({ bet }: { bet: BetRow }) {
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
   const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
   const poolWei = proposerStake + acceptorStake;
-  const payoutWei = (poolWei * BigInt(10000 - bet.feeBps)) / 10000n;
+  const payoutWei = sidebetPayoutWei(proposerStake, acceptorStake, bet.feeBps);
+  const takeEconomics = acceptorTakeEconomics(
+    proposerStake,
+    acceptorStake,
+    bet.feeBps,
+  );
 
   const sym = bet.tokenSymbol || "tokens";
   const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
-  const proposerPick = outcomes[bet.proposerOutcome];
   const acceptorPick = outcomes[bet.acceptorOutcome];
   const isOpen = status === "Open";
   const reservedOpen = isOpen && !!bet.intendedAcceptor;
@@ -104,40 +110,19 @@ export function BetCard({ bet }: { bet: BetRow }) {
       <div className="mt-2 px-4 pb-2">
         {isOpen ? (
           <div className="space-y-2 rounded-xl bg-muted/30 p-2.5">
-            <p className="text-xs text-muted-foreground">
-              Backing{" "}
-              <span className="font-medium text-foreground">
-                {proposerPick ?? "—"}
-              </span>
-              {" · "}
-              <span className="font-mono text-foreground">
-                {formatToken(proposerStake, bet.decimals)}
-              </span>{" "}
-              <TokenSymbol symbol={sym} size={11} />
-            </p>
             {reservedOpen && (
-              <p className="text-[10px] font-medium text-muted-foreground">
+              <p className="text-center text-[10px] font-medium text-muted-foreground">
                 Reserved for a negotiated counterparty
               </p>
             )}
-            <div className="grid grid-cols-2 gap-2 text-center">
-              <div className="rounded-lg bg-card/80 px-2 py-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {reservedOpen ? "Acceptor stake" : "Your stake"}
-                </div>
-                <div className="mt-0.5 font-mono text-sm font-bold">
-                  {formatToken(acceptorStake, bet.decimals)}
-                </div>
-              </div>
-              <div className="rounded-lg bg-success/10 px-2 py-2">
-                <div className="text-[10px] uppercase tracking-wide text-success">
-                  {reservedOpen ? "Payout" : "You win"}
-                </div>
-                <div className="mt-0.5 font-mono text-sm font-bold text-success">
-                  {formatToken(payoutWei, bet.decimals)}
-                </div>
-              </div>
-            </div>
+            <OpenBetTakePanel
+              youBetWei={takeEconomics.youBetWei}
+              toWinWei={takeEconomics.toWinWei}
+              decimals={bet.decimals}
+              symbol={sym}
+              outcomeLabel={acceptorPick}
+              size="sm"
+            />
           </div>
         ) : isMatched ? (
           <div className="rounded-xl bg-muted/30 px-3 py-2">

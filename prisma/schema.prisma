@@ -42,6 +42,69 @@ model User {
   @@index([privyId])
 }
 
+// Affiliate / referral campaigns. Each owner may create up to 3 unique link slugs
+// (?r=slug) that attribute new sign-ups and earn 35% of platform fees.
+model ReferralCampaign {
+  id        Int      @id @default(autoincrement())
+  owner     String // lowercased referrer wallet
+  slug      String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referrals ReferralAttribution[]
+  earnings  ReferralEarning[]
+
+  @@index([owner])
+}
+
+// One referred wallet per site lifetime (first qualifying campaign wins).
+model ReferralAttribution {
+  id         Int      @id @default(autoincrement())
+  campaignId Int
+  referred   String   @unique // lowercased wallet
+  createdAt  DateTime @default(now())
+
+  campaign ReferralCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+// Platform fee share owed to referrers (35% of fees from referred activity).
+model ReferralEarning {
+  id           Int       @id @default(autoincrement())
+  campaignId   Int
+  referrer     String // lowercased campaign owner (denormalized)
+  referred     String // lowercased user who generated the fee
+  source       String // sidebet | clob
+  sourceId     String // bet id or fill id (unique per source)
+  feeMicro     BigInt // gross platform fee from this event (micro-USDC)
+  shareMicro   BigInt // referrer cut (35% of feeMicro)
+  collectedAt  DateTime?
+  collectionId Int?
+  createdAt    DateTime  @default(now())
+
+  campaign   ReferralCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  collection ReferralCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  @@unique([source, sourceId])
+  @@index([referrer, collectedAt])
+  @@index([campaignId])
+  @@index([referred])
+}
+
+model ReferralCollection {
+  id          Int      @id @default(autoincrement())
+  referrer    String // lowercased wallet
+  amountMicro BigInt
+  status      String   @default("Completed") // Completed | Failed
+  createdAt   DateTime @default(now())
+
+  earnings ReferralEarning[]
+
+  @@index([referrer])
+}
+
 // Past usernames a wallet has used. Lets old `/u/<oldname>` links keep resolving
 // to the same wallet after a rename, so a user's identity/stats stay reachable
 // no matter how often they change their display name. Current usernames on the

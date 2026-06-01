@@ -11,6 +11,7 @@ import {
   announceBetMatchedInChat,
   announceBetSettledInChat,
 } from "@/lib/announceFeedChat";
+import { creditReferralForSidebet } from "@/lib/referrals";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
@@ -168,6 +169,9 @@ export async function applyBetOnchainSync(
     await announceBetSettledInChat(bet).catch((err) => {
       console.error("bet settled chat announce failed", err);
     });
+    void creditReferralForSidebet(bet.id).catch((err) => {
+      console.error("referral sidebet credit failed", bet.id, err);
+    });
   }
 
   return bet;
@@ -207,6 +211,9 @@ export async function persistKnownSettlement(
   if (becameSettled) {
     await announceBetSettledInChat(bet).catch((err) => {
       console.error("bet settled chat announce failed", err);
+    });
+    void creditReferralForSidebet(bet.id).catch((err) => {
+      console.error("referral sidebet credit failed", bet.id, err);
     });
   }
 

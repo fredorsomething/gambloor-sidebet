@@ -1,6 +1,7 @@
 import { getAddress, isAddress } from "viem";
 
 import type { BetStatusName } from "@/lib/abi";
+import { acceptorTakeEconomics, sidebetPayoutWei } from "@/lib/betEconomics";
 import { resolveBetStatus } from "@/lib/betStatus";
 import { prisma } from "@/lib/db";
 import { computeUserStats, type StatBet } from "@/lib/stats";
@@ -33,6 +34,9 @@ export type LinkPreviewData = {
     proposer: BetPartyPreview;
     acceptor: BetPartyPreview;
     poolLabel?: string;
+    /** Open bets: acceptor-side stake and net profit. */
+    youBetLabel?: string;
+    toWinLabel?: string;
     /** Settled: "@user won 8 USDC.e" line for meta text. */
     resultLabel?: string;
   };
@@ -355,12 +359,27 @@ export async function resolveLinkPreview(
           : "Open";
     const acceptorPartyAddress = acceptorAddress ?? (isOpen ? null : bet.intendedAcceptor?.trim() ?? null);
 
-    const payoutWei = betPayoutWei(
+    const payoutWei = sidebetPayoutWei(
       proposerStakeWei,
       acceptorStakeWei,
       bet.feeBps ?? 0,
     );
     const payoutLabel = formatStake(payoutWei, bet.decimals, bet.tokenSymbol);
+    const takeEconomics = acceptorTakeEconomics(
+      proposerStakeWei,
+      acceptorStakeWei,
+      bet.feeBps ?? 0,
+    );
+    const youBetLabel = formatStake(
+      takeEconomics.youBetWei,
+      bet.decimals,
+      bet.tokenSymbol,
+    );
+    const toWinLabel = formatStake(
+      takeEconomics.toWinWei,
+      bet.decimals,
+      bet.tokenSymbol,
+    );
     const proposerWon =
       isSettled && eqAddr(bet.winner, bet.proposer);
     const acceptorWon =
@@ -393,6 +412,8 @@ export async function resolveLinkPreview(
         payoutLabel: acceptorWon ? payoutLabel : undefined,
       },
       poolLabel: isMatched ? poolLabel : undefined,
+      youBetLabel: isOpen ? youBetLabel : undefined,
+      toWinLabel: isOpen ? toWinLabel : undefined,
       resultLabel:
         isSettled && winnerLabel
           ? `${winnerLabel} won ${payoutLabel}`
@@ -469,11 +490,14 @@ function betMatchupSubtitle(
   status: BetStatusName,
 ): string {
   if (matchup.resultLabel) return matchup.resultLabel;
+  if (status === "Open" && matchup.youBetLabel && matchup.toWinLabel) {
+    const side = matchup.acceptor.outcomeLabel
+      ? `${matchup.acceptor.outcomeLabel} · `
+      : "";
+    return `${matchup.proposer.label} · ${side}You bet ${matchup.youBetLabel} to win ${matchup.toWinLabel}`;
+  }
   const left = `${matchup.proposer.label} · ${matchup.proposer.stakeLabel}`;
   const right = `${matchup.acceptor.label} · ${matchup.acceptor.stakeLabel}`;
-  if (status === "Open") {
-    return `${left} vs ${matchup.acceptor.stakeLabel} to take`;
-  }
   if (status === "Matched") {
     return `${left} vs ${right} · Matched`;
   }
@@ -482,15 +506,6 @@ function betMatchupSubtitle(
 
 function eqAddr(a?: string | null, b?: string | null): boolean {
   return !!a && !!b && a.toLowerCase() === b.toLowerCase();
-}
-
-function betPayoutWei(
-  proposerStakeWei: bigint,
-  acceptorStakeWei: bigint,
-  feeBps: number,
-): bigint {
-  const pool = proposerStakeWei + acceptorStakeWei;
-  return (pool * BigInt(10000 - feeBps)) / 10000n;
 }
 
 function formatStake(wei: bigint, decimals: number, symbol: string | null): string {

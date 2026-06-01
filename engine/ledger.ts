@@ -111,14 +111,15 @@ export class Ledger {
     deltas: AccountDelta[];
     fills: FillPlan[];
     stats: StatUpdate[];
-  }): Promise<void> {
+  }): Promise<number[]> {
     const { marketId, taker, feeBps, deltas, fills, stats } = args;
+    const fillIds: number[] = [];
     await this.prisma.$transaction(async (tx) => {
       await writeJournal(tx, "TRADE", null, marketId, deltas);
 
       for (const f of fills) {
         const takerFee = (f.takerCost * BigInt(Math.round(feeBps))) / 10_000n;
-        await tx.fill.create({
+        const row = await tx.fill.create({
           data: {
             marketId,
             matchType: f.matchType,
@@ -135,7 +136,9 @@ export class Ledger {
             makerOutcome: f.makerOutcome,
             makerCost: f.makerCost,
           },
+          select: { id: true },
         });
+        fillIds.push(row.id);
       }
 
       for (const s of stats) {
@@ -156,6 +159,7 @@ export class Ledger {
         });
       }
     });
+    return fillIds;
   }
 
   /** Refund a cancelled resting order's lock (BUY -> collateral, SELL -> shares). */
@@ -216,6 +220,29 @@ export class Ledger {
       }
       throw err;
     }
+  }
+
+  /** Credit collected referral earnings to a user's collateral balance (idempotent). */
+  async creditReferralPayout(args: {
+    address: string;
+    amount: bigint;
+    collectionId: number;
+  }): Promise<boolean> {
+    if (args.amount <= 0n) return false;
+    const addr = args.address.toLowerCase();
+    const refId = `referral:${args.collectionId}`;
+    const existing = await this.prisma.ledgerTx.findFirst({
+      where: { type: "REFERRAL", refId },
+      select: { id: true },
+    });
+    if (existing) return false;
+
+    await this.prisma.$transaction(async (tx) => {
+      await writeJournal(tx, "REFERRAL", refId, null, [
+        { key: collateralKey(addr), balanceDelta: args.amount, lockedDelta: 0n },
+      ]);
+    });
+    return true;
   }
 
   /**

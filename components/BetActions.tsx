@@ -8,6 +8,7 @@ import {
 } from "wagmi";
 
 import { Button } from "@/components/ui/button";
+import { OpenBetTakePanel } from "@/components/OpenBetTakePanel";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { Identity } from "@/components/profile/Identity";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
@@ -25,6 +26,7 @@ import {
 import { isAdminAddress } from "@/lib/admin";
 import { settlerMaySettle } from "@/lib/betResolution";
 import { displayResolver, hasCustomSettler } from "@/lib/settlerUtils";
+import { acceptorTakeEconomics, sidebetPayoutWei } from "@/lib/betEconomics";
 import { formatToken, shortAddr } from "@/lib/utils";
 import type { AutoSettleStatus, BetResolutionSummary, BetRow, GetBetResponse } from "@/lib/types";
 
@@ -74,7 +76,12 @@ export function BetActions({
   const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
   const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
-  const pool = proposerStake + acceptorStake;
+  const takeEconomics = acceptorTakeEconomics(
+    proposerStake,
+    acceptorStake,
+    bet.feeBps,
+  );
+  const payoutWei = sidebetPayoutWei(proposerStake, acceptorStake, bet.feeBps);
   const token = bet.token as Address;
   const escrow = bet.escrowAddress as Address;
 
@@ -257,8 +264,6 @@ export function BetActions({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settleWait.isSuccess]);
 
-  const payout = (pool * BigInt(10000 - bet.feeBps)) / 10000n;
-
   if (!account) {
     return (
       <div className="card p-4 text-sm text-muted-foreground">
@@ -374,30 +379,13 @@ export function BetActions({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3">
-          <div>
-            <div className="label">You stake</div>
-            <div className="mt-0.5 inline-flex items-center font-mono text-base font-bold">
-              {formatToken(acceptorStake, decimals)}{" "}
-              <TokenSymbol
-                symbol={tokenSym}
-                size={12}
-                className="ml-1 text-xs font-normal text-muted-foreground"
-              />
-            </div>
-          </div>
-          <div>
-            <div className="label">You win</div>
-            <div className="mt-0.5 inline-flex items-center font-mono text-base font-bold text-success">
-              {formatToken(payout, decimals)}{" "}
-              <TokenSymbol
-                symbol={tokenSym}
-                size={12}
-                className="ml-1 text-xs font-normal text-muted-foreground"
-              />
-            </div>
-          </div>
-        </div>
+        <OpenBetTakePanel
+          youBetWei={takeEconomics.youBetWei}
+          toWinWei={takeEconomics.toWinWei}
+          decimals={decimals}
+          symbol={tokenSym}
+          outcomeLabel={outcomes[bet.acceptorOutcome]}
+        />
 
         {live.balance !== undefined && (
           <div className="text-xs text-muted-foreground">
@@ -623,7 +611,7 @@ export function BetActions({
             {bet.winner && (
               <>
                 <span className="font-mono">{shortAddr(bet.winner)}</span> received{" "}
-                {formatToken(payout, decimals)} {tokenSym}.
+                {formatToken(payoutWei, decimals)} {tokenSym}.
               </>
             )}
           </p>

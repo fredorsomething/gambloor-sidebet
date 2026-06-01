@@ -137,6 +137,7 @@ function PreviewMeta({ preview: p }: { preview: LinkPreviewData }) {
   if (p.kind === "bet") {
     const settled = p.status === "Settled";
     const matched = p.status === "Matched";
+    const open = p.status === "Open";
     return (
       <>
         <span
@@ -152,7 +153,26 @@ function PreviewMeta({ preview: p }: { preview: LinkPreviewData }) {
           Sidebet · {p.status}
         </span>
         <span className="truncate text-sm font-semibold leading-snug">{p.title}</span>
-        {p.betMatchup?.resultLabel ? (
+        {open && p.betMatchup?.youBetLabel && p.betMatchup?.toWinLabel ? (
+          <div className="mt-0.5 grid grid-cols-2 gap-1.5 text-[11px]">
+            <div className="rounded-md border border-border bg-card/70 px-2 py-1">
+              <div className="font-semibold uppercase tracking-wide text-muted-foreground">
+                You bet
+              </div>
+              <div className="font-mono font-bold tabular-nums">
+                {p.betMatchup.youBetLabel}
+              </div>
+            </div>
+            <div className="rounded-md border border-success/30 bg-success/10 px-2 py-1">
+              <div className="font-semibold uppercase tracking-wide text-success">
+                To win
+              </div>
+              <div className="font-mono font-bold tabular-nums text-success">
+                {p.betMatchup.toWinLabel}
+              </div>
+            </div>
+          </div>
+        ) : p.betMatchup?.resultLabel ? (
           <span className="truncate text-xs font-semibold text-success">
             {p.betMatchup.resultLabel}
           </span>

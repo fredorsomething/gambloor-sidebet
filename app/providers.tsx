@@ -3,12 +3,14 @@
 import { PrivyProvider } from "@privy-io/react-auth";
 import { WagmiProvider } from "@privy-io/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { polygon } from "wagmi/chains";
 
 import { wagmiConfig } from "@/lib/wagmi";
 import { pickActiveWalletForWagmi } from "@/lib/privyWallets";
 import { AppReadyGate } from "@/components/AppReadyGate";
+import { ReferralAttribution } from "@/components/ReferralAttribution";
+import { ReferralCapture } from "@/components/ReferralCapture";
 import { ToastProvider } from "@/components/ui/Toast";
 import { EnsureLinkedActiveWallet } from "@/components/wallet/EnsureLinkedActiveWallet";
 import { FundWalletProvider } from "@/components/wallet/FundWalletModal";
@@ -81,6 +83,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <EnsureLinkedActiveWallet />
           <FundWalletProvider>
             <ToastProvider>
+              <Suspense fallback={null}>
+                <ReferralCapture />
+              </Suspense>
+              <ReferralAttribution />
               <AppReadyGate>{children}</AppReadyGate>
             </ToastProvider>
           </FundWalletProvider>

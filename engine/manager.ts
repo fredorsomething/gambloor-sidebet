@@ -8,6 +8,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { MarketBook } from "./core/orderbook";
 import { computeEffects } from "./core/effects";
+import { creditReferralForClobFill } from "../lib/referrals";
 import { Ledger, type StatUpdate } from "./ledger";
 import { RedisStore } from "./redisStore";
 import {
@@ -171,7 +172,7 @@ export class ExchangeEngine {
 
       // Commit the ledger first; only then mutate the in-memory + Redis book.
       const lastFill = plan.fills[plan.fills.length - 1];
-      await this.ledger.applyMatch({
+      const fillIds = await this.ledger.applyMatch({
         marketId: input.marketId,
         taker: maker,
         feeBps: st.feeBps,
@@ -179,6 +180,12 @@ export class ExchangeEngine {
         fills: plan.fills,
         stats: [],
       });
+
+      for (const fillId of fillIds) {
+        void creditReferralForClobFill(fillId).catch((err) => {
+          console.error("referral clob credit failed", fillId, err);
+        });
+      }
 
       // Mutate book.
       const removed = plan.fills.filter((f) => f.makerFullyConsumed).map((f) => f.makerOrderId);

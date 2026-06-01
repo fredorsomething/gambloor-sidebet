@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, ChevronDown, HelpCircle, Mail, Plus, ShieldCheck } from "lucide-react";
+import { Box, ChevronDown, Gift, HelpCircle, Mail, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -39,6 +39,12 @@ const ACTIONS = [
     label: "How it works",
     description: "Rules & settlement",
     icon: HelpCircle,
+  },
+  {
+    href: "/referrals",
+    label: "Referrals",
+    description: "Earn 35% of referral fees",
+    icon: Gift,
   },
 ];
 

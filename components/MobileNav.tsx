@@ -2,6 +2,7 @@
 
 import {
   Box,
+  Gift,
   HelpCircle,
   LayoutGrid,
   Mail,
@@ -34,6 +35,7 @@ const ACTIONS = [
   { href: "/me", label: "My positions", description: "Bets you're in", icon: Box },
   { href: "/messages", label: "Messages", description: "Your direct messages", icon: Mail },
   { href: "/how-it-works", label: "How it works", description: "Rules & settlement", icon: HelpCircle },
+  { href: "/referrals", label: "Referrals", description: "Earn 35% of referral fees", icon: Gift },
 ];
 
 /** Hamburger menu + slide-out drawer for small screens. Hidden on lg+. */

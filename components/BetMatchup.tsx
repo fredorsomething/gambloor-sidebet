@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useAccount } from "wagmi";
 
 import { Identity } from "@/components/profile/Identity";
+import { OpenBetTakePanel } from "@/components/OpenBetTakePanel";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
+import { acceptorTakeEconomics } from "@/lib/betEconomics";
 import {
   betAcceptor,
   betDetailPollInterval,
@@ -201,6 +203,11 @@ export function BetMatchup({
   const settled = status === "Settled" || status === "Refunded";
   const isProposerView =
     !!connected && connected.toLowerCase() === bet.proposer.toLowerCase();
+  const takeEconomics = acceptorTakeEconomics(
+    proposerStake,
+    acceptorStake,
+    bet.feeBps ?? 0,
+  );
 
   return (
     <section className="card overflow-hidden">
@@ -255,6 +262,18 @@ export function BetMatchup({
           />
         )}
       </div>
+
+      {open && (
+        <div className="border-t border-border bg-muted/10 px-5 py-4">
+          <OpenBetTakePanel
+            youBetWei={takeEconomics.youBetWei}
+            toWinWei={takeEconomics.toWinWei}
+            decimals={bet.decimals}
+            symbol={symbol}
+            outcomeLabel={acceptorPick}
+          />
+        </div>
+      )}
 
       {endDateSecs > 0 && !settled && (
         <div className="border-t border-border bg-muted/10 px-5 py-4 text-center">
