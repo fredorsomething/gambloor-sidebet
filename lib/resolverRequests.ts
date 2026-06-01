@@ -1,23 +1,57 @@
 import { getAddress, isAddress } from "viem";
 
 import { isAdminAddress } from "@/lib/admin";
+import { applyBetOnchainSync } from "@/lib/betSync";
 import { prisma } from "@/lib/db";
 import { marketWithOutcomesSelect } from "@/lib/marketPrisma";
+import { readBetV2 } from "@/lib/onchain";
 import { displayResolver, hasCustomSettler } from "@/lib/settlerUtils";
 
 export type ResolverSubjectType = "bet" | "market";
+
+const ZERO = "0x0000000000000000000000000000000000000000";
+
+export function sameWallet(a: string, b: string): boolean {
+  try {
+    return getAddress(a).toLowerCase() === getAddress(b).toLowerCase();
+  } catch {
+    return a.toLowerCase() === b.toLowerCase();
+  }
+}
 
 export async function loadResolverSubject(
   subjectType: ResolverSubjectType,
   subjectId: number,
 ) {
   if (subjectType === "bet") {
-    return prisma.bet.findUnique({ where: { id: subjectId } });
+    return loadBetSubjectForResolver(subjectId);
   }
   return prisma.market.findUnique({
     where: { id: subjectId },
     select: marketWithOutcomesSelect,
   });
+}
+
+/** Bet row for resolver flows, with acceptor/status synced from chain when possible. */
+async function loadBetSubjectForResolver(subjectId: number) {
+  let bet = await prisma.bet.findUnique({ where: { id: subjectId } });
+  if (!bet) return null;
+
+  try {
+    const onchain = await readBetV2(
+      bet.chainId,
+      getAddress(bet.escrowAddress) as `0x${string}`,
+      BigInt(bet.onchainId),
+    );
+    if (onchain && !bet.escrowRevisionNeeded) {
+      await applyBetOnchainSync(bet, onchain, { notify: false });
+      bet = (await prisma.bet.findUnique({ where: { id: subjectId } })) ?? bet;
+    }
+  } catch (err) {
+    console.warn("resolver subject bet sync failed", subjectId, err);
+  }
+
+  return bet;
 }
 
 /** Who must approve a resolver change (the other party on the subject). */
@@ -26,23 +60,39 @@ export function resolverCounterparty(
   subject: { proposer?: string; acceptor?: string | null; creator?: string; settler: string },
   requester: string,
 ): string | null {
-  const req = requester.toLowerCase();
-  if (subjectType === "bet") {
-    if (subject.proposer?.toLowerCase() === req) {
-      return subject.acceptor?.toLowerCase() ?? null;
-    }
-    if (subject.acceptor?.toLowerCase() === req) {
-      return subject.proposer?.toLowerCase() ?? null;
-    }
-    return null;
+  const parties =
+    subjectType === "bet"
+      ? [subject.proposer, subject.acceptor]
+      : [subject.creator, subject.settler];
+
+  const normalized = parties.filter(
+    (p): p is string => !!p && p.toLowerCase() !== ZERO,
+  );
+  if (!normalized.some((p) => sameWallet(p, requester))) return null;
+
+  const other = normalized.find((p) => !sameWallet(p, requester));
+  if (!other) return null;
+  try {
+    return getAddress(other).toLowerCase();
+  } catch {
+    return other.toLowerCase();
   }
-  if (subject.creator?.toLowerCase() === req) {
-    return subject.settler.toLowerCase();
-  }
-  if (subject.settler.toLowerCase() === req) {
-    return subject.creator?.toLowerCase() ?? null;
-  }
-  return null;
+}
+
+/** Counterparty approves/declines — must be a participant, not the requester. */
+export function canRespondToResolverRequest(
+  subjectType: ResolverSubjectType,
+  subject: {
+    proposer?: string;
+    acceptor?: string | null;
+    creator?: string;
+    settler: string;
+  },
+  requester: string,
+  responder: string,
+): boolean {
+  if (sameWallet(responder, requester)) return false;
+  return isResolverParticipant(subjectType, subject, responder);
 }
 
 export function isResolverParticipant(
@@ -55,16 +105,15 @@ export function isResolverParticipant(
   },
   address: string,
 ): boolean {
-  const a = address.toLowerCase();
   if (subjectType === "bet") {
     return (
-      subject.proposer?.toLowerCase() === a ||
-      subject.acceptor?.toLowerCase() === a
+      (!!subject.proposer && sameWallet(subject.proposer, address)) ||
+      (!!subject.acceptor && sameWallet(subject.acceptor, address))
     );
   }
   return (
-    subject.creator?.toLowerCase() === a ||
-    subject.settler.toLowerCase() === a
+    (!!subject.creator && sameWallet(subject.creator, address)) ||
+    sameWallet(subject.settler, address)
   );
 }
 

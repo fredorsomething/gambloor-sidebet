@@ -4,14 +4,14 @@ import { z } from "zod";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { marketWithOutcomesSelect } from "@/lib/marketPrisma";
-import { resolverRequestSelect } from "@/lib/resolverRequestPrisma";
 import { notify } from "@/lib/notifications";
 import {
   applyApprovedResolver,
-  resolverCounterparty,
+  canRespondToResolverRequest,
+  loadResolverSubject,
   validateResolverRequest,
 } from "@/lib/resolverRequests";
+import { resolverRequestSelect } from "@/lib/resolverRequestPrisma";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { shortAddr } from "@/lib/utils";
 
@@ -55,20 +55,20 @@ export async function POST(
     return jsonErr("request has no suggested resolver", 409);
   }
 
-  const subject = await (row.subjectType === "bet"
-    ? prisma.bet.findUnique({ where: { id: row.subjectId } })
-    : prisma.market.findUnique({
-        where: { id: row.subjectId },
-        select: marketWithOutcomesSelect,
-      }));
+  const subject = await loadResolverSubject(
+    row.subjectType as "bet" | "market",
+    row.subjectId,
+  );
   if (!subject) return jsonErr("subject not found", 404);
 
-  const counterparty = resolverCounterparty(
-    row.subjectType as "bet" | "market",
-    subject,
-    row.requestedBy,
-  );
-  if (!counterparty || counterparty !== caller.toLowerCase()) {
+  if (
+    !canRespondToResolverRequest(
+      row.subjectType as "bet" | "market",
+      subject,
+      row.requestedBy,
+      caller,
+    )
+  ) {
     return jsonErr("only the counterparty can respond to this request", 403);
   }
 
