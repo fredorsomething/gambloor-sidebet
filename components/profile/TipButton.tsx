@@ -8,7 +8,6 @@ import {
   useAccount,
   useBalance,
   useChainId,
-  useSwitchChain,
   useWaitForTransactionReceipt,
 } from "wagmi";
 import { polygon } from "wagmi/chains";
@@ -21,6 +20,7 @@ import { getTokens } from "@/lib/chains";
 import { formatCryptoError } from "@/lib/cryptoErrors";
 import { jsonFetch } from "@/lib/fetcher";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
+import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { formatToken, shortAddr } from "@/lib/utils";
 
@@ -58,7 +58,6 @@ function TipModal({
   const { authenticated, login, getAccessToken } = usePrivy();
   const { address: from } = useAccount();
   const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
   const { push } = useToast();
 
   // All platform stables (including USDC.e) + native POL for gas tips.
@@ -89,6 +88,7 @@ function TipModal({
   const decimals = asset?.decimals ?? 6;
 
   const { sendTx } = useTxSender();
+  const ensurePolygon = useEnsurePolygon();
   const [txHash, setTxHash] = useState<Hex>();
   const [sending, setSending] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -180,6 +180,7 @@ function TipModal({
     if (!asset || !from) return;
     setSending(true);
     try {
+      await ensurePolygon();
       let hash: Hex;
       if (isPol) {
         hash = await sendTx({ to: to as Address, value: amountWei });
@@ -288,7 +289,7 @@ function TipModal({
         {!onPolygon ? (
           <Button
             className="mt-5 w-full"
-            onClick={() => switchChain({ chainId: polygon.id })}
+            onClick={() => void ensurePolygon()}
           >
             Switch to Polygon
           </Button>
