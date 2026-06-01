@@ -54,7 +54,12 @@ export async function PATCH(
   const { admin: _a, ...fields } = parsed.data;
   if (Object.keys(fields).length === 0) return jsonErr("nothing to update", 400);
 
-  const updated = await prisma.bet.update({ where: { id }, data: fields });
+  const data = {
+    ...fields,
+    ...(typeof fields.terms === "string" ? { terms: fields.terms.trim() } : {}),
+  };
+
+  const updated = await prisma.bet.update({ where: { id }, data });
   return jsonOk({ bet: updated });
 }
 

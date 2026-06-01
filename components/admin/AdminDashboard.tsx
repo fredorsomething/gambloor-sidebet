@@ -395,9 +395,28 @@ export function AdminDashboard({ address }: { address: string }) {
           onReview={(id, action) => reviewResolution.mutate({ id, action })}
           reviewing={reviewResolution.isPending}
           onSave={async (id, data) => {
-            await adminPatch(`/api/admin/bets/${id}`, data);
-            push({ title: "Sidebet saved", variant: "success" });
-            void qc.invalidateQueries({ queryKey: ["admin", "bets", address] });
+            try {
+              await adminPatch(`/api/admin/bets/${id}`, data);
+              push({ title: "Sidebet saved", variant: "success" });
+              void qc.invalidateQueries({ queryKey: ["admin", "bets", address] });
+              void qc.invalidateQueries({ queryKey: ["bet", id] });
+              void qc.invalidateQueries({ queryKey: ["feed"] });
+            } catch (e) {
+              push({ title: (e as Error).message, variant: "danger" });
+              throw e;
+            }
+          }}
+          onSaveRules={async (id, terms) => {
+            try {
+              await adminPatch(`/api/admin/bets/${id}`, { terms });
+              push({ title: "Rules saved", variant: "success" });
+              void qc.invalidateQueries({ queryKey: ["admin", "bets", address] });
+              void qc.invalidateQueries({ queryKey: ["bet", id] });
+              void qc.invalidateQueries({ queryKey: ["feed"] });
+            } catch (e) {
+              push({ title: (e as Error).message, variant: "danger" });
+              throw e;
+            }
           }}
           onHide={async (id) => {
             if (!confirm("Hide this sidebet from the homepage feed?")) return;
@@ -876,6 +895,7 @@ function BetsPanel({
   onReview,
   reviewing,
   onSave,
+  onSaveRules,
   onHide,
   onRestore,
 }: {
@@ -884,13 +904,16 @@ function BetsPanel({
   onReview: (proposalId: number, action: "approve" | "reject") => void;
   reviewing: boolean;
   onSave: (id: number, data: Record<string, unknown>) => Promise<void>;
+  onSaveRules: (id: number, terms: string) => Promise<void>;
   onHide: (id: number) => Promise<void>;
   onRestore: (id: number) => Promise<void>;
 }) {
   const [editId, setEditId] = useState<number | null>(null);
+  const [rulesEditId, setRulesEditId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [terms, setTerms] = useState("");
+  const [rules, setRules] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const pendingCount = bets.filter(
     (b) => b.resolution.consensus === "disputed",
@@ -1029,43 +1052,99 @@ function BetsPanel({
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Description"
               />
-              <textarea
-                className="input w-full text-sm"
-                rows={4}
-                value={terms}
-                onChange={(e) => setTerms(e.target.value)}
-                placeholder="Rules (resolution terms)"
-              />
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  onClick={() =>
-                    void onSave(b.id, { title, description, terms }).then(() =>
-                      setEditId(null),
-                    )
-                  }
+                  disabled={saving}
+                  onClick={() => {
+                    setSaving(true);
+                    void onSave(b.id, { title, description })
+                      .then(() => setEditId(null))
+                      .finally(() => setSaving(false));
+                  }}
                 >
-                  Save
+                  Save details
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setEditId(null)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={saving}
+                  onClick={() => setEditId(null)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : rulesEditId === b.id ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Rules</p>
+              <textarea
+                className="input w-full text-sm font-mono"
+                rows={8}
+                value={rules}
+                onChange={(e) => setRules(e.target.value)}
+                placeholder="Resolution rules for this sidebet"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Updates the displayed rules only. On-chain terms hash is unchanged.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={saving || !rules.trim()}
+                  onClick={() => {
+                    setSaving(true);
+                    void onSaveRules(b.id, rules.trim())
+                      .then(() => setRulesEditId(null))
+                      .finally(() => setSaving(false));
+                  }}
+                >
+                  Save rules
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={saving}
+                  onClick={() => setRulesEditId(null)}
+                >
                   Cancel
                 </Button>
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setEditId(b.id);
-                  setTitle(b.title);
-                  setDescription(b.description);
-                  setTerms(b.terms);
-                }}
-              >
-                Edit details
-              </Button>
+            <div className="space-y-3">
+              {b.terms && (
+                <div className="rounded-lg border border-border bg-muted/20 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">Rules</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-foreground/90 line-clamp-4">
+                    {b.terms}
+                  </p>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditId(b.id);
+                    setRulesEditId(null);
+                    setTitle(b.title);
+                    setDescription(b.description);
+                  }}
+                >
+                  Edit details
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRulesEditId(b.id);
+                    setEditId(null);
+                    setRules(b.terms ?? "");
+                  }}
+                >
+                  Edit rules
+                </Button>
               {b.hiddenFromFeed ? (
                 <Button
                   size="sm"
@@ -1085,6 +1164,7 @@ function BetsPanel({
                   <Trash2 className="h-3.5 w-3.5" /> Hide from feed
                 </Button>
               )}
+              </div>
             </div>
           )}
         </div>
