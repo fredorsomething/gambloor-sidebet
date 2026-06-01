@@ -5,10 +5,35 @@ import { Feed } from "@/components/Feed";
 import { DiscordWidget } from "@/components/DiscordWidget";
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
+import {
+  formatPlatformAmount,
+  getPlatformStats,
+} from "@/lib/platformStats";
 
-export default function HomePage() {
+export const revalidate = 60;
+
+export default async function HomePage() {
+  const { totalVolumeUsd, userCount } = await getPlatformStats();
+
   return (
     <div className="space-y-8">
+      <section className="flex flex-wrap items-baseline gap-x-10 gap-y-3">
+        <p className="text-base text-muted-foreground">
+          Total volume:{" "}
+          <span className="inline-flex items-center gap-1.5 text-3xl font-bold tabular-nums text-foreground">
+            {formatPlatformAmount(totalVolumeUsd)}
+            <TokenIcon symbol="USDC.e" size={28} />
+          </span>
+        </p>
+        <p className="text-base text-muted-foreground">
+          Trusted by{" "}
+          <span className="text-3xl font-bold tabular-nums text-foreground">
+            {userCount.toLocaleString()}
+          </span>{" "}
+         users to handle their sidebets!
+        </p>
+      </section>
+
       <section className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-[hsl(222_89%_45%)] p-5 text-primary-foreground md:p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="max-w-xl">
@@ -50,7 +75,7 @@ export default function HomePage() {
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold tracking-tight sm:text-base">
-            Need tokens to bet?
+            Need gas (POL) or USDC.e to bet?
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
             Swap POL, USDC, USDC.e &amp; pUSD directly on sidebet.lol, straight to your

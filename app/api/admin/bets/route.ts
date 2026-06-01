@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
         id: b.id,
         title: b.title,
         description: b.description,
+        terms: b.terms,
         status: b.status,
         proposer: b.proposer,
         acceptor: b.acceptor,

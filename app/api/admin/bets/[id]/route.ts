@@ -9,13 +9,13 @@ import { jsonErr, jsonOk } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
 
-// A sidebet's financial state (status, stakes, winner) and `terms` are bound to
-// the on-chain escrow (terms is hashed into `termsHash`). Admins may only edit
-// the off-chain display fields; everything else stays chain-authoritative.
+// Financial state (status, stakes, winner) and `termsHash` stay chain-authoritative.
+// Admins may edit off-chain display copy (title, description, rules/terms, image).
 const PatchSchema = z.object({
   admin: z.string().refine(isAddress, "bad admin"),
   title: z.string().min(3).max(200).optional(),
   description: z.string().min(1).max(2000).optional(),
+  terms: z.string().min(1).max(10_000).optional(),
   imageUrl: z
     .string()
     .url()

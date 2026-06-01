@@ -52,6 +52,7 @@ type AdminBetRow = {
   id: number;
   title: string;
   description: string;
+  terms: string;
   status: string;
   proposer: string;
   acceptor: string | null;
@@ -889,6 +890,7 @@ function BetsPanel({
   const [editId, setEditId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [terms, setTerms] = useState("");
 
   const pendingCount = bets.filter(
     (b) => b.resolution.consensus === "disputed",
@@ -1018,18 +1020,27 @@ function BetsPanel({
                 className="input w-full text-sm"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title"
               />
               <textarea
                 className="input w-full text-sm"
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                placeholder="Description"
+              />
+              <textarea
+                className="input w-full text-sm"
+                rows={4}
+                value={terms}
+                onChange={(e) => setTerms(e.target.value)}
+                placeholder="Rules (resolution terms)"
               />
               <div className="flex gap-2">
                 <Button
                   size="sm"
                   onClick={() =>
-                    void onSave(b.id, { title, description }).then(() =>
+                    void onSave(b.id, { title, description, terms }).then(() =>
                       setEditId(null),
                     )
                   }
@@ -1050,6 +1061,7 @@ function BetsPanel({
                   setEditId(b.id);
                   setTitle(b.title);
                   setDescription(b.description);
+                  setTerms(b.terms);
                 }}
               >
                 Edit details
