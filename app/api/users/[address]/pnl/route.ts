@@ -1,24 +1,17 @@
 import { NextRequest } from "next/server";
-import { formatUnits, getAddress, isAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 
 import { prisma } from "@/lib/db";
 import { syncUserParticipantBets } from "@/lib/betSync";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { SCALE } from "@/lib/exchange/units";
 import { replay, userLegs } from "@/lib/exchange/userStats";
+import { sidebetPnlDelta } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
 const eq = (a?: string | null, b?: string | null) =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
-
-function dollars(raw: string, decimals: number): number {
-  try {
-    return Number(formatUnits(BigInt(raw), decimals));
-  } catch {
-    return 0;
-  }
-}
 
 type PnlEvent = { t: number; delta: number };
 
@@ -54,6 +47,8 @@ export async function GET(
       proposer: true,
       acceptor: true,
       amount: true,
+      proposerStake: true,
+      acceptorStake: true,
       decimals: true,
       feeBps: true,
       winner: true,
@@ -62,13 +57,10 @@ export async function GET(
   });
   for (const b of bets) {
     if (!eq(b.proposer, address) && !eq(b.acceptor, address)) continue;
-    const stake = dollars(b.amount, b.decimals);
-    let delta = 0;
-    if (b.winner) {
-      const fee = stake * 2 * (b.feeBps / 10000);
-      delta = eq(b.winner, address) ? stake - fee : -stake;
+    const delta = sidebetPnlDelta(b, address);
+    if (delta !== null && delta !== 0) {
+      events.push({ t: b.updatedAt.getTime(), delta });
     }
-    if (delta !== 0) events.push({ t: b.updatedAt.getTime(), delta });
   }
 
   // --- CLOB trades: realized PnL on sells ----------------------------------

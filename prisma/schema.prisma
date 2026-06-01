@@ -305,6 +305,10 @@ model Bet {
   // Hidden from homepage feed and public search; direct /bets/[id] links still work.
   hiddenFromFeed Boolean @default(false)
 
+  // Global-chat feed dedupe: set atomically before posting matched/settled announcements.
+  matchedFeedAt DateTime?
+  settledFeedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

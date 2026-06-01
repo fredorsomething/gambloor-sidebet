@@ -65,6 +65,8 @@ export async function GET(
     proposer: b.proposer,
     acceptor: b.acceptor,
     amount: b.amount,
+    proposerStake: b.proposerStake,
+    acceptorStake: b.acceptorStake,
     decimals: b.decimals,
     feeBps: b.feeBps,
     status: b.status,

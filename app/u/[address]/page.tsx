@@ -26,7 +26,7 @@ import { jsonFetch } from "@/lib/fetcher";
 import { isAdminUser } from "@/lib/admin";
 import { cn, formatToken, shortAddr } from "@/lib/utils";
 import type { BadgeKind } from "@/lib/badges";
-import type { UserStats } from "@/lib/stats";
+import { sidebetPnlDelta, type UserStats } from "@/lib/stats";
 import type { BetStatusName } from "@/lib/abi";
 
 type ProfileBet = {
@@ -34,6 +34,8 @@ type ProfileBet = {
   title: string;
   imageUrl: string | null;
   amount: string;
+  proposerStake?: string | null;
+  acceptorStake?: string | null;
   decimals: number;
   tokenSymbol: string | null;
   feeBps: number;
@@ -470,11 +472,7 @@ function BetColumn({
       ) : (
         <div className="space-y-2">
           {bets.map((b) => {
-            const stake = Number(
-              formatToken(BigInt(b.amount), b.decimals, 2),
-            );
-            const fee = stake * 2 * (b.feeBps / 10000);
-            const delta = positive ? stake - fee : -stake;
+            const delta = sidebetPnlDelta(b, address) ?? 0;
             return (
               <Link
                 key={b.id}

@@ -6,20 +6,12 @@ import { Identity } from "@/components/profile/Identity";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
 import { resolveBetStatus } from "@/lib/betStatus";
+import { binaryOutcomeIndexTone, outcomeToneClass } from "@/lib/outcomeTone";
 import { formatToken, fromNowUnix } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
 
 function outcomePillClass(outcomes: string[], i: number): string {
-  const isYesNo =
-    outcomes.length === 2 &&
-    outcomes[0]?.trim().toLowerCase() === "yes" &&
-    outcomes[1]?.trim().toLowerCase() === "no";
-  if (isYesNo) {
-    return i === 0
-      ? "bg-success/15 text-success"
-      : "bg-danger/15 text-danger";
-  }
-  return "bg-muted text-muted-foreground";
+  return outcomeToneClass(binaryOutcomeIndexTone(outcomes, i));
 }
 
 function statusLabel(bet: BetRow): React.ReactNode {

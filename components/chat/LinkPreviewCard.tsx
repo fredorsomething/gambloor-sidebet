@@ -8,6 +8,7 @@ import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { jsonFetch } from "@/lib/fetcher";
 import { normalizePreviewUrl, type LinkPreviewData } from "@/lib/linkPreview";
+import { outcomeLabelTone, outcomeToneClass } from "@/lib/outcomeTone";
 import { cn } from "@/lib/utils";
 
 function pnlClass(n: number) {
@@ -19,6 +20,19 @@ function pnlLabel(n: number) {
   return `${sign}$${Math.abs(n).toLocaleString(undefined, {
     maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 2,
   })}`;
+}
+
+function OutcomePill({ label }: { label: string }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[11px] font-bold",
+        outcomeToneClass(outcomeLabelTone(label)),
+      )}
+    >
+      {label}
+    </span>
+  );
 }
 
 export function LinkPreviewCard({ url }: { url: string }) {
@@ -141,6 +155,16 @@ function PreviewMeta({ preview: p }: { preview: LinkPreviewData }) {
         {p.betMatchup?.resultLabel ? (
           <span className="truncate text-xs font-semibold text-success">
             {p.betMatchup.resultLabel}
+          </span>
+        ) : p.betMatchup ? (
+          <span className="flex flex-wrap items-center gap-1.5 text-xs">
+            {p.betMatchup.proposer.outcomeLabel && (
+              <OutcomePill label={p.betMatchup.proposer.outcomeLabel} />
+            )}
+            <span className="text-muted-foreground">vs</span>
+            {p.betMatchup.acceptor.outcomeLabel && (
+              <OutcomePill label={p.betMatchup.acceptor.outcomeLabel} />
+            )}
           </span>
         ) : p.subtitle ? (
           <span className="truncate text-xs text-muted-foreground">{p.subtitle}</span>

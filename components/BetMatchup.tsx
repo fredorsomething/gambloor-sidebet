@@ -14,19 +14,16 @@ import {
   resolveBetStatus,
 } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
+import {
+  binaryOutcomeIndexTone,
+  outcomeToneClass,
+  type OutcomeTone,
+} from "@/lib/outcomeTone";
 import { cn, formatTimestamp, formatToken, fromNowUnix } from "@/lib/utils";
 import type { GetBetResponse } from "@/lib/types";
 
-function outcomeTone(
-  outcomes: string[],
-  index: number,
-): "success" | "danger" | "muted" {
-  const isYesNo =
-    outcomes.length === 2 &&
-    outcomes[0]?.trim().toLowerCase() === "yes" &&
-    outcomes[1]?.trim().toLowerCase() === "no";
-  if (!isYesNo) return "muted";
-  return index === 0 ? "success" : "danger";
+function outcomeTone(outcomes: string[], index: number): OutcomeTone {
+  return binaryOutcomeIndexTone(outcomes, index);
 }
 
 function OutcomeBadge({
@@ -36,17 +33,11 @@ function OutcomeBadge({
 }: {
   label: string;
   role: string;
-  tone: "success" | "danger" | "muted";
+  tone: OutcomeTone;
 }) {
-  const toneClass =
-    tone === "success"
-      ? "bg-success/15 text-success"
-      : tone === "danger"
-        ? "bg-danger/15 text-danger"
-        : "bg-muted text-muted-foreground";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${toneClass}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${outcomeToneClass(tone)}`}
     >
       {label}
       <span className="font-normal opacity-80">· {role}</span>
@@ -67,7 +58,7 @@ function Side({
   role: string;
   address: string;
   outcomeLabel?: string;
-  outcomeTone: "success" | "danger" | "muted";
+  outcomeTone: OutcomeTone;
   stake: bigint;
   decimals: number;
   symbol: string;
@@ -104,7 +95,7 @@ function OpenAcceptorSide({
   intendedAcceptor,
 }: {
   outcomeLabel?: string;
-  outcomeTone: "success" | "danger" | "muted";
+  outcomeTone: OutcomeTone;
   stake: bigint;
   decimals: number;
   symbol: string;

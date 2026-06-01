@@ -464,7 +464,7 @@ export function CreateBetForm() {
         </Field>
 
         <Field
-          label="Terms"
+          label="Rules"
           hint="Resolution criteria — please be as specific as possible about what makes each outcome win."
         >
           <textarea

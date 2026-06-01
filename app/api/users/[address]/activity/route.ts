@@ -6,6 +6,7 @@ import { syncUserParticipantBets } from "@/lib/betSync";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { formatMicro } from "@/lib/exchange/units";
 import { userLegs } from "@/lib/exchange/userStats";
+import { participantStake, sidebetPnlDelta } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -160,16 +161,7 @@ export async function GET(
   // ---- Sidebet lifecycle ----
   for (const b of bets) {
     const isProposer = eq(b.proposer, address);
-    const ownStakeRaw =
-      isProposer
-        ? b.proposerStake !== "0"
-          ? b.proposerStake
-          : b.amount
-        : b.acceptorStake !== "0"
-          ? b.acceptorStake
-          : b.amount;
-    const ownStake = num(ownStakeRaw, b.decimals);
-    const fee = ownStake * 2 * (b.feeBps / 10000);
+    const ownStake = participantStake(b, address);
     const link = `/bets/${b.id}`;
 
     // Entry event: created (proposer) or joined (acceptor).
@@ -201,11 +193,11 @@ export async function GET(
         } else if (eq(b.winner, address)) {
           kind = "bet_won";
           detail = "Won";
-          delta = ownStake - fee;
+          delta = sidebetPnlDelta(b, address);
         } else {
           kind = "bet_lost";
           detail = "Lost";
-          delta = -ownStake;
+          delta = sidebetPnlDelta(b, address);
         }
       }
       items.push({

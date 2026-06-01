@@ -35,6 +35,8 @@ export async function GET(req: NextRequest) {
       proposer: true,
       acceptor: true,
       amount: true,
+      proposerStake: true,
+      acceptorStake: true,
       decimals: true,
       feeBps: true,
       status: true,

@@ -43,6 +43,8 @@ export async function listChatMessages(limit = 60): Promise<ChatMessageRow[]> {
         proposer: true,
         acceptor: true,
         amount: true,
+        proposerStake: true,
+        acceptorStake: true,
         decimals: true,
         feeBps: true,
         status: true,

@@ -46,6 +46,12 @@ export async function announceMarketCreatedInChat(args: {
 export async function announceBetMatchedInChat(
   bet: Pick<Bet, "id" | "title" | "proposer">,
 ): Promise<void> {
+  const claimed = await prisma.bet.updateMany({
+    where: { id: bet.id, matchedFeedAt: null },
+    data: { matchedFeedAt: new Date() },
+  });
+  if (claimed.count === 0) return;
+
   await postFeedChatMessage(
     bet.proposer,
     buildFeedChatMessage(
@@ -60,6 +66,12 @@ export async function announceBetMatchedInChat(
 export async function announceBetSettledInChat(
   bet: Pick<Bet, "id" | "title" | "proposer" | "outcomes" | "winningOutcome">,
 ): Promise<void> {
+  const claimed = await prisma.bet.updateMany({
+    where: { id: bet.id, settledFeedAt: null },
+    data: { settledFeedAt: new Date() },
+  });
+  if (claimed.count === 0) return;
+
   const outcomes = Array.isArray(bet.outcomes)
     ? (bet.outcomes as unknown as string[])
     : [];

@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 
 import type { LinkPreviewData } from "@/lib/linkPreview";
+import { outcomeLabelTone } from "@/lib/outcomeTone";
 import { absoluteUrl } from "@/lib/siteUrl";
 
 export const OG_SIZE = { width: 1200, height: 630 } as const;
@@ -122,6 +123,17 @@ function pnlText(p: LinkPreviewData): string | null {
 
 function pnlColor(pnl: number): string {
   return pnl >= 0 ? C.success : C.danger;
+}
+
+function outcomeBadgeColors(label: string): { text: string; bg: string } {
+  const tone = outcomeLabelTone(label);
+  if (tone === "success") {
+    return { text: C.success, bg: "rgba(45, 165, 98, 0.15)" };
+  }
+  if (tone === "danger") {
+    return { text: C.danger, bg: "rgba(248, 81, 73, 0.15)" };
+  }
+  return { text: C.muted, bg: "rgba(139, 148, 158, 0.12)" };
 }
 
 function truncate(text: string, max: number): string {
@@ -493,22 +505,24 @@ function OgPartySide({
           align={align}
         />
       )}
-      {outcomeLabel && (
-        <span
-          style={{
-            fontSize: isWinner ? 16 : 17,
-            fontWeight: 600,
-            color: isWinner ? C.success : C.muted,
-            padding: "3px 10px",
-            borderRadius: 999,
-            backgroundColor: isWinner
-              ? "rgba(45, 165, 98, 0.12)"
-              : "rgba(139, 148, 158, 0.12)",
-          }}
-        >
-          {truncate(outcomeLabel, 24)}
-        </span>
-      )}
+      {outcomeLabel && (() => {
+        const colors = outcomeBadgeColors(outcomeLabel);
+        return (
+          <span
+            style={{
+              fontSize: isWinner ? 18 : 19,
+              fontWeight: 700,
+              color: colors.text,
+              padding: "4px 12px",
+              borderRadius: 999,
+              backgroundColor: colors.bg,
+              border: `1.5px solid ${colors.text}55`,
+            }}
+          >
+            {truncate(outcomeLabel, 24)}
+          </span>
+        );
+      })()}
     </div>
   );
 }

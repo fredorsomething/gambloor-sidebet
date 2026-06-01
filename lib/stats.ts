@@ -9,6 +9,8 @@ export type StatBet = {
   proposer: string;
   acceptor: string | null;
   amount: string;
+  proposerStake?: string | null;
+  acceptorStake?: string | null;
   decimals: number;
   feeBps: number;
   status: string; // Open | Matched | Settled | Cancelled | Refunded
@@ -38,6 +40,63 @@ function dollars(amount: string, decimals: number): number {
 const eq = (a?: string | null, b?: string | null) =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
+function stakeRaw(raw: string | null | undefined, fallback: string): string {
+  return raw && raw !== "0" ? raw : fallback;
+}
+
+/** Dollar stakes for each side of a bet (handles asymmetric stakes). */
+export function resolveStakes(
+  bet: Pick<StatBet, "amount" | "proposerStake" | "acceptorStake" | "decimals">,
+): { proposer: number; acceptor: number } {
+  return {
+    proposer: dollars(stakeRaw(bet.proposerStake, bet.amount), bet.decimals),
+    acceptor: dollars(stakeRaw(bet.acceptorStake, bet.amount), bet.decimals),
+  };
+}
+
+/** A participant's own stake in dollars. */
+export function participantStake(
+  bet: Pick<
+    StatBet,
+    "proposer" | "acceptor" | "amount" | "proposerStake" | "acceptorStake" | "decimals"
+  >,
+  addr: string,
+): number {
+  const { proposer, acceptor } = resolveStakes(bet);
+  return eq(bet.proposer, addr) ? proposer : acceptor;
+}
+
+/**
+ * Realized PnL from a settled sidebet for one participant.
+ * Winners earn only the counterparty stake (pool payout minus own stake and fee).
+ */
+export function sidebetPnlDelta(
+  bet: Pick<
+    StatBet,
+    | "proposer"
+    | "acceptor"
+    | "amount"
+    | "proposerStake"
+    | "acceptorStake"
+    | "decimals"
+    | "feeBps"
+    | "winner"
+  >,
+  addr: string,
+): number | null {
+  const isProposer = eq(bet.proposer, addr);
+  const isAcceptor = eq(bet.acceptor, addr);
+  if (!isProposer && !isAcceptor) return null;
+  if (!bet.winner) return 0;
+
+  const { proposer, acceptor } = resolveStakes(bet);
+  const own = isProposer ? proposer : acceptor;
+  const counterparty = isProposer ? acceptor : proposer;
+  const fee = (proposer + acceptor) * (bet.feeBps / 10000);
+
+  return eq(bet.winner, addr) ? counterparty - fee : -own;
+}
+
 export function emptyStats(): UserStats {
   return {
     wins: 0,
@@ -58,7 +117,7 @@ function applyBet(stats: UserStats, bet: StatBet, addr: string) {
   const isAcceptor = eq(bet.acceptor, addr);
   if (!isProposer && !isAcceptor) return;
 
-  const stake = dollars(bet.amount, bet.decimals);
+  const stake = participantStake(bet, addr);
 
   if (bet.status === "Open") {
     if (isProposer) stats.open += 1;
@@ -79,13 +138,14 @@ function applyBet(stats: UserStats, bet: StatBet, addr: string) {
       stats.pushes += 1; // push: stake refunded, 0 pnl
       return;
     }
-    const fee = stake * 2 * (bet.feeBps / 10000);
+    const delta = sidebetPnlDelta(bet, addr);
+    if (delta === null) return;
     if (eq(bet.winner, addr)) {
       stats.wins += 1;
-      stats.pnl += stake - fee; // received pool - fee, net of own stake
+      stats.pnl += delta;
     } else {
       stats.losses += 1;
-      stats.pnl -= stake;
+      stats.pnl += delta;
     }
   }
 }

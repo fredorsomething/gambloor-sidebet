@@ -192,7 +192,7 @@ export default async function BetDetailPage({
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
         <div className="space-y-6">
           <section className="card p-6">
-            <h2 className="mb-2 font-semibold">Terms</h2>
+            <h2 className="mb-2 font-semibold">Rules</h2>
             <CollapsibleBlurb
               text={bet.terms}
               maxLines={4}

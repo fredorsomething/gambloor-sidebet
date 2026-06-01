@@ -34,7 +34,7 @@ export function CollapsibleBlurb({
     <div className={className}>
       <p
         className={cn(
-          "text-sm leading-relaxed text-muted-foreground",
+          "whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground",
           !open && likelyLong && lineClamp,
         )}
       >
