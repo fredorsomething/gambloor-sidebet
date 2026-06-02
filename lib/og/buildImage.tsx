@@ -1088,31 +1088,45 @@ function OgMarketFlexSide({
   avatarDataUrl?: string | null;
 }) {
   const isLoser = !side.isWinner;
-  const roleLabel = side.isViewer
-    ? side.isWinner
-      ? "Winner"
-      : "You"
-    : side.isWinner
-      ? "Winner"
-      : "Loser";
+  const isViewerLoser = side.isViewer && isLoser;
+  const isViewerWinner = side.isViewer && side.isWinner;
+  const roleLabel = isViewerWinner
+    ? "Winner"
+    : isViewerLoser
+      ? "Loser"
+      : side.isWinner
+        ? "Winner"
+        : "Loser";
+
+  const highlight = isViewerWinner || isViewerLoser;
 
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: side.isWinner ? 6 : 8,
+        gap: highlight ? 6 : 8,
         flex: 1,
         minWidth: 0,
         alignItems: align === "end" ? "flex-end" : "flex-start",
         textAlign: align === "end" ? "right" : "left",
         opacity: isLoser && !side.isViewer ? 0.72 : 1,
-        padding: side.isWinner ? "10px 12px" : "0",
-        borderRadius: side.isWinner ? 14 : 0,
-        backgroundColor: side.isWinner ? "rgba(45, 165, 98, 0.1)" : "transparent",
-        border: side.isWinner
+        padding: highlight ? "10px 12px" : "0",
+        borderRadius: highlight ? 14 : 0,
+        backgroundColor: isViewerWinner
+          ? "rgba(45, 165, 98, 0.1)"
+          : isViewerLoser
+            ? "rgba(248, 81, 73, 0.1)"
+            : side.isWinner
+              ? "rgba(45, 165, 98, 0.1)"
+              : "transparent",
+        border: isViewerWinner
           ? "2px solid rgba(45, 165, 98, 0.45)"
-          : "2px solid transparent",
+          : isViewerLoser
+            ? "2px solid rgba(248, 81, 73, 0.45)"
+            : side.isWinner
+              ? "2px solid rgba(45, 165, 98, 0.45)"
+              : "2px solid transparent",
       }}
     >
       <span
@@ -1121,7 +1135,7 @@ function OgMarketFlexSide({
           fontWeight: 600,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
-          color: side.isWinner ? C.success : C.muted,
+          color: isViewerWinner || side.isWinner ? C.success : isViewerLoser ? C.danger : C.muted,
         }}
       >
         {roleLabel}
@@ -1140,7 +1154,7 @@ function OgMarketFlexSide({
           address={side.address ?? null}
           size={side.isViewer ? 48 : 44}
           muted={isLoser && !side.isViewer}
-          highlight={side.isWinner && side.isViewer}
+          highlight={isViewerWinner}
         />
         <span
           style={{
@@ -1157,7 +1171,7 @@ function OgMarketFlexSide({
         <OgTokenAmount
           stakeLabel={side.resultLabel.replace(/^Won |^Lost /, "")}
           tokenSymbol={null}
-          color={side.isWinner ? C.success : C.danger}
+          color={side.resultLabel.startsWith("Won") ? C.success : C.danger}
           fontSize={20}
           iconSize={18}
           align={align}

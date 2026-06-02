@@ -49,37 +49,13 @@ export async function GET(
       : Promise.resolve(null),
   ]);
 
-  const attachment = req.nextUrl.searchParams.get("download") === "1";
-
   try {
-    const image = renderMarketFlexCard(data, { thumbDataUrl, viewerAvatar });
-    return new Response(image.body, {
-      headers: {
-        "Content-Type": "image/png",
-        "Cache-Control": "private, max-age=3600",
-        ...(attachment
-          ? {
-              "Content-Disposition": `attachment; filename="sidebet-market-${id}.png"`,
-            }
-          : {}),
-      },
-    });
+    return renderMarketFlexCard(data, { thumbDataUrl, viewerAvatar });
   } catch (err) {
     console.error("market flex-card render failed", id, err);
-    const image = renderMarketFlexCard(data, {
+    return renderMarketFlexCard(data, {
       thumbDataUrl: null,
       viewerAvatar: null,
-    });
-    return new Response(image.body, {
-      headers: {
-        "Content-Type": "image/png",
-        "Cache-Control": "private, max-age=3600",
-        ...(attachment
-          ? {
-              "Content-Disposition": `attachment; filename="sidebet-market-${id}.png"`,
-            }
-          : {}),
-      },
     });
   }
 }

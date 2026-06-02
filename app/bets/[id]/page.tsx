@@ -8,6 +8,7 @@ import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { FeeBadge } from "@/components/FeeBadge";
 import { Identity } from "@/components/profile/Identity";
 import { BetDetailLive } from "@/components/BetDetailLive";
+import { BetFlexCard } from "@/components/bets/BetFlexCard";
 import { BetMatchup } from "@/components/BetMatchup";
 import { Comments } from "@/components/Comments";
 import { LiveBetStatusBadge } from "@/components/LiveBetStatusBadge";
@@ -188,6 +189,8 @@ export default async function BetDetailPage({
       <BetDetailLive id={bet.id} initial={data} />
 
       <BetResolutionLive id={bet.id} initial={data} />
+
+      <BetFlexCard betId={bet.id} initial={data} />
 
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
         <div className="space-y-6">

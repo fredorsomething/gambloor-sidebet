@@ -85,6 +85,19 @@ function computeSettlementPnl(
     }
   }
 
+  if (primaryOutcome < 0 && legs.length > 0) {
+    const traded = [...new Set(legs.map((l) => l.outcome))];
+    if (traded.length === 1) {
+      primaryOutcome = traded[0]!;
+    } else if (netPnl < 0) {
+      primaryOutcome =
+        traded.find((o) => o !== winningOutcome) ?? traded[0]!;
+    } else {
+      primaryOutcome =
+        traded.find((o) => o === winningOutcome) ?? traded[0]!;
+    }
+  }
+
   return { netPnl, primaryOutcome };
 }
 
