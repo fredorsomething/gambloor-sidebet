@@ -12,6 +12,7 @@ import { polygon } from "wagmi/chains";
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { Comments } from "@/components/Comments";
+import { MarketFlexCard } from "@/components/markets/MarketFlexCard";
 import { MarketPortfolio } from "@/components/markets/MarketPortfolio";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
 import { Resolvers } from "@/components/Resolvers";
@@ -321,6 +322,13 @@ export function MarketDetail({ id }: { id: number }) {
     });
   }
 
+  const portfolioQ = useQuery<{ trades: { id: string }[] }>({
+    queryKey: ["market-portfolio", id, account],
+    enabled: !!account && data?.market?.status === "Resolved",
+    queryFn: () => jsonFetch(`/api/markets/${id}/portfolio?address=${account}`),
+    staleTime: 30_000,
+  });
+
   if (query.isLoading) {
     return <div className="card h-48 animate-pulse bg-muted/30" />;
   }
@@ -333,6 +341,8 @@ export function MarketDetail({ id }: { id: number }) {
   }
 
   const resolved = market.status === "Resolved";
+  const showFlexCard =
+    resolved && !!account && (portfolioQ.data?.trades.length ?? 0) > 0;
   const outcomes = market.outcomes;
   const selected = outcomes.find((o) => o.index === selectedIdx) ?? outcomes[0];
   const viewer = data?.viewer;
@@ -414,6 +424,9 @@ export function MarketDetail({ id }: { id: number }) {
           <div className="rounded-md bg-success/10 p-3 text-sm text-success">
             Winning outcome: <b>{outcomes[market.winningOutcome]?.label}</b>
           </div>
+        )}
+        {showFlexCard && account && (
+          <MarketFlexCard marketId={market.id} account={account} />
         )}
         {!resolved && market.status === "Open" && verifiedProposal && (
           <div className="rounded-md border border-primary/40 bg-primary/10 p-3 text-sm text-primary">

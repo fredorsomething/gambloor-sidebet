@@ -1,10 +1,12 @@
 import { ImageResponse } from "next/og";
 
 import type { LinkPreviewData } from "@/lib/linkPreview";
+import type { MarketFlexCardData } from "@/lib/marketFlexCardData";
 import { outcomeLabelTone } from "@/lib/outcomeTone";
 import { absoluteUrl } from "@/lib/siteUrl";
 
 export const OG_SIZE = { width: 1200, height: 630 } as const;
+export const FLEX_CARD_SIZE = { width: 720, height: 960 } as const;
 
 const C = {
   bg: "#0d1117",
@@ -1073,6 +1075,333 @@ function renderProfileOgCard(
       </div>
     ),
     { ...OG_SIZE },
+  );
+}
+
+function OgMarketFlexSide({
+  side,
+  align,
+  avatarDataUrl,
+}: {
+  side: MarketFlexCardData["sides"][number];
+  align: "start" | "end";
+  avatarDataUrl?: string | null;
+}) {
+  const isLoser = !side.isWinner;
+  const roleLabel = side.isViewer
+    ? side.isWinner
+      ? "Winner"
+      : "You"
+    : side.isWinner
+      ? "Winner"
+      : "Loser";
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: side.isWinner ? 6 : 8,
+        flex: 1,
+        minWidth: 0,
+        alignItems: align === "end" ? "flex-end" : "flex-start",
+        textAlign: align === "end" ? "right" : "left",
+        opacity: isLoser && !side.isViewer ? 0.72 : 1,
+        padding: side.isWinner ? "10px 12px" : "0",
+        borderRadius: side.isWinner ? 14 : 0,
+        backgroundColor: side.isWinner ? "rgba(45, 165, 98, 0.1)" : "transparent",
+        border: side.isWinner
+          ? "2px solid rgba(45, 165, 98, 0.45)"
+          : "2px solid transparent",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: side.isWinner ? C.success : C.muted,
+        }}
+      >
+        {roleLabel}
+      </span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexDirection: align === "end" ? "row-reverse" : "row",
+        }}
+      >
+        <OgAvatar
+          dataUrl={avatarDataUrl}
+          label={side.viewerLabel}
+          address={side.address ?? null}
+          size={side.isViewer ? 48 : 44}
+          muted={isLoser && !side.isViewer}
+          highlight={side.isWinner && side.isViewer}
+        />
+        <span
+          style={{
+            fontSize: side.isViewer ? 22 : 20,
+            fontWeight: 700,
+            color: isLoser && !side.isViewer ? C.muted : C.text,
+            lineHeight: 1.1,
+          }}
+        >
+          {truncate(side.isViewer ? side.viewerLabel : side.label, 16)}
+        </span>
+      </div>
+      {side.resultLabel ? (
+        <OgTokenAmount
+          stakeLabel={side.resultLabel.replace(/^Won |^Lost /, "")}
+          tokenSymbol={null}
+          color={side.isWinner ? C.success : C.danger}
+          fontSize={20}
+          iconSize={18}
+          align={align}
+          prefix={side.resultLabel.startsWith("Won") ? "Won" : "Lost"}
+        />
+      ) : (
+        (() => {
+          const colors = outcomeBadgeColors(side.label);
+          return (
+            <span
+              style={{
+                fontSize: 17,
+                fontWeight: 700,
+                color: colors.text,
+                padding: "4px 12px",
+                borderRadius: 999,
+                backgroundColor: colors.bg,
+                border: `1.5px solid ${colors.text}55`,
+              }}
+            >
+              {truncate(side.label, 20)}
+            </span>
+          );
+        })()
+      )}
+    </div>
+  );
+}
+
+export function renderMarketFlexCard(
+  data: MarketFlexCardData,
+  options: { thumbDataUrl?: string | null; viewerAvatar?: string | null } = {},
+): ImageResponse {
+  const previewLike: LinkPreviewData = {
+    kind: "market",
+    url: `/markets/${data.marketId}`,
+    title: data.title,
+    imageUrl: data.imageUrl,
+    status: "Resolved",
+    tokenSymbol: data.tokenSymbol,
+  };
+
+  const left = data.sides[0];
+  const right = data.sides[1];
+
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          background: C.bg,
+          padding: 36,
+          fontFamily:
+            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 24,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={absoluteUrl("/favicon.png")}
+              alt=""
+              width={36}
+              height={36}
+              style={{ borderRadius: 9 }}
+            />
+            <span style={{ fontSize: 24, fontWeight: 700, color: C.text }}>
+              sidebet.lol
+            </span>
+          </div>
+          <span
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: C.success,
+              padding: "6px 14px",
+              borderRadius: 999,
+              backgroundColor: "rgba(45, 165, 98, 0.12)",
+              border: "2px solid rgba(45, 165, 98, 0.35)",
+            }}
+          >
+            Resolved
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            flexDirection: "column",
+            gap: 20,
+            background: C.card,
+            border: `2px solid ${C.border}`,
+            borderRadius: 22,
+            padding: "28px 28px 32px",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
+            <div
+              style={{
+                width: 108,
+                height: 108,
+                borderRadius: 16,
+                overflow: "hidden",
+                border: `2px solid ${C.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#21262d",
+                flexShrink: 0,
+              }}
+            >
+              <SquareThumb
+                preview={previewLike}
+                thumbDataUrl={options.thumbDataUrl}
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: C.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                Market
+              </span>
+              <span
+                style={{
+                  fontSize: 28,
+                  fontWeight: 700,
+                  color: C.text,
+                  lineHeight: 1.12,
+                }}
+              >
+                {truncate(data.title, 60)}
+              </span>
+            </div>
+          </div>
+
+          {data.description.trim() && (
+            <span
+              style={{
+                fontSize: 17,
+                color: C.muted,
+                lineHeight: 1.35,
+              }}
+            >
+              {truncate(data.description, 140)}
+            </span>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              padding: "10px 0",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: C.success,
+                padding: "8px 18px",
+                borderRadius: 999,
+                backgroundColor: "rgba(45, 165, 98, 0.12)",
+                border: "2px solid rgba(45, 165, 98, 0.35)",
+              }}
+            >
+              {truncate(data.winningLabel, 36)} wins
+            </span>
+          </div>
+
+          {left && right && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 10,
+                borderTop: `2px solid ${C.border}`,
+                paddingTop: 20,
+                marginTop: "auto",
+              }}
+            >
+              <div style={{ display: "flex", flex: 1, minWidth: 0 }}>
+                <OgMarketFlexSide
+                  side={left}
+                  align="start"
+                  avatarDataUrl={left.isViewer ? options.viewerAvatar : null}
+                />
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignSelf: "center",
+                  flexShrink: 0,
+                  paddingTop: 24,
+                }}
+              >
+                <OgVsPill />
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flex: 1,
+                  minWidth: 0,
+                  justifyContent: "flex-end",
+                }}
+              >
+                <OgMarketFlexSide
+                  side={right}
+                  align="end"
+                  avatarDataUrl={right.isViewer ? options.viewerAvatar : null}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+    { ...FLEX_CARD_SIZE },
   );
 }
 
