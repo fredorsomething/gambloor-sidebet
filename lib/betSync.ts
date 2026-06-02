@@ -12,11 +12,15 @@ import {
   announceBetSettledInChat,
 } from "@/lib/announceFeedChat";
 import { creditReferralForSidebet } from "@/lib/referrals";
+import {
+  effectiveAcceptDeadlineSec,
+  isAcceptWindowExpired,
+} from "@/lib/sidebetExpiry";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
 // Bets that have reached a final state never change again on-chain.
-const TERMINAL = new Set(["Settled", "Cancelled", "Refunded"]);
+const TERMINAL = new Set(["Settled", "Cancelled", "Refunded", "Expired"]);
 
 // In-memory throttle so a single bet is read from chain at most once per window
 // no matter how many list/feed requests arrive — keeps RPC usage bounded while
@@ -63,12 +67,24 @@ export function buildBetSyncUpdates(
 ): Record<string, unknown> {
   const updates: Record<string, unknown> = {};
   const syncedStatus = chainStatusFromOnchain(onchain);
-  if (
+  if (bet.status === "Expired") {
+    // Indexed expiry (keeper cron); on-chain reads Cancelled for the same bet.
+  } else if (
     syncedStatus !== bet.status &&
     betStatusRank(syncedStatus as BetStatusName) >=
       betStatusRank(bet.status as BetStatusName)
   ) {
-    updates.status = syncedStatus;
+    if (
+      syncedStatus === "Cancelled" &&
+      bet.status === "Open" &&
+      !onchain.acceptor &&
+      effectiveAcceptDeadlineSec(bet) != null &&
+      isAcceptWindowExpired(bet, "Open")
+    ) {
+      updates.status = "Expired";
+    } else {
+      updates.status = syncedStatus;
+    }
   }
   if (
     onchain.acceptor &&

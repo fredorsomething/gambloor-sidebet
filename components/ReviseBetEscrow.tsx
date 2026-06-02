@@ -27,6 +27,8 @@ import { jsonFetch } from "@/lib/fetcher";
 import { formatToken } from "@/lib/utils";
 import type { BetRow, GetBetResponse } from "@/lib/types";
 
+import { effectiveAcceptDeadlineSec } from "@/lib/sidebetExpiry";
+
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 
 type Props = {
@@ -75,13 +77,15 @@ export function ReviseBetEscrow({ bet, onchain, onDone }: Props) {
     const endDate = bet.estimatedEndDate
       ? Math.floor(new Date(bet.estimatedEndDate).getTime() / 1000)
       : 0;
-    const acceptDeadline = Math.floor(Date.now() / 1000) + WEEK_SECONDS;
+    const existing = effectiveAcceptDeadlineSec(bet);
+    const acceptDeadline =
+      existing ?? Math.floor(Date.now() / 1000) + WEEK_SECONDS;
     return {
       acceptDeadline,
       estimatedEndDate: endDate,
       termsHash: bet.termsHash as Hex,
     };
-  }, [bet.estimatedEndDate, bet.termsHash]);
+  }, [bet.acceptDeadline, bet.estimatedEndDate, bet.termsHash]);
 
   const readOnchainStatus = useCallback(async (): Promise<BetStatusName | null> => {
     if (!publicClient) return onchain?.status ?? null;

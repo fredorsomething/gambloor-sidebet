@@ -13,11 +13,12 @@ import {
   Trophy,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useAccount } from "wagmi";
 
 import { useNotifications, type AppNotification } from "@/lib/hooks/useNotifications";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
+import { useClickOutside } from "@/lib/useClickOutside";
 import { cn } from "@/lib/utils";
 
 function iconFor(type: string) {
@@ -69,15 +70,7 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
+  useClickOutside(ref, () => setOpen(false), open);
 
   if (!ready || !authenticated || !address) return null;
 
@@ -116,10 +109,10 @@ export function NotificationBell() {
   );
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative shrink-0" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted/50 hover:text-foreground"
+        className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted/50 hover:text-foreground md:h-9 md:w-9"
         title="Notifications"
         aria-label="Notifications"
       >

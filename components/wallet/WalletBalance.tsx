@@ -12,7 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { formatUnits } from "viem";
 import { useAccount, useBalance, useChainId, useReadContracts } from "wagmi";
 import { polygon } from "wagmi/chains";
@@ -23,6 +23,7 @@ import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { ERC20_ABI } from "@/lib/abi";
 import { getTokens } from "@/lib/chains";
 import { jsonFetch } from "@/lib/fetcher";
+import { useClickOutside } from "@/lib/useClickOutside";
 import { cn, shortAddr } from "@/lib/utils";
 
 const STABLE_SYMBOLS = new Set(["USDC", "pUSD", "USDC.e"]);
@@ -37,15 +38,7 @@ export function WalletBalance() {
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
+  useClickOutside(ref, () => setMenuOpen(false), menuOpen);
 
   const stables = getTokens().filter((t) => STABLE_SYMBOLS.has(t.symbol));
 
@@ -253,11 +246,12 @@ export function WalletBalance() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setMenuOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 shadow-sm transition-colors hover:bg-muted/50"
+        className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-2 py-1.5 shadow-sm transition-colors hover:bg-muted/50 max-lg:gap-1 lg:gap-2 lg:px-3.5 lg:py-2"
         title="Wallet balance"
+        aria-label={`Wallet balance $${grandTotal.toFixed(2)}`}
       >
-        <Wallet className="h-4 w-4 text-success/80" />
-        <span className="text-base font-bold tabular-nums text-success">
+        <Wallet className="h-4 w-4 shrink-0 text-success/80" />
+        <span className="hidden text-base font-bold tabular-nums text-success min-[380px]:inline max-lg:text-sm lg:inline">
           $
           {grandTotal.toLocaleString(undefined, {
             minimumFractionDigits: 2,

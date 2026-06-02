@@ -103,16 +103,51 @@ describe("SidebetEscrowV2", () => {
     expect(await token.read.balanceOf([settler.account.address])).to.equal(0n);
   });
 
+  it("lets anyone expire an open bet after acceptDeadline", async () => {
+    const { owner, proposer, settler, token, escrow } = await setup();
+    const publicClient = await hre.viem.getPublicClient();
+    const pStake = parseUnits("100", 6);
+    const block = await publicClient.getBlock();
+    const deadline = block.timestamp + 60n;
+    const beforeCreate = await token.read.balanceOf([proposer.account.address]);
+
+    await escrow.write.createBet(
+      [
+        settler.account.address,
+        token.address,
+        pStake,
+        pStake,
+        0,
+        1,
+        2,
+        deadline,
+        0n,
+        zeroHash,
+      ],
+      { account: proposer.account },
+    );
+
+    await hre.network.provider.send("evm_increaseTime", [61]);
+    await hre.network.provider.send("evm_mine", []);
+
+    await escrow.write.expireOpenBet([1n], { account: owner.account });
+    expect(await token.read.balanceOf([proposer.account.address])).to.equal(
+      beforeCreate,
+    );
+  });
+
   it("lets the proposer cancel an open bet", async () => {
     const { proposer, settler, token, escrow } = await setup();
     const pStake = parseUnits("100", 6);
-    const before = await token.read.balanceOf([proposer.account.address]);
+    const beforeCreate = await token.read.balanceOf([proposer.account.address]);
     await escrow.write.createBet(
       [settler.account.address, token.address, pStake, pStake, 0, 1, 2, 0n, 0n, zeroHash],
       { account: proposer.account },
     );
     await escrow.write.cancelBet([1n], { account: proposer.account });
-    expect(await token.read.balanceOf([proposer.account.address])).to.equal(before);
+    expect(await token.read.balanceOf([proposer.account.address])).to.equal(
+      beforeCreate,
+    );
   });
 
   it("lets the owner update the platform fee recipient", async () => {

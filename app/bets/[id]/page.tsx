@@ -276,12 +276,14 @@ export default async function BetDetailPage({
               />
             )}
             <Row label="Created" value={formatTimestamp(Math.floor(new Date(bet.createdAt).getTime() / 1000))} />
-            {bet.acceptDeadline && (
-              <Row
-                label="Accept by"
-                value={`${formatTimestamp(BigInt(bet.acceptDeadline))} (${fromNowUnix(BigInt(bet.acceptDeadline))})`}
-              />
-            )}
+            <Row
+              label="Offer expires"
+              value={
+                bet.acceptDeadline
+                  ? `${formatTimestamp(BigInt(bet.acceptDeadline))} (${fromNowUnix(BigInt(bet.acceptDeadline))})`
+                  : "No expiry — open until taken or cancelled"
+              }
+            />
             {endDateSecs > 0 && (
               <Row
                 label="Est. end"

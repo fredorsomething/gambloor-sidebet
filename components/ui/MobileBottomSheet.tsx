@@ -5,6 +5,7 @@ import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { lockBodyScroll } from "@/lib/bodyScrollLock";
+import { MOBILE_SHEET_ROOT_ATTR } from "@/lib/useClickOutside";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,6 +47,7 @@ export function MobileBottomSheet({
       role="dialog"
       aria-modal="true"
       aria-label={title}
+      {...{ [MOBILE_SHEET_ROOT_ATTR]: "" }}
     >
       <button
         type="button"

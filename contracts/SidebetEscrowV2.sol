@@ -90,6 +90,7 @@ contract SidebetEscrowV2 is ReentrancyGuard {
     );
     event BetAccepted(uint256 indexed id, address indexed acceptor);
     event BetCancelled(uint256 indexed id);
+    event BetExpired(uint256 indexed id);
     event BetSettled(uint256 indexed id, uint8 winningOutcome, address winner, uint256 payout, uint256 fee);
     event BetRefunded(uint256 indexed id);
 
@@ -217,6 +218,21 @@ contract SidebetEscrowV2 is ReentrancyGuard {
         b.status = Status.Cancelled;
         _send(b.token, b.proposer, b.proposerStake);
         emit BetCancelled(id);
+    }
+
+    /// @notice Refund the proposer after the accept window closes with no taker.
+    ///         Callable by anyone once `acceptDeadline` has passed (`acceptDeadline`
+    ///         must be non-zero). Distinct from `cancelBet`, which is proposer-only
+    ///         and allowed before the deadline.
+    function expireOpenBet(uint256 id) external nonReentrant {
+        Bet storage b = bets[id];
+        require(b.status == Status.Open, "NOT_OPEN");
+        require(b.acceptDeadline != 0, "NO_DEADLINE");
+        require(block.timestamp >= b.acceptDeadline, "NOT_EXPIRED");
+
+        b.status = Status.Cancelled;
+        _send(b.token, b.proposer, b.proposerStake);
+        emit BetExpired(id);
     }
 
     /// @notice Approved settler resolves a matched bet by declaring the winning outcome.

@@ -203,6 +203,7 @@ export type BetStatusName = (typeof BET_STATUS)[BetStatusCode];
 
 // ----------------------- SidebetEscrowV2 -----------------------
 
+// V2 escrow — keep in sync with contracts/SidebetEscrowV2.sol
 export const SIDEBET_ESCROW_V2_ABI = [
   {
     type: "function",
@@ -328,6 +329,13 @@ export const SIDEBET_ESCROW_V2_ABI = [
   },
   {
     type: "function",
+    name: "expireOpenBet",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "settleBet",
     stateMutability: "nonpayable",
     inputs: [
@@ -374,6 +382,12 @@ export const SIDEBET_ESCROW_V2_ABI = [
   {
     type: "event",
     name: "BetCancelled",
+    inputs: [{ indexed: true, name: "id", type: "uint256" }],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "BetExpired",
     inputs: [{ indexed: true, name: "id", type: "uint256" }],
     anonymous: false,
   },

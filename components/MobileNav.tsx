@@ -7,21 +7,27 @@ import {
   LayoutGrid,
   Mail,
   Menu,
+  Pencil,
   Plus,
   ShieldCheck,
   Trophy,
+  User,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePrivy } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useWalletFunds } from "@/components/wallet/FundWalletModal";
 import { isAdminAddress } from "@/lib/admin";
 import { lockBodyScroll } from "@/lib/bodyScrollLock";
+import { useProfile } from "@/lib/hooks/useProfile";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -41,9 +47,13 @@ const ACTIONS = [
 /** Hamburger menu + slide-out drawer for small screens. Hidden on lg+. */
 export function MobileNav() {
   const pathname = usePathname();
+  const { ready, authenticated } = usePrivy();
   const { address } = useAccount();
+  const { data: profile } = useProfile(address);
+  const { openFund } = useWalletFunds();
   const isAdmin = isAdminAddress(address);
   const [open, setOpen] = useState(false);
+  const signedIn = ready && authenticated && !!address;
 
   useEffect(() => {
     setOpen(false);
@@ -139,6 +149,69 @@ export function MobileNav() {
                   <ShieldCheck className="h-5 w-5" />
                   Admin
                 </Link>
+              )}
+
+              {signedIn && (
+                <>
+                  <div className="my-4 border-t border-border" />
+                  <div className="space-y-1">
+                    <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Account
+                    </div>
+                    <Link
+                      href={`/u/${profile?.username ?? address}`}
+                      className="flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-muted/60"
+                    >
+                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <User className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">
+                          My profile
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          Public profile page
+                        </span>
+                      </span>
+                    </Link>
+                    <Link
+                      href="/profile/edit"
+                      className="flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-muted/60"
+                    >
+                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Pencil className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">
+                          Edit profile
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          Username, photo, bio
+                        </span>
+                      </span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openFund();
+                        setOpen(false);
+                      }}
+                      className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-muted/60"
+                    >
+                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Wallet className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">
+                          Deposit
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          Card, external wallet, or copy address
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </>
               )}
 
               <div className="my-4 border-t border-border" />

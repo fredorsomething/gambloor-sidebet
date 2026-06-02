@@ -129,6 +129,12 @@
     @apply bg-background text-foreground antialiased;
   }
 
+  @media (max-width: 1023px) {
+    body {
+      overflow-x: hidden;
+    }
+  }
+
   .site-header {
     padding-top: env(safe-area-inset-top, 0px);
   }

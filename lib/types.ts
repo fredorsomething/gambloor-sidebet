@@ -1,6 +1,9 @@
 import type { BetStatusName } from "@/lib/abi";
 import type { BookSnapshot } from "@/lib/exchange/types";
 
+/** Off-chain bet status; `Expired` is indexed-only (on-chain reads Cancelled). */
+export type IndexedBetStatus = BetStatusName | "Expired";
+
 export type BetRow = {
   id: number;
   chainId: number;
@@ -32,7 +35,7 @@ export type BetRow = {
   terms: string;
   termsHash: string;
   nonce: string;
-  status: BetStatusName;
+  status: IndexedBetStatus;
   winner: string | null;
   feeBps: number;
   acceptDeadline: string | null;

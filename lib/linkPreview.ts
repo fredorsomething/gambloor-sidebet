@@ -1,6 +1,7 @@
 import { getAddress, isAddress } from "viem";
 
 import type { BetStatusName } from "@/lib/abi";
+import type { IndexedBetStatus } from "@/lib/types";
 import { acceptorTakeEconomics, sidebetPayoutWei } from "@/lib/betEconomics";
 import { resolveBetStatus } from "@/lib/betStatus";
 import { prisma } from "@/lib/db";
@@ -339,11 +340,12 @@ export async function resolveLinkPreview(
     const acceptorPosition = outcomes[bet.acceptorOutcome]?.trim() || undefined;
     const proposerLabel = partyLabel(bet.proposer, usernameFor(bet.proposer));
     const resolvedStatus = resolveBetStatus({
-      status: bet.status as BetStatusName,
+      status: bet.status as IndexedBetStatus,
       acceptor: bet.acceptor,
       escrowRevisionNeeded: bet.escrowRevisionNeeded,
     } as Parameters<typeof resolveBetStatus>[0]);
     const isOpen = resolvedStatus === "Open";
+    const isExpired = resolvedStatus === "Expired";
     const isSettled = resolvedStatus === "Settled";
     const isRefunded = resolvedStatus === "Refunded";
     const isMatched =
@@ -419,7 +421,9 @@ export async function resolveLinkPreview(
           ? `${winnerLabel} won ${payoutLabel}`
           : isRefunded
             ? "Refunded — stakes returned"
-            : undefined,
+            : isExpired
+              ? "Expired — proposer stake refunded"
+              : undefined,
     };
 
     return {
@@ -471,7 +475,7 @@ export async function resolveLinkPreview(
 }
 
 function betOgImageVersion(
-  status: BetStatusName,
+  status: IndexedBetStatus,
   updatedAt: Date,
   winner: string | null,
 ): string {
@@ -487,7 +491,7 @@ function partyLabel(address: string, username: string | null): string {
 
 function betMatchupSubtitle(
   matchup: NonNullable<LinkPreviewData["betMatchup"]>,
-  status: BetStatusName,
+  status: IndexedBetStatus,
 ): string {
   if (matchup.resultLabel) return matchup.resultLabel;
   if (status === "Open" && matchup.youBetLabel && matchup.toWinLabel) {

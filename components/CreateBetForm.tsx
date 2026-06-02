@@ -34,6 +34,13 @@ import { jsonFetch } from "@/lib/fetcher";
 import { ADMIN_ADDRESS } from "@/lib/admin";
 import { getMarketCollateralToken } from "@/lib/chains";
 import {
+  ACCEPT_EXPIRY_PRESETS,
+  NO_ACCEPT_DEADLINE,
+  acceptDeadlineUnixFromDuration,
+  validateAcceptDeadlineUnix,
+  type AcceptExpiryPresetId,
+} from "@/lib/sidebetExpiry";
+import {
   buildTermsHash,
   formatToken,
   parseAmount,
@@ -80,6 +87,8 @@ export function CreateBetForm() {
   const [customSettler, setCustomSettler] = useState<string | null>(null);
   const [settlerFeeBps, setSettlerFeeBps] = useState(0);
   const [endDate, setEndDate] = useState(""); // yyyy-mm-dd
+  const [offerExpires, setOfferExpires] = useState(true);
+  const [expiryPreset, setExpiryPreset] = useState<AcceptExpiryPresetId>("1d");
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +197,13 @@ export function CreateBetForm() {
       return "You can't be your own settler";
     if (!customSettler && getAddress(settler) === getAddress(account))
       return "You can't be your own settler";
+    if (offerExpires) {
+      const preset = ACCEPT_EXPIRY_PRESETS.find((p) => p.id === expiryPreset);
+      if (!preset) return "Pick a valid offer expiry";
+      const acceptDeadline = acceptDeadlineUnixFromDuration(preset.seconds);
+      const dlErr = validateAcceptDeadlineUnix(acceptDeadline);
+      if (dlErr) return dlErr;
+    }
     return null;
   }
 
@@ -220,7 +236,7 @@ export function CreateBetForm() {
         pc.proposerOutcome,
         pc.acceptorOutcome,
         pc.outcomes.length,
-        BigInt(pc.acceptDeadline), // unfilled offers auto-expire after 1 week
+        BigInt(pc.acceptDeadline),
         BigInt(pc.estimatedEndDate),
         pc.termsHash,
       ],
@@ -251,9 +267,11 @@ export function CreateBetForm() {
     const estimatedEndDate = endDate
       ? Math.floor(new Date(`${endDate}T00:00:00Z`).getTime() / 1000)
       : 0;
-    // Offers must be taken within a week, otherwise they expire and the
-    // proposer can reclaim their stake.
-    const acceptDeadline = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
+    const acceptDeadline = offerExpires
+      ? acceptDeadlineUnixFromDuration(
+          ACCEPT_EXPIRY_PRESETS.find((p) => p.id === expiryPreset)!.seconds,
+        )
+      : NO_ACCEPT_DEADLINE;
 
     const pc = {
       nonce,
@@ -592,6 +610,39 @@ export function CreateBetForm() {
             platformFeeBps={platformFeeBps}
             excludeAddress={account}
           />
+        </Field>
+
+        <Field
+          label="Offer expiry"
+          hint="If nobody takes the other side by then, your stake is refunded from escrow automatically. Minimum 10 minutes, or no expiry."
+        >
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={offerExpires}
+                onChange={(e) => setOfferExpires(e.target.checked)}
+                disabled={isBusy}
+              />
+              <span>Expire this offer if unmatched</span>
+            </label>
+            {offerExpires && (
+              <select
+                className="input"
+                value={expiryPreset}
+                onChange={(e) =>
+                  setExpiryPreset(e.target.value as AcceptExpiryPresetId)
+                }
+                disabled={isBusy}
+              >
+                {ACCEPT_EXPIRY_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </Field>
 
         <Field

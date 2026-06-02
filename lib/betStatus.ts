@@ -1,26 +1,27 @@
 import type { BetStatusName } from "@/lib/abi";
-import type { BetRow, GetBetResponse } from "@/lib/types";
+import type { BetRow, GetBetResponse, IndexedBetStatus } from "@/lib/types";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
-const STATUS_RANK: Record<BetStatusName, number> = {
+const STATUS_RANK: Record<IndexedBetStatus, number> = {
   None: 0,
   Open: 1,
   Matched: 2,
   Settled: 3,
   Cancelled: 3,
   Refunded: 3,
+  Expired: 3,
 };
 
-export function betStatusRank(status: BetStatusName): number {
+export function betStatusRank(status: IndexedBetStatus): number {
   return STATUS_RANK[status] ?? 0;
 }
 
 /** Prefer the more mature lifecycle state (Settled beats Matched, etc.). */
 export function mergeBetStatus(
-  indexed: BetStatusName,
+  indexed: IndexedBetStatus,
   fromChain: BetStatusName,
-): BetStatusName {
+): IndexedBetStatus {
   return betStatusRank(fromChain) >= betStatusRank(indexed)
     ? fromChain
     : indexed;
@@ -47,8 +48,13 @@ export function betEscrowRevisionPending(bet: BetRow): boolean {
   return bet.escrowRevisionNeeded;
 }
 
-export function betIsTerminal(status: BetStatusName): boolean {
-  return status === "Settled" || status === "Cancelled" || status === "Refunded";
+export function betIsTerminal(status: IndexedBetStatus): boolean {
+  return (
+    status === "Settled" ||
+    status === "Cancelled" ||
+    status === "Refunded" ||
+    status === "Expired"
+  );
 }
 
 /**
@@ -59,12 +65,14 @@ export function betIsTerminal(status: BetStatusName): boolean {
 export function resolveBetStatus(
   bet: BetRow,
   onchain?: GetBetResponse["onchain"],
-): BetStatusName {
+): IndexedBetStatus {
+  if (bet.status === "Expired") return "Expired";
+
   if (betEscrowRevisionPending(bet)) {
     return "Open";
   }
 
-  const indexed = bet.status as BetStatusName;
+  const indexed = bet.status as IndexedBetStatus;
   const hasAcceptor = betHasAcceptor(bet, onchain);
   const chainRaw = (onchain?.status ?? indexed) as BetStatusName;
   const fromChain: BetStatusName =

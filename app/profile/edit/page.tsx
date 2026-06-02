@@ -395,8 +395,8 @@ function EditProfileForm() {
       </div>
 
       {/* Sticky save bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md">
-        <div className="container flex max-w-lg items-center justify-between gap-3 py-4">
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)]">
+        <div className="container flex max-w-lg items-center justify-between gap-3 px-4 py-3 sm:py-4">
           <p className="text-xs text-muted-foreground hidden sm:block">
             {dirty ? "Unsaved changes" : "No changes yet"}
           </p>

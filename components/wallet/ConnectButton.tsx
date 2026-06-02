@@ -2,7 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { polygon } from "wagmi/chains";
 
@@ -11,6 +11,7 @@ import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { isAdminAddress } from "@/lib/admin";
 import { useProfile } from "@/lib/hooks/useProfile";
+import { useClickOutside } from "@/lib/useClickOutside";
 import { shortAddr } from "@/lib/utils";
 
 export function ConnectButton() {
@@ -23,15 +24,7 @@ export function ConnectButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
+  useClickOutside(ref, () => setMenuOpen(false), menuOpen);
 
   if (!ready) {
     return (
@@ -132,19 +125,20 @@ export function ConnectButton() {
   );
 
   return (
-    <div className="relative flex items-center gap-2" ref={ref}>
+    <div className="relative flex shrink-0 items-center gap-2" ref={ref}>
       {!onPolygon && (
         <button
           onClick={() => switchChain({ chainId: polygon.id })}
           disabled={isPending}
-          className="rounded-full border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger"
+          className="hidden rounded-full border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger md:inline-flex"
         >
           {isPending ? "Switching…" : "Switch to Polygon"}
         </button>
       )}
       <button
         onClick={() => setMenuOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-3 text-sm font-medium shadow-sm transition-colors hover:bg-muted/50"
+        className="flex shrink-0 items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-2 text-sm font-medium shadow-sm transition-colors hover:bg-muted/50 md:pr-3"
+        aria-label="Account menu"
       >
         <Avatar address={address} url={profile?.avatarUrl} size={28} />
         <UserNameWithBadge

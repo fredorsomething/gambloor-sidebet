@@ -62,7 +62,7 @@ export default function RootLayout({
         <Providers>
           <div id="app-shell" className="flex min-h-screen flex-col">
             <header className="site-header fixed inset-x-0 top-0 z-40 overflow-visible border-b border-border bg-card/95 backdrop-blur">
-              <div className="container flex items-center gap-2 py-3 sm:gap-3 sm:py-4">
+              <div className="container flex min-w-0 items-center gap-1.5 py-3 sm:gap-3 sm:py-4">
                 <MobileNav />
                 <div className="hidden lg:block">
                   <ThemeToggle />
@@ -74,12 +74,14 @@ export default function RootLayout({
                   <SearchBar />
                 </div>
                 {/* Mobile keeps the bar compact; search drops to its own row. */}
-                <div className="flex-1 lg:hidden" />
+                <div className="min-w-0 flex-1 lg:hidden" />
 
-                <NavLinks />
-                <WalletBalance />
-                <ConnectButton />
-                <NotificationBell />
+                <div className="flex shrink-0 items-center gap-1 sm:gap-1.5 lg:gap-2">
+                  <NavLinks />
+                  <WalletBalance />
+                  <ConnectButton />
+                  <NotificationBell />
+                </div>
               </div>
 
               {/* Mobile search row */}

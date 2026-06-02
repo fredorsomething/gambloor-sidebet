@@ -288,12 +288,12 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[160] flex max-md:items-end max-md:overflow-y-auto md:items-center md:justify-center md:p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md card p-6 shadow-xl animate-in fade-in zoom-in-95">
+      <div className="relative w-full max-w-md card p-5 shadow-xl max-md:max-h-[min(92dvh,100%)] max-md:overflow-y-auto max-md:rounded-b-none max-md:rounded-t-2xl max-md:pb-[max(1.25rem,env(safe-area-inset-bottom))] md:p-6 md:animate-in md:fade-in md:zoom-in-95">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Add funds</h2>
           <button
@@ -532,12 +532,12 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const pending = sending || wait.isLoading;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[160] flex max-md:items-end max-md:overflow-y-auto md:items-center md:justify-center md:p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md card p-6 shadow-xl animate-in fade-in zoom-in-95">
+      <div className="relative w-full max-w-md card p-5 shadow-xl max-md:max-h-[min(92dvh,100%)] max-md:overflow-y-auto max-md:rounded-b-none max-md:rounded-t-2xl max-md:pb-[max(1.25rem,env(safe-area-inset-bottom))] md:p-6 md:animate-in md:fade-in md:zoom-in-95">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Withdraw</h2>
           <button

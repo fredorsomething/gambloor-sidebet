@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/ui/badge";
-import type { BetStatusName } from "@/lib/abi";
+import type { IndexedBetStatus } from "@/lib/types";
 import {
   betDetailPollInterval,
   betIsTerminal,
@@ -21,7 +21,7 @@ export function LiveBetStatusBadge({
   initialStatus,
 }: {
   id: number;
-  initialStatus: BetStatusName;
+  initialStatus: IndexedBetStatus;
 }) {
   const { data } = useQuery<GetBetResponse>({
     queryKey: ["bet", id],

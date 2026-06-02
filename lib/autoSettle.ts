@@ -60,7 +60,8 @@ function parseSettlerPrivateKey(raw?: string): Hex | null {
   return hex as Hex;
 }
 
-function getSettlerWallet(): SettlerWallet | null {
+/** Server-side Polygon wallet used for keeper txs (auto-settle, expire open bets). */
+export function getKeeperWallet(): SettlerWallet | null {
   if (cachedWallet !== undefined) return cachedWallet;
 
   const key = parseSettlerPrivateKey(SETTLER_KEY_RAW);
@@ -100,17 +101,17 @@ function getSettlerWallet(): SettlerWallet | null {
 
 /** Address of the server settler wallet (from env), if configured. */
 export function autoSettleSettlerAddress(): Address | null {
-  return getSettlerWallet()?.address ?? null;
+  return getKeeperWallet()?.address ?? null;
 }
 
 /** Whether a valid settler private key is present (any address). */
 export function autoSettleEnabled(): boolean {
-  return getSettlerWallet() != null;
+  return getKeeperWallet() != null;
 }
 
 /** Server key derives to the platform admin settler (@admin). Required for auto-settle. */
 export function platformAutoSettleReady(): boolean {
-  const signer = getSettlerWallet();
+  const signer = getKeeperWallet();
   if (!signer) return false;
   return signer.address.toLowerCase() === ADMIN_ADDRESS.toLowerCase();
 }
@@ -121,7 +122,7 @@ export function autoSettleDiagnostics(): {
   adminSettlerAddress: Address;
   platformReady: boolean;
 } {
-  const signer = getSettlerWallet();
+  const signer = getKeeperWallet();
   return {
     keyConfigured: signer != null,
     signerAddress: signer?.address ?? null,
@@ -132,7 +133,7 @@ export function autoSettleDiagnostics(): {
 
 /** True when this bet's on-chain settler is the wallet we can sign with. */
 export function canAutoSettleBet(bet: { settler: string }): boolean {
-  const signer = getSettlerWallet();
+  const signer = getKeeperWallet();
   if (!signer) return false;
   try {
     return (
@@ -189,7 +190,7 @@ export async function tryAutoSettleBet(
   const bet = await prisma.bet.findUnique({ where: { id: betId } });
   if (!bet) return { ok: false, betId, reason: "bet not found" };
 
-  const signer = getSettlerWallet();
+  const signer = getKeeperWallet();
   if (!signer) {
     return { ok: false, betId, reason: "SETTLER_PRIVATE_KEY not configured" };
   }

@@ -10,6 +10,7 @@ import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { StatusBadge } from "@/components/ui/badge";
 import { jsonFetch } from "@/lib/fetcher";
+import { MOBILE_SHEET_ROOT_ATTR } from "@/lib/useClickOutside";
 import { formatToken, shortAddr } from "@/lib/utils";
 import type { BetStatusName } from "@/lib/abi";
 
@@ -79,7 +80,10 @@ export function SearchBar() {
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const el = ref.current;
+      if (!el || el.contains(e.target as Node)) return;
+      if ((e.target as Element).closest(`[${MOBILE_SHEET_ROOT_ATTR}]`)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -235,6 +239,7 @@ export function SearchBar() {
             createPortal(
               <div
                 className="fixed z-[150] md:hidden"
+                {...{ [MOBILE_SHEET_ROOT_ATTR]: "" }}
                 style={{
                   top: anchor.top,
                   left: anchor.left,

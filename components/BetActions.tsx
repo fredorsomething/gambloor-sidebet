@@ -27,10 +27,12 @@ import { isAdminAddress } from "@/lib/admin";
 import { settlerMaySettle } from "@/lib/betResolution";
 import { displayResolver, hasCustomSettler } from "@/lib/settlerUtils";
 import { acceptorTakeEconomics, sidebetPayoutWei } from "@/lib/betEconomics";
-import { formatToken, shortAddr } from "@/lib/utils";
+import {
+  effectiveAcceptDeadlineSec,
+  isAcceptWindowExpired,
+} from "@/lib/sidebetExpiry";
+import { formatTimestamp, formatToken, shortAddr } from "@/lib/utils";
 import type { AutoSettleStatus, BetResolutionSummary, BetRow, GetBetResponse } from "@/lib/types";
-
-const WEEK_SECONDS = 7 * 24 * 60 * 60;
 
 type Props = {
   bet: BetRow;
@@ -65,13 +67,10 @@ export function BetActions({
   const isAcceptor =
     !!me && hasAcceptor && me === acceptorAddr!.toLowerCase();
 
-  // A still-open offer with no taker is "expired" once its accept window passes.
-  // New bets carry a 1-week acceptDeadline; older ones fall back to created+1wk.
-  const createdSec = Math.floor(new Date(bet.createdAt).getTime() / 1000);
-  const deadlineSec = bet.acceptDeadline
-    ? Number(bet.acceptDeadline)
-    : createdSec + WEEK_SECONDS;
-  const expired = status === "Open" && Math.floor(Date.now() / 1000) > deadlineSec;
+  const acceptDeadlineSec = effectiveAcceptDeadlineSec(bet);
+  const expired =
+    status === "Expired" ||
+    (status === "Open" && isAcceptWindowExpired(bet, status));
 
   const outcomes = Array.isArray(bet.outcomes) ? bet.outcomes : [];
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
@@ -273,15 +272,32 @@ export function BetActions({
   }
 
   // Expired open offer (no taker within the accept window).
-  if (status === "Open" && expired) {
+  if (expired) {
+    const deadlineLabel = acceptDeadlineSec
+      ? formatTimestamp(BigInt(acceptDeadlineSec))
+      : null;
+    if (status === "Expired") {
+      return (
+        <div className="card p-5 text-sm">
+          <h3 className="font-semibold">Offer expired</h3>
+          <p className="mt-1 text-muted-foreground">
+            No one took the other side
+            {deadlineLabel ? ` before ${deadlineLabel}` : ""}. Your{" "}
+            {formatToken(proposerStake, decimals)} {tokenSym} stake was refunded
+            from escrow.
+          </p>
+        </div>
+      );
+    }
     if (isProposer) {
       return (
         <div className="card p-5 space-y-3 ring-1 ring-warning/30">
           <LowGasBanner />
           <h3 className="font-semibold">Offer expired</h3>
           <p className="text-sm text-muted-foreground">
-            No one took this bet within a week, so it&apos;s closed to new takers.
-            Reclaim your {formatToken(proposerStake, decimals)} {tokenSym} stake.
+            No one took this bet before the accept window closed. Your stake is
+            being refunded from escrow — if it hasn&apos;t landed yet, use reclaim
+            below ({formatToken(proposerStake, decimals)} {tokenSym}).
           </p>
           <Button
             variant="danger"
@@ -298,8 +314,8 @@ export function BetActions({
       <div className="card p-5 text-sm">
         <h3 className="font-semibold">Offer expired</h3>
         <p className="mt-1 text-muted-foreground">
-          This offer wasn&apos;t taken within a week and is no longer available.
-          The proposer can reclaim their stake.
+          This offer wasn&apos;t taken before the accept window closed and is no
+          longer available.
         </p>
       </div>
     );

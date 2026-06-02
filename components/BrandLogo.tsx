@@ -13,7 +13,7 @@ export function BrandLogo({ linked = true, className }: Props) {
   const inner = (
     <ThemedLogo
       className={cn(
-        "h-9 max-w-[140px] sm:h-14 sm:max-w-[300px]",
+        "h-8 max-w-[100px] lg:h-14 lg:max-w-[300px]",
         className,
       )}
       width={300}

@@ -9,6 +9,11 @@ import {
   tryAutoSettleBet,
 } from "@/lib/autoSettle";
 import { applyBetOnchainSync } from "@/lib/betSync";
+import {
+  expireOpenBetsEnabled,
+  tryExpireOpenBet,
+} from "@/lib/expireOpenBets";
+import { isAcceptWindowExpired } from "@/lib/sidebetExpiry";
 import { prisma } from "@/lib/db";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { readBetV2 } from "@/lib/onchain";
@@ -73,6 +78,25 @@ export async function GET(
       };
     });
     if (autoSettle.ok) {
+      const refreshed = await prisma.bet.findUnique({ where: { id } });
+      if (refreshed) bet = refreshed;
+    }
+  }
+
+  if (
+    bet.status === "Open" &&
+    expireOpenBetsEnabled() &&
+    isAcceptWindowExpired(bet, bet.status)
+  ) {
+    const expireResult = await tryExpireOpenBet(id).catch((err) => {
+      console.error(`expire-open-bet on bet GET #${id}`, err);
+      return {
+        ok: false as const,
+        betId: id,
+        reason: "expire error",
+      };
+    });
+    if (expireResult.ok) {
       const refreshed = await prisma.bet.findUnique({ where: { id } });
       if (refreshed) bet = refreshed;
     }

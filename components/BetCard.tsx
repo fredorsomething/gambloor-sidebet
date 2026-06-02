@@ -27,6 +27,8 @@ function statusLabel(bet: BetRow): React.ReactNode {
       return <span className="text-muted-foreground">Refunded</span>;
     case "Cancelled":
       return <span className="text-muted-foreground">Cancelled</span>;
+    case "Expired":
+      return <span className="text-muted-foreground">Expired</span>;
     default:
       return <span className="text-primary">Open</span>;
   }

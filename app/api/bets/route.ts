@@ -4,6 +4,7 @@ import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
 import { syncBetsOnchain } from "@/lib/betSync";
 import { PUBLIC_BET_FEED_FILTER } from "@/lib/betVisibility";
+import { validateAcceptDeadlineUnix } from "@/lib/sidebetExpiry";
 import { getMarketCollateralToken, getTokenByAddress } from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { isAllowedImageUrl } from "@/lib/profile";
@@ -102,6 +103,10 @@ export async function POST(req: NextRequest) {
     return jsonErr("termsHash does not match content", 400);
   }
 
+  const deadline = d.acceptDeadline ?? 0;
+  const deadlineErr = validateAcceptDeadlineUnix(deadline);
+  if (deadlineErr) return jsonErr(deadlineErr, 400);
+
   try {
     const bet = await prisma.bet.upsert({
       where: {
@@ -143,7 +148,8 @@ export async function POST(req: NextRequest) {
         nonce: d.nonce,
 
         feeBps: d.feeBps,
-        acceptDeadline: d.acceptDeadline ? BigInt(d.acceptDeadline) : null,
+        acceptDeadline:
+          deadline > 0 ? BigInt(deadline) : null,
         estimatedEndDate: d.estimatedEndDate
           ? new Date(d.estimatedEndDate * 1000)
           : null,
@@ -241,18 +247,15 @@ export async function GET(req: NextRequest) {
 
   if (!q.who || !isAddress(q.who)) {
     where.hiddenFromFeed = PUBLIC_BET_FEED_FILTER.hiddenFromFeed;
-    // Public feed: hide open offers that expired without a taker. New bets carry
-    // a 1-week acceptDeadline; older ones fall back to created + 1 week. Personal
-    // ("who") views still show them so the proposer can reclaim their stake.
+    // Public feed: hide open offers past their accept window (and indexed expired).
     const nowSec = Math.floor(Date.now() / 1000);
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     where.NOT = {
-      AND: [
-        { status: "Open" },
+      OR: [
+        { status: "Expired" },
         {
-          OR: [
-            { acceptDeadline: { lt: BigInt(nowSec) } },
-            { AND: [{ acceptDeadline: null }, { createdAt: { lt: weekAgo } }] },
+          AND: [
+            { status: "Open" },
+            { acceptDeadline: { not: null, lt: BigInt(nowSec) } },
           ],
         },
       ],
