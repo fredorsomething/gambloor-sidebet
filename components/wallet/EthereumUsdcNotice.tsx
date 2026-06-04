@@ -42,7 +42,7 @@ export function EthereumUsdcNotice({
             onClick={onOpenDeposit}
             className="font-medium text-primary hover:underline"
           >
-            Add funds / bridge →
+            Add funds →
           </button>
         )}
         <Link

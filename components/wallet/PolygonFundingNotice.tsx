@@ -20,16 +20,11 @@ export function PolygonFundingNotice({
           className,
         )}
       >
-        <span className="inline-flex items-center gap-1 font-medium text-foreground">
-          <TokenIcon symbol="POL" size={14} />
-          Polygon only
-        </span>
-        {" — "}
-        <TokenSymbol symbol="USDC" size={12} />,{" "}
-        <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} />,{" "}
-        <TokenSymbol symbol="pUSD" size={12} />,{" "}
-        <TokenSymbol symbol="POL" size={12} />.
-        <span className="text-warning"> Ethereum sends may not be supported.</span>
+        <span className="font-medium text-foreground">Direct deposit on Polygon</span>
+        {" — send "}
+        <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> for markets and{" "}
+        <TokenSymbol symbol="POL" size={12} /> for gas. Other networks or tokens may
+        not be supported.
       </p>
     );
   }
@@ -45,21 +40,20 @@ export function PolygonFundingNotice({
         <TokenIcon symbol="POL" size={32} className="mt-0.5 shrink-0" />
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-sm font-semibold text-foreground">
-            Send funds on the Polygon network
+            Direct deposit on Polygon
           </p>
           <p className="text-muted-foreground">
-            Copy your wallet address below and deposit only on{" "}
+            Copy your wallet address and send on{" "}
             <span className="inline-flex items-center gap-1 font-medium text-foreground">
               <TokenIcon symbol="POL" size={14} />
               Polygon
             </span>
-            . Accepted tokens: <TokenSymbol symbol="USDC" size={12} />,{" "}
-            <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} />,{" "}
-            <TokenSymbol symbol="pUSD" size={12} />, and{" "}
+            {" only: "}
+            <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> to bet,{" "}
             <TokenSymbol symbol="POL" size={12} /> for gas.
           </p>
           <p className="rounded-lg border border-warning/50 bg-warning/15 px-2.5 py-2 font-medium text-warning">
-            Funds sent on Ethereum may not be supported!
+            Other chains (e.g. Ethereum) may not be supported.
           </p>
         </div>
       </div>

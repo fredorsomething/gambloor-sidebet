@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  useDepositAddress,
-  useFiatOnramp,
-  usePrivy,
-} from "@privy-io/react-auth";
+import { useFiatOnramp, usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
 import {
   ArrowDownUp,
@@ -12,7 +8,6 @@ import {
   Check,
   Copy,
   CreditCard,
-  Wallet,
   X,
 } from "lucide-react";
 import {
@@ -35,7 +30,6 @@ import { mainnet, polygon } from "wagmi/chains";
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
-import { PolygonFundingNotice } from "@/components/wallet/PolygonFundingNotice";
 import { WalletChainBalances } from "@/components/wallet/WalletChainBalances";
 import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
@@ -130,10 +124,12 @@ function WalletFundsModalShell({
   title,
   onClose,
   children,
+  wide = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  wide?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-[160] flex items-end justify-center md:items-center md:p-4">
@@ -146,7 +142,10 @@ function WalletFundsModalShell({
         role="dialog"
         aria-modal="true"
         aria-labelledby="wallet-funds-modal-title"
-        className="relative flex w-full max-h-[min(90dvh,100%)] flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-xl md:max-h-[min(85dvh,720px)] md:max-w-2xl md:rounded-2xl md:animate-in md:fade-in md:zoom-in-95"
+        className={cn(
+          "relative flex w-full max-h-[min(90dvh,100%)] flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-xl md:max-h-[min(85dvh,720px)] md:rounded-2xl md:animate-in md:fade-in md:zoom-in-95",
+          wide ? "md:max-w-2xl" : "md:max-w-lg",
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 md:px-5">
@@ -175,17 +174,13 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
   const { push } = useToast();
   const { getAccessToken } = usePrivy();
   const { fund: startFiatOnramp } = useFiatOnramp();
-  const { createDepositAddress } = useDepositAddress();
-  const polygonUsdc = getTokenBySymbol(polygon.id, "USDC");
   const polygonPusd = getTokenBySymbol(polygon.id, "pUSD");
 
-  const { balanceBySymbol, chainGroups, multipleWallets } =
+  const { balanceBySymbol, chainGroups, multipleWallets, polygonUsd } =
     useWalletStableBalances();
 
   const [copied, setCopied] = useState(false);
   const [onrampPending, setOnrampPending] = useState(false);
-  const [depositAddressPending, setDepositAddressPending] = useState(false);
-  const fundingBusy = onrampPending || depositAddressPending;
 
   const nativeUsdcBal = balanceBySymbol.get("USDC") ?? 0n;
   const pusdBal = balanceBySymbol.get("pUSD") ?? 0n;
@@ -248,111 +243,124 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  async function onDepositFromExternalWallet() {
-    if (!address || !polygonUsdc) return;
-    setDepositAddressPending(true);
-    try {
-      await createDepositAddress({
-        destinationChain: POLYGON_CAIP2,
-        destinationCurrency: polygonUsdc.address,
-        destinationAddress: address,
-      });
-      void logWalletNotification(
-        getAccessToken,
-        address,
-        "deposit",
-        "Deposit started",
-        "Send crypto to your Privy deposit address — funds will arrive in your wallet.",
-      );
-      onClose();
-    } catch (err) {
-      if (!isUserDismissedFundingError(err)) {
-        console.error("Privy deposit address flow failed", err);
-        const { title, description } = formatCryptoError(err, {
-          fallbackTitle: "Couldn't open deposit flow",
-        });
-        push({ title, description, variant: "danger" });
-      }
-    } finally {
-      setDepositAddressPending(false);
-    }
-  }
+  const balanceSummary =
+    polygonUsd > 0
+      ? ` · $${polygonUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })} on Polygon`
+      : "";
 
   return (
     <WalletFundsModalShell title="Add funds" onClose={onClose}>
-      <div className="grid gap-4 md:grid-cols-2 md:items-start md:gap-5">
-        <div className="space-y-3">
-          {address ? (
-            <>
-              <Button
-                className="h-auto w-full justify-start gap-2.5 py-2.5"
-                onClick={() => void onBuyWithCard()}
-                disabled={fundingBusy}
-              >
-                <CreditCard className="h-5 w-5 shrink-0" />
-                <span className="text-left">
-                  <span className="block font-semibold">
-                    {onrampPending ? "Opening…" : "Buy with card"}
-                  </span>
-                  <span className="block text-xs font-normal opacity-80">
-                    Debit, credit, Apple Pay & more
-                  </span>
-                </span>
-              </Button>
+      {!address ? (
+        <p className="text-sm text-muted-foreground">
+          Connect a wallet to add funds.
+        </p>
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">
+            Fund your wallet on Polygon — buy with card or send crypto directly.
+          </p>
 
-              <Button
-                variant="outline"
-                className="h-auto w-full justify-start gap-2.5 py-2.5"
-                onClick={() => void onDepositFromExternalWallet()}
-                disabled={fundingBusy || !polygonUsdc}
-              >
-                <Wallet className="h-5 w-5 shrink-0" />
-                <span className="text-left">
-                  <span className="block font-semibold">
-                    {depositAddressPending
-                      ? "Opening…"
-                      : "Deposit from another wallet"}
-                  </span>
-                  <span className="block text-xs font-normal opacity-80">
-                    Any chain — Privy bridges to your wallet
-                  </span>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col rounded-xl border border-border bg-muted/10 p-4">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <CreditCard className="h-5 w-5" aria-hidden />
                 </span>
-              </Button>
-
-              <div className="rounded-xl border border-border bg-muted/30 p-3">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <TokenIcon symbol="POL" size={16} />
-                  Polygon wallet address
-                </div>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <code className="min-w-0 flex-1 truncate font-mono text-sm">
-                    {shortAddr(address)}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={onCopyAddress}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-muted"
-                  >
-                    {copied ? (
-                      <Check className="h-3.5 w-3.5 text-success" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
-                    )}
-                    {copied ? "Copied" : "Copy"}
-                  </button>
+                <div>
+                  <h3 className="font-semibold leading-tight">Buy funds</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Card, debit, Apple Pay
+                  </p>
                 </div>
               </div>
-
-              <PolygonFundingNotice compact />
-
-              <p className="text-xs text-muted-foreground">
-                To bet on markets, keep{" "}
-                <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> and a
-                little <TokenSymbol symbol="POL" size={12} /> for gas.
+              <p className="mt-3 flex-1 text-xs leading-relaxed text-muted-foreground">
+                Purchase USDC on Polygon through checkout. Swap to{" "}
+                <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> before
+                placing bets if needed.
               </p>
+              <Button
+                className="mt-4 w-full"
+                onClick={() => void onBuyWithCard()}
+                disabled={onrampPending}
+              >
+                {onrampPending ? "Opening checkout…" : "Buy funds"}
+              </Button>
+            </div>
 
+            <div className="flex flex-col rounded-xl border border-primary/35 bg-primary/5 p-4">
+              <div className="flex items-center gap-3">
+                <TokenIcon symbol="POL" size={28} className="shrink-0" />
+                <div>
+                  <h3 className="font-semibold leading-tight">Direct deposit</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Polygon network only
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                Send{" "}
+                <TokenSymbol
+                  symbol={MARKET_COLLATERAL_SYMBOL}
+                  size={12}
+                  className="font-medium text-foreground"
+                />{" "}
+                (for markets) or{" "}
+                <TokenSymbol
+                  symbol="POL"
+                  size={12}
+                  className="font-medium text-foreground"
+                />{" "}
+                (for gas) to your wallet:
+              </p>
+              <code className="mt-2 block truncate rounded-lg border border-border bg-card px-2.5 py-2 font-mono text-xs">
+                {address}
+              </code>
+              <Button
+                variant="outline"
+                className="mt-3 w-full gap-2"
+                onClick={onCopyAddress}
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 text-success" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+                {copied ? "Address copied" : "Copy address"}
+              </Button>
+            </div>
+          </div>
+
+          <details className="group mt-4 rounded-xl border border-border">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium marker:content-none [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center justify-between gap-2">
+                <span>
+                  Your balances
+                  <span className="font-normal text-muted-foreground">
+                    {balanceSummary}
+                  </span>
+                </span>
+                <span className="text-xs font-normal text-muted-foreground group-open:hidden">
+                  Show
+                </span>
+                <span className="hidden text-xs font-normal text-muted-foreground group-open:inline">
+                  Hide
+                </span>
+              </span>
+            </summary>
+            <div className="border-t border-border px-4 pb-4 pt-2">
+              {multipleWallets && (
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Totals include every wallet linked to your account.
+                </p>
+              )}
+              <WalletChainBalances
+                chainGroups={chainGroups}
+                compact
+                showBridgeNotice={false}
+                emptyMessage="No balances yet."
+              />
               {(nativeUsdcBal > 0n || pusdBal > 0n) && (
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3">
                   {nativeUsdcBal > 0n && (
                     <Link
                       href="/swap?sell=USDC&buy=USDC.e"
@@ -375,31 +383,10 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
               )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Connect a wallet to add funds.
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-2 md:min-w-0">
-          <div>
-            <p className="text-sm font-medium">Your balances</p>
-            {multipleWallets && (
-              <p className="text-xs text-muted-foreground">
-                Includes every wallet linked to your account.
-              </p>
-            )}
-          </div>
-          <WalletChainBalances
-            chainGroups={chainGroups}
-            compact
-            showBridgeNotice={false}
-            emptyMessage="No balances yet."
-          />
-        </div>
-      </div>
+            </div>
+          </details>
+        </>
+      )}
     </WalletFundsModalShell>
   );
 }
@@ -647,7 +634,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const pending = sending || wait.isLoading;
 
   return (
-    <WalletFundsModalShell title="Withdraw" onClose={onClose}>
+    <WalletFundsModalShell title="Withdraw" onClose={onClose} wide>
       <p className="text-sm text-muted-foreground">
         Send tokens to any address on the network you select.
       </p>
