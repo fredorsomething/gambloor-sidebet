@@ -9,10 +9,15 @@ export const ETHEREUM_CHAIN_ID = mainnet.id;
 /** Circle USDC on Ethereum — Privy card deposits sometimes land here instead of Polygon. */
 export const ETHEREUM_USDC = {
   symbol: "USDC",
-  name: "USD Coin (Ethereum)",
+  name: "USD Coin",
   address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as Address,
   decimals: 6,
 } as const;
+
+export const CHAIN_LABELS: Record<number, string> = {
+  [ETHEREUM_CHAIN_ID]: "Ethereum",
+  [POLYGON_CHAIN_ID]: "Polygon",
+};
 
 /** Official Polygon PoS bridge (Ethereum → Polygon). */
 export const POLYGON_BRIDGE_URL =

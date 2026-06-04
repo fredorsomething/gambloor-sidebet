@@ -16,8 +16,10 @@ import { useAccount } from "wagmi";
 
 import { ERC20_ABI } from "@/lib/abi";
 import {
+  ETHEREUM_CHAIN_ID,
   ETHEREUM_USDC,
   getWalletStablecoins,
+  POLYGON_CHAIN_ID,
   type getTokens,
 } from "@/lib/chains";
 import { linkedEthereumAddresses } from "@/lib/privyWallets";
@@ -27,6 +29,26 @@ type WalletToken = ReturnType<typeof getTokens>[number];
 export type WalletStableBalanceRow = WalletToken & {
   raw: bigint;
   amount: number;
+};
+
+/** One balance line on a specific chain (Polygon or Ethereum). */
+export type WalletBalanceEntry = {
+  chainId: number;
+  chainLabel: string;
+  symbol: string;
+  raw: bigint;
+  decimals: number;
+  amount: number;
+  /** Can bet / withdraw on Sidebet without bridging */
+  onPlatform: boolean;
+};
+
+export type WalletChainGroup = {
+  chainId: number;
+  chainLabel: string;
+  onPlatform: boolean;
+  entries: WalletBalanceEntry[];
+  totalUsd: number;
 };
 
 function resolveOwners(args: {
@@ -56,7 +78,7 @@ const ethereumRpc =
   process.env.NEXT_PUBLIC_ETHEREUM_RPC ||
   "https://ethereum.publicnode.com";
 
-type FetchedBalances = {
+type PolygonFetched = {
   perToken: Map<string, bigint>;
   pol: bigint;
 };
@@ -64,7 +86,7 @@ type FetchedBalances = {
 async function fetchPolygonBalances(
   owners: Address[],
   tokens: WalletToken[],
-): Promise<FetchedBalances> {
+): Promise<PolygonFetched> {
   const client = createPublicClient({
     chain: polygon,
     transport: http(polygonRpc),
@@ -108,30 +130,123 @@ async function fetchPolygonBalances(
   return { perToken, pol };
 }
 
-async function fetchEthereumUsdc(owners: Address[]): Promise<bigint> {
+type EthereumFetched = {
+  usdc: bigint;
+  eth: bigint;
+};
+
+async function fetchEthereumBalances(owners: Address[]): Promise<EthereumFetched> {
   const client = createPublicClient({
     chain: mainnet,
     transport: http(ethereumRpc),
   });
-  let sum = 0n;
+
+  let usdc = 0n;
+  let eth = 0n;
+
   for (const owner of owners) {
-    const raw = await client.readContract({
-      address: ETHEREUM_USDC.address,
-      abi: ERC20_ABI,
-      functionName: "balanceOf",
-      args: [owner],
-    });
-    sum += raw;
+    const [usdcRaw, ethRaw] = await Promise.all([
+      client.readContract({
+        address: ETHEREUM_USDC.address,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [owner],
+      }),
+      client.getBalance({ address: owner }),
+    ]);
+    usdc += usdcRaw;
+    eth += ethRaw;
   }
-  return sum;
+
+  return { usdc, eth };
+}
+
+function buildChainGroups(args: {
+  polygonBalances: WalletStableBalanceRow[];
+  polRaw: bigint;
+  ethereumUsdc: bigint;
+  ethereumEth: bigint;
+}): WalletChainGroup[] {
+  const groups: WalletChainGroup[] = [];
+
+  const polygonEntries: WalletBalanceEntry[] = [];
+
+  for (const t of args.polygonBalances) {
+    if (t.raw <= 0n) continue;
+    polygonEntries.push({
+      chainId: POLYGON_CHAIN_ID,
+      chainLabel: "Polygon",
+      symbol: t.symbol,
+      raw: t.raw,
+      decimals: t.decimals,
+      amount: t.amount,
+      onPlatform: true,
+    });
+  }
+
+  if (args.polRaw > 0n) {
+    polygonEntries.push({
+      chainId: POLYGON_CHAIN_ID,
+      chainLabel: "Polygon",
+      symbol: "POL",
+      raw: args.polRaw,
+      decimals: 18,
+      amount: Number(formatUnits(args.polRaw, 18)),
+      onPlatform: true,
+    });
+  }
+
+  if (polygonEntries.length > 0) {
+    groups.push({
+      chainId: POLYGON_CHAIN_ID,
+      chainLabel: "Polygon",
+      onPlatform: true,
+      entries: polygonEntries,
+      totalUsd: polygonEntries.reduce((acc, e) => acc + e.amount, 0),
+    });
+  }
+
+  const ethereumEntries: WalletBalanceEntry[] = [];
+
+  if (args.ethereumUsdc > 0n) {
+    ethereumEntries.push({
+      chainId: ETHEREUM_CHAIN_ID,
+      chainLabel: "Ethereum",
+      symbol: ETHEREUM_USDC.symbol,
+      raw: args.ethereumUsdc,
+      decimals: ETHEREUM_USDC.decimals,
+      amount: Number(formatUnits(args.ethereumUsdc, ETHEREUM_USDC.decimals)),
+      onPlatform: false,
+    });
+  }
+
+  if (args.ethereumEth > 0n) {
+    ethereumEntries.push({
+      chainId: ETHEREUM_CHAIN_ID,
+      chainLabel: "Ethereum",
+      symbol: "ETH",
+      raw: args.ethereumEth,
+      decimals: 18,
+      amount: Number(formatUnits(args.ethereumEth, 18)),
+      onPlatform: false,
+    });
+  }
+
+  if (ethereumEntries.length > 0) {
+    groups.push({
+      chainId: ETHEREUM_CHAIN_ID,
+      chainLabel: "Ethereum",
+      onPlatform: false,
+      entries: ethereumEntries,
+      totalUsd: ethereumEntries.reduce((acc, e) => acc + e.amount, 0),
+    });
+  }
+
+  return groups;
 }
 
 /**
- * Polygon ERC-20 stable balances for a profile address, or the sum across every
- * Ethereum wallet linked to the signed-in Privy user (embedded + external).
- *
- * Also reads Ethereum mainnet USDC — Privy deposits often land there while POL
- * gas sits on Polygon at the same address.
+ * Multi-chain wallet balances: Polygon (platform) + Ethereum (display / bridge).
  */
 export function useWalletStableBalances(profileAddress?: string) {
   const { authenticated, user } = usePrivy();
@@ -158,7 +273,7 @@ export function useWalletStableBalances(profileAddress?: string) {
   const ownersKey = owners.map((o) => o.toLowerCase()).join(",");
 
   const {
-    data: fetched,
+    data: polygonFetched,
     isLoading: polygonLoading,
     isError: polygonError,
     refetch: refetchPolygon,
@@ -170,22 +285,22 @@ export function useWalletStableBalances(profileAddress?: string) {
   });
 
   const {
-    data: ethereumUsdcRaw = 0n,
+    data: ethereumFetched,
     isLoading: ethereumLoading,
     refetch: refetchEthereum,
   } = useQuery({
-    queryKey: ["walletBalances", "ethereum-usdc", ownersKey],
+    queryKey: ["walletBalances", "ethereum", ownersKey],
     enabled: owners.length > 0,
     refetchInterval: 12_000,
-    queryFn: () => fetchEthereumUsdc(owners),
+    queryFn: () => fetchEthereumBalances(owners),
   });
 
-  const polRaw = fetched?.pol ?? 0n;
-  const isLoading = polygonLoading || ethereumLoading;
-  const isError = polygonError;
+  const polRaw = polygonFetched?.pol ?? 0n;
+  const ethereumUsdcRaw = ethereumFetched?.usdc ?? 0n;
+  const ethereumEthRaw = ethereumFetched?.eth ?? 0n;
 
   const balances = useMemo((): WalletStableBalanceRow[] => {
-    const perToken = fetched?.perToken;
+    const perToken = polygonFetched?.perToken;
     return tokens
       .map((t) => {
         const raw = perToken?.get(t.symbol) ?? 0n;
@@ -196,7 +311,7 @@ export function useWalletStableBalances(profileAddress?: string) {
         };
       })
       .sort((a, b) => (a.raw > b.raw ? -1 : a.raw < b.raw ? 1 : 0));
-  }, [tokens, fetched?.perToken]);
+  }, [tokens, polygonFetched?.perToken]);
 
   const balanceBySymbol = useMemo(() => {
     const map = new Map<string, bigint>();
@@ -205,22 +320,42 @@ export function useWalletStableBalances(profileAddress?: string) {
     return map;
   }, [balances, polRaw]);
 
-  const multipleWallets = !profileAddress && owners.length > 1;
-
-  const ethereumUsdcAmount = Number(
-    formatUnits(ethereumUsdcRaw, ETHEREUM_USDC.decimals),
+  const chainGroups = useMemo(
+    () =>
+      buildChainGroups({
+        polygonBalances: balances,
+        polRaw,
+        ethereumUsdc: ethereumUsdcRaw,
+        ethereumEth: ethereumEthRaw,
+      }),
+    [balances, polRaw, ethereumUsdcRaw, ethereumEthRaw],
   );
+
+  const polygonUsd =
+    balances.reduce((acc, t) => acc + t.amount, 0) +
+    Number(formatUnits(polRaw, 18));
+  const ethereumUsd =
+    Number(formatUnits(ethereumUsdcRaw, ETHEREUM_USDC.decimals)) +
+    Number(formatUnits(ethereumEthRaw, 18));
+
+  const multipleWallets = !profileAddress && owners.length > 1;
 
   return {
     balances,
     balanceBySymbol,
+    chainGroups,
     polRaw,
     ethereumUsdcRaw,
-    ethereumUsdcAmount,
+    ethereumEthRaw,
+    ethereumUsdcAmount: Number(formatUnits(ethereumUsdcRaw, ETHEREUM_USDC.decimals)),
+    polygonUsd,
+    ethereumUsd,
+    totalUsd: polygonUsd + ethereumUsd,
     owners,
     multipleWallets,
-    isLoading,
-    isError,
+    isLoading: polygonLoading || ethereumLoading,
+    isError: polygonError,
+    hasEthereumBalances: ethereumUsdcRaw > 0n || ethereumEthRaw > 0n,
     refetch: () => {
       void refetchPolygon();
       void refetchEthereum();

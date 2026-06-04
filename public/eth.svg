@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 417" role="img" aria-label="Ethereum">
+  <path fill="#627EEA" d="M127.9 0 127.5 145.2 0 212.5l127.9 74.8L256 212.5z"/>
+  <path fill="#627EEA" fill-opacity=".6" d="M127.5 0v145.2l127.4 67.3L256 212.5z"/>
+  <path fill="#627EEA" d="M127.9 320.3 0 245.5l127.9 74.8 128.1-74.8z"/>
+  <path fill="#627EEA" fill-opacity=".6" d="M127.5 320.3V416l128.1-71.7z"/>
+  <path fill="#627EEA" fill-opacity=".2" d="m0 245.5 127.5 74.8V416z"/>
+</svg>

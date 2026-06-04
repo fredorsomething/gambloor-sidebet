@@ -18,15 +18,12 @@ import { useAccount, useChainId } from "wagmi";
 import { polygon } from "wagmi/chains";
 
 import { useWalletFunds } from "@/components/wallet/FundWalletModal";
-import { EthereumUsdcNotice } from "@/components/wallet/EthereumUsdcNotice";
-import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
-import { ETHEREUM_USDC } from "@/lib/chains";
-import { formatToken } from "@/lib/utils";
+import { WalletChainBalances } from "@/components/wallet/WalletChainBalances";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
 import { jsonFetch } from "@/lib/fetcher";
 import { useClickOutside } from "@/lib/useClickOutside";
-import { cn, shortAddr } from "@/lib/utils";
+import { shortAddr } from "@/lib/utils";
 
 export function WalletBalance() {
   const { ready, authenticated } = usePrivy();
@@ -42,8 +39,9 @@ export function WalletBalance() {
 
   const {
     balances: stableBalances,
+    chainGroups,
     polRaw,
-    ethereumUsdcRaw,
+    ethereumUsd,
     multipleWallets,
     isError: balancesError,
   } = useWalletStableBalances();
@@ -72,16 +70,13 @@ export function WalletBalance() {
 
   const onPolygon = chainId === polygon.id;
 
-  const polygonUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
+  const polygonStablesUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
   const nativeUsdc = stableBalances.find((t) => t.symbol === "USDC");
   const pusdBal = stableBalances.find((t) => t.symbol === "pUSD");
   const polAmount = Number(formatUnits(polRaw, 18));
   const polUsdValue = polAmount * (polPrice?.usdPerPol ?? 0);
-  const ethereumUsdcUsd = Number(
-    formatUnits(ethereumUsdcRaw, ETHEREUM_USDC.decimals),
-  );
   const grandTotal =
-    polygonUsd + ethereumUsdcUsd + positionsValue + polUsdValue;
+    polygonStablesUsd + ethereumUsd + positionsValue + polUsdValue;
   const lowGas = polAmount === 0;
 
   const onCopy = () => {
@@ -136,54 +131,19 @@ export function WalletBalance() {
           </span>
         </Link>
 
-        <div className="border-t border-border pt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Stablecoins
+        <div className="border-t border-border pt-3">
+          <WalletChainBalances
+            chainGroups={chainGroups}
+            onOpenDeposit={() => {
+              openFund();
+              setMenuOpen(false);
+            }}
+            emptyMessage="No balances on Polygon or Ethereum."
+          />
         </div>
-        <div className="mt-2 space-y-1.5">
-          {stableBalances.map((t) => (
-            <div
-              key={t.symbol}
-              className="flex items-center justify-between text-sm"
-            >
-              <TokenSymbol symbol={t.symbol} className="text-muted-foreground" />
-              <span
-                className={cn(
-                  "font-mono tabular-nums",
-                  t.raw > 0n && "font-semibold text-foreground",
-                )}
-              >
-                {t.amount.toLocaleString(undefined, {
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {ethereumUsdcRaw > 0n && (
-          <div className="mt-3 border-t border-border pt-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <TokenSymbol symbol="USDC" size={14} />
-                <span className="text-[10px]">Ethereum</span>
-              </span>
-              <span className="font-mono tabular-nums text-warning">
-                {formatToken(ethereumUsdcRaw, ETHEREUM_USDC.decimals, 2)}
-              </span>
-            </div>
-            <EthereumUsdcNotice
-              className="mt-2"
-              amountLabel={formatToken(ethereumUsdcRaw, ETHEREUM_USDC.decimals, 2)}
-              onOpenDeposit={() => {
-                openFund();
-                setMenuOpen(false);
-              }}
-            />
-          </div>
-        )}
 
         {((nativeUsdc?.raw ?? 0n) > 0n || (pusdBal?.raw ?? 0n) > 0n) && (
-          <div className="mt-2 space-y-1 border-t border-border pt-2">
+          <div className="mt-2 space-y-1">
             {(nativeUsdc?.raw ?? 0n) > 0n && (
               <Link
                 href="/swap?sell=USDC&buy=USDC.e"
@@ -206,34 +166,6 @@ export function WalletBalance() {
             )}
           </div>
         )}
-
-        <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <TokenIcon symbol="POL" size={14} />
-            POL
-          </span>
-          <span className="text-right">
-            <span
-              className={cn(
-                "block font-mono tabular-nums",
-                lowGas && "text-warning",
-              )}
-            >
-              {polAmount.toLocaleString(undefined, {
-                maximumFractionDigits: 4,
-              })}
-            </span>
-            {polUsdValue > 0 && (
-              <span className="block text-xs tabular-nums text-muted-foreground">
-                ≈ $
-                {polUsdValue.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-            )}
-          </span>
-        </div>
 
         {multipleWallets && (
           <p className="mt-2 text-[11px] text-muted-foreground">
@@ -329,7 +261,7 @@ export function WalletBalance() {
           >
             {menuContent}
           </MobileBottomSheet>
-          <div className="absolute right-0 top-full z-[120] mt-2 hidden w-72 overflow-hidden rounded-xl border border-border bg-card shadow-xl animate-in fade-in slide-in-from-top-1 md:block">
+          <div className="absolute right-0 top-full z-[120] mt-2 hidden w-80 max-h-[min(80dvh,32rem)] overflow-y-auto rounded-xl border border-border bg-card shadow-xl animate-in fade-in slide-in-from-top-1 md:block">
             {menuContent}
           </div>
         </>
