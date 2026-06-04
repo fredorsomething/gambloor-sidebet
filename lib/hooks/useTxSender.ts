@@ -13,7 +13,14 @@ import {
   type Hex,
 } from "viem";
 import { useAccount, useSendTransaction } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { mainnet, polygon } from "wagmi/chains";
+
+import { ETHEREUM_CHAIN_ID, POLYGON_CHAIN_ID } from "@/lib/chains";
+
+function resolveTxChainId(chainId?: number) {
+  const id = chainId ?? POLYGON_CHAIN_ID;
+  return id === ETHEREUM_CHAIN_ID ? mainnet.id : polygon.id;
+}
 
 type RawTx = {
   to: Address;
@@ -34,6 +41,8 @@ type WriteArgs = {
 export type SendTxOptions = {
   /** When true, Privy shows its transaction confirmation modal (overrides provider default). */
   showWalletUIs?: boolean;
+  /** Target chain for the transaction (defaults to Polygon). */
+  chainId?: number;
 };
 
 function isPrivyEmbeddedWallet(
@@ -91,11 +100,12 @@ export function useTxSender() {
   const sendTx = useCallback(
     async (tx: RawTx, opts?: SendTxOptions): Promise<Hex> => {
       const showWalletUIs = opts?.showWalletUIs ?? false;
+      const chainId = resolveTxChainId(opts?.chainId);
       if (isEmbedded && address) {
         const { hash } = await privySend(
           {
             to: tx.to,
-            chainId: polygon.id,
+            chainId,
             data: tx.data,
             value: tx.value ?? 0n,
             gasLimit: tx.gas,
@@ -105,7 +115,7 @@ export function useTxSender() {
         return hash;
       }
       return wagmiSend.sendTransactionAsync({
-        chainId: polygon.id,
+        chainId,
         account: address,
         to: tx.to,
         data: tx.data,

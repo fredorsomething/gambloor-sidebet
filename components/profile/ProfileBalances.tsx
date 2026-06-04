@@ -28,5 +28,7 @@ export function ProfileBalances({ address }: { address: string }) {
     );
   }
 
-  return <WalletChainBalances chainGroups={chainGroups} />;
+  return (
+    <WalletChainBalances chainGroups={chainGroups} showBridgeNotice={false} />
+  );
 }

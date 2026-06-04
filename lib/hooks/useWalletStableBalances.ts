@@ -39,7 +39,7 @@ export type WalletBalanceEntry = {
   raw: bigint;
   decimals: number;
   amount: number;
-  /** Can bet / withdraw on Sidebet without bridging */
+  /** Can bet / swap on Sidebet without bridging (Polygon only) */
   onPlatform: boolean;
 };
 

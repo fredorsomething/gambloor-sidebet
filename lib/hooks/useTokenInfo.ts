@@ -2,8 +2,9 @@
 
 import { useReadContract } from "wagmi";
 import type { Address } from "viem";
+import { mainnet, polygon } from "wagmi/chains";
 import { ERC20_ABI } from "@/lib/abi";
-import { POLYGON_CHAIN_ID } from "@/lib/chains";
+import { ETHEREUM_CHAIN_ID, POLYGON_CHAIN_ID } from "@/lib/chains";
 
 /**
  * Live decimals/symbol/balance/allowance for an arbitrary ERC-20.
@@ -16,14 +17,19 @@ export function useTokenInfo(args: {
   token?: Address;
   owner?: Address;
   spender?: Address;
+  chainId?: number;
 }) {
   const enabled = Boolean(args.token);
+  const chainId =
+    (args.chainId ?? POLYGON_CHAIN_ID) === ETHEREUM_CHAIN_ID
+      ? mainnet.id
+      : polygon.id;
 
   const decimalsQ = useReadContract({
     address: args.token,
     abi: ERC20_ABI,
     functionName: "decimals",
-    chainId: POLYGON_CHAIN_ID,
+    chainId,
     query: { enabled, refetchInterval: 30_000 },
   });
 
@@ -31,7 +37,7 @@ export function useTokenInfo(args: {
     address: args.token,
     abi: ERC20_ABI,
     functionName: "symbol",
-    chainId: POLYGON_CHAIN_ID,
+    chainId,
     query: { enabled, refetchInterval: 60_000 },
   });
 
@@ -40,7 +46,7 @@ export function useTokenInfo(args: {
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: args.owner ? [args.owner] : undefined,
-    chainId: POLYGON_CHAIN_ID,
+    chainId,
     query: { enabled: enabled && !!args.owner, refetchInterval: 8_000 },
   });
 
@@ -49,7 +55,7 @@ export function useTokenInfo(args: {
     abi: ERC20_ABI,
     functionName: "allowance",
     args: args.owner && args.spender ? [args.owner, args.spender] : undefined,
-    chainId: POLYGON_CHAIN_ID,
+    chainId,
     query: {
       enabled: enabled && !!args.owner && !!args.spender,
       refetchInterval: 8_000,

@@ -1,8 +1,12 @@
 "use client";
 
 import { EthereumUsdcNotice } from "@/components/wallet/EthereumUsdcNotice";
-import { TokenSymbol } from "@/components/ui/TokenIcon";
-import { ETHEREUM_CHAIN_ID, ETHEREUM_USDC } from "@/lib/chains";
+import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
+import {
+  ETHEREUM_CHAIN_ID,
+  ETHEREUM_USDC,
+  POLYGON_CHAIN_ID,
+} from "@/lib/chains";
 import type { WalletChainGroup } from "@/lib/hooks/useWalletStableBalances";
 import { cn, formatToken } from "@/lib/utils";
 
@@ -38,16 +42,19 @@ export function WalletChainBalances({
           <div className="mb-1.5 flex items-center justify-between">
             <span
               className={cn(
-                "text-[11px] font-medium uppercase tracking-wide",
+                "inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide",
                 group.onPlatform
                   ? "text-muted-foreground"
                   : "text-warning",
               )}
             >
+              {group.chainId === POLYGON_CHAIN_ID && (
+                <TokenIcon symbol="POL" size={14} />
+              )}
               {group.chainLabel}
               {!group.onPlatform && (
                 <span className="ml-1.5 normal-case text-[10px] font-normal">
-                  (view only)
+                  (withdraw on {group.chainLabel})
                 </span>
               )}
             </span>

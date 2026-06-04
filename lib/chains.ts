@@ -93,12 +93,17 @@ export function getWalletStablecoins(_chainId?: number) {
 }
 
 export type WithdrawAsset = {
+  chainId: number;
   symbol: string;
   decimals: number;
   address?: Address;
 };
 
-/** Withdraw picker options: all wallet stables plus POL (USDC.e first). */
+export function withdrawAssetKey(asset: WithdrawAsset): string {
+  return `${asset.chainId}:${asset.symbol}`;
+}
+
+/** Polygon withdraw picker: wallet stables plus POL (USDC.e first). */
 export function getWithdrawAssets(_chainId?: number): WithdrawAsset[] {
   const bySymbol = new Map(
     getWalletStablecoins(_chainId).map((t) => [t.symbol, t] as const),
@@ -106,14 +111,42 @@ export function getWithdrawAssets(_chainId?: number): WithdrawAsset[] {
   const stables = WALLET_STABLE_SYMBOLS.map((sym) => bySymbol.get(sym))
     .filter((t): t is NonNullable<typeof t> => !!t)
     .map((t) => ({
+      chainId: POLYGON_CHAIN_ID,
       symbol: t.symbol,
       decimals: t.decimals,
       address: t.address,
     }));
   return [
     ...stables,
-    { symbol: "POL", decimals: 18, address: undefined },
+    {
+      chainId: POLYGON_CHAIN_ID,
+      symbol: "POL",
+      decimals: 18,
+      address: undefined,
+    },
   ];
+}
+
+/** Ethereum mainnet — funds sent to the same address on the wrong chain. */
+export function getEthereumWithdrawAssets(): WithdrawAsset[] {
+  return [
+    {
+      chainId: ETHEREUM_CHAIN_ID,
+      symbol: ETHEREUM_USDC.symbol,
+      decimals: ETHEREUM_USDC.decimals,
+      address: ETHEREUM_USDC.address,
+    },
+    {
+      chainId: ETHEREUM_CHAIN_ID,
+      symbol: "ETH",
+      decimals: 18,
+      address: undefined,
+    },
+  ];
+}
+
+export function getAllWithdrawAssets(): WithdrawAsset[] {
+  return [...getWithdrawAssets(), ...getEthereumWithdrawAssets()];
 }
 
 /** CLOB markets settle only in bridged USDC.e on Polygon. */
@@ -149,10 +182,20 @@ export function resolveTokenSymbol(
   return storedSymbol?.trim() || fallback;
 }
 
-export function explorerTx(_chainId: number, hash: string) {
+export function explorerTx(chainId: number, hash: string) {
+  if (chainId === ETHEREUM_CHAIN_ID) {
+    return `https://etherscan.io/tx/${hash}`;
+  }
   return `https://polygonscan.com/tx/${hash}`;
 }
 
-export function explorerAddress(_chainId: number, addr: string) {
+export function explorerAddress(chainId: number, addr: string) {
+  if (chainId === ETHEREUM_CHAIN_ID) {
+    return `https://etherscan.io/address/${addr}`;
+  }
   return `https://polygonscan.com/address/${addr}`;
+}
+
+export function explorerLabel(chainId: number): string {
+  return chainId === ETHEREUM_CHAIN_ID ? "Etherscan" : "Polygonscan";
 }

@@ -27,10 +27,13 @@ export function EthereumUsdcNotice({
       <p className="font-medium text-foreground">
         <TokenSymbol symbol="USDC" size={12} /> on Ethereum: {amountLabel}
       </p>
-      <p className="mt-1 text-muted-foreground">
-        Sidebet only uses Polygon. This USDC is on Ethereum — you cannot bet,
-        swap, or withdraw it here until it is on Polygon (native USDC at the same
-        address).
+      <p className="mt-2 rounded-lg border border-warning/50 bg-warning/15 px-2.5 py-2 font-medium text-warning">
+        Funds sent on Ethereum may not be supported!
+      </p>
+      <p className="mt-2 text-muted-foreground">
+        Sidebet markets use Polygon only. To use this USDC for betting, bridge to
+        Polygon — or open <span className="font-medium text-foreground">Withdraw</span>{" "}
+        and choose Ethereum to send it out on mainnet.
       </p>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
         {onOpenDeposit && (
@@ -39,7 +42,7 @@ export function EthereumUsdcNotice({
             onClick={onOpenDeposit}
             className="font-medium text-primary hover:underline"
           >
-            Deposit / bridge via Privy →
+            Add funds / bridge →
           </button>
         )}
         <Link

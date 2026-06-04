@@ -27,30 +27,33 @@ import { encodeFunctionData, isAddress, parseUnits, type Address, type Hex } fro
 import {
   useAccount,
   useBalance,
-  useReadContracts,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { mainnet, polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
+import { PolygonFundingNotice } from "@/components/wallet/PolygonFundingNotice";
 import { WalletChainBalances } from "@/components/wallet/WalletChainBalances";
 import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
 import {
-  ETHEREUM_USDC,
+  CHAIN_LABELS,
+  ETHEREUM_CHAIN_ID,
   getTokenBySymbol,
   getWalletStablecoins,
-  getWithdrawAssets,
+  getAllWithdrawAssets,
   MARKET_COLLATERAL_SYMBOL,
+  POLYGON_CHAIN_ID,
+  withdrawAssetKey,
+  type WithdrawAsset,
 } from "@/lib/chains";
 import { formatCryptoError } from "@/lib/cryptoErrors";
-import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useEnsureChain } from "@/lib/hooks/useEnsureChain";
 import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { logWalletNotification } from "@/lib/hooks/useNotifications";
-import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { cn, formatToken, shortAddr } from "@/lib/utils";
 
 type ModalMode = "fund" | "withdraw" | null;
@@ -134,17 +137,11 @@ const DEPOSIT_TOKENS = () => {
 
 function DepositBettingNote() {
   return (
-    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed text-muted-foreground">
+    <div className="rounded-xl border border-border bg-muted/20 p-3 text-xs leading-relaxed text-muted-foreground">
       <p>
         <span className="font-medium text-foreground">To bet on markets:</span> keep{" "}
-        <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> in your wallet, plus a
-        little <TokenSymbol symbol="POL" size={12} /> for gas. Card deposits arrive as native{" "}
-        <TokenSymbol symbol="USDC" size={12} /> — swap to {MARKET_COLLATERAL_SYMBOL} before
-        trading.
-      </p>
-      <p className="mt-2">
-        You can still hold, swap, and withdraw <TokenSymbol symbol="USDC" size={12} /> and{" "}
-        <TokenSymbol symbol="pUSD" size={12} /> from this wallet.
+        <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> plus a little{" "}
+        <TokenSymbol symbol="POL" size={12} /> for gas on Polygon.
       </p>
     </div>
   );
@@ -359,28 +356,25 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
             emptyMessage="No balances yet."
           />
 
-          <div>
-            <p className="text-sm font-medium">Receive on Polygon</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Copy your address for USDC, USDC.e, pUSD, or POL on Polygon.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {DEPOSIT_TOKENS().map((t) => (
-                <DepositTokenTile
-                  key={t.symbol}
-                  symbol={t.symbol}
-                  balance={balanceBySymbol.get(t.symbol) ?? 0n}
-                  decimals={t.decimals}
-                  onCopy={onCopyAddress}
-                />
-              ))}
-            </div>
+          <PolygonFundingNotice />
+
+          <div className="grid grid-cols-2 gap-2">
+            {DEPOSIT_TOKENS().map((t) => (
+              <DepositTokenTile
+                key={t.symbol}
+                symbol={t.symbol}
+                balance={balanceBySymbol.get(t.symbol) ?? 0n}
+                decimals={t.decimals}
+                onCopy={onCopyAddress}
+              />
+            ))}
           </div>
         </div>
 
         <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3">
-          <div className="text-xs font-medium text-muted-foreground">
-            Your wallet address
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <TokenIcon symbol="POL" size={16} />
+            Your Polygon wallet address
           </div>
           <div className="mt-1.5 flex items-center gap-2">
             <code className="flex-1 truncate font-mono text-sm">
@@ -430,68 +424,144 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function withdrawBalanceForAsset(
+  asset: WithdrawAsset,
+  balanceBySymbol: Map<string, bigint>,
+  ethereumUsdcRaw: bigint,
+  ethereumEthRaw: bigint,
+): bigint {
+  if (asset.chainId === ETHEREUM_CHAIN_ID) {
+    if (asset.symbol === "USDC") return ethereumUsdcRaw;
+    if (asset.symbol === "ETH") return ethereumEthRaw;
+    return 0n;
+  }
+  if (asset.symbol === "POL") return balanceBySymbol.get("POL") ?? 0n;
+  return balanceBySymbol.get(asset.symbol) ?? 0n;
+}
+
+function isNativeWithdrawAsset(asset: WithdrawAsset): boolean {
+  return !asset.address;
+}
+
+function WithdrawAssetSection({
+  chainId,
+  label,
+  assets,
+  selectedKey,
+  from,
+  onSelect,
+  balanceBySymbol,
+  ethereumUsdcRaw,
+  ethereumEthRaw,
+}: {
+  chainId: number;
+  label: string;
+  assets: WithdrawAsset[];
+  selectedKey: string;
+  from?: string;
+  onSelect: (key: string) => void;
+  balanceBySymbol: Map<string, bigint>;
+  ethereumUsdcRaw: bigint;
+  ethereumEthRaw: bigint;
+}) {
+  const sectionAssets = assets.filter((a) => a.chainId === chainId);
+  if (sectionAssets.length === 0) return null;
+
+  return (
+    <div>
+      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {chainId === POLYGON_CHAIN_ID && <TokenIcon symbol="POL" size={14} />}
+        {chainId === ETHEREUM_CHAIN_ID && <TokenIcon symbol="ETH" size={14} />}
+        {label}
+      </p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {sectionAssets.map((o) => {
+          const key = withdrawAssetKey(o);
+          const optBal = withdrawBalanceForAsset(
+            o,
+            balanceBySymbol,
+            ethereumUsdcRaw,
+            ethereumEthRaw,
+          );
+          const displaySymbol =
+            o.chainId === ETHEREUM_CHAIN_ID && o.symbol === "USDC"
+              ? "USDC"
+              : o.symbol;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onSelect(key)}
+              className={cn(
+                "flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-sm font-medium transition-colors",
+                selectedKey === key
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border text-muted-foreground hover:bg-muted/60",
+              )}
+            >
+              <TokenIcon symbol={displaySymbol} size={20} />
+              {displaySymbol}
+              {from && (
+                <span className="font-mono text-[10px] font-normal tabular-nums opacity-80">
+                  {formatToken(optBal, o.decimals, 4)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const { address: from } = useAccount();
   const { push } = useToast();
   const { getAccessToken } = usePrivy();
-  const { openFund } = useWalletFunds();
-  const ensurePolygon = useEnsurePolygon();
-  const { chainGroups, hasEthereumBalances } = useWalletStableBalances();
-  const options = useMemo(() => getWithdrawAssets(), []);
+  const options = useMemo(() => getAllWithdrawAssets(), []);
+  const defaultKey = withdrawAssetKey(
+    options.find((o) => o.symbol === MARKET_COLLATERAL_SYMBOL) ?? options[0]!,
+  );
 
-  const [symbol, setSymbol] = useState(options[0]?.symbol ?? "USDC.e");
-  const asset = options.find((o) => o.symbol === symbol) ?? options[0];
-  const isPol = symbol === "POL";
+  const [selectedKey, setSelectedKey] = useState(defaultKey);
+  const asset =
+    options.find((o) => withdrawAssetKey(o) === selectedKey) ?? options[0];
+  const chainId = asset?.chainId ?? POLYGON_CHAIN_ID;
+  const receiptChainId =
+    chainId === ETHEREUM_CHAIN_ID ? mainnet.id : polygon.id;
+  const ensureChain = useEnsureChain(chainId);
+  const symbol = asset?.symbol ?? "USDC.e";
+  const isNative = asset ? isNativeWithdrawAsset(asset) : false;
 
-  const { data: optionBalances } = useReadContracts({
-    allowFailure: true,
-    contracts: from
-      ? options
-          .filter((o) => o.address)
-          .map((o) => ({
-            address: o.address!,
-            abi: ERC20_ABI,
-            functionName: "balanceOf" as const,
-            args: [from],
-            chainId: polygon.id,
-          }))
-      : [],
-    query: { enabled: !!from, refetchInterval: 12_000 },
-  });
+  const {
+    balanceBySymbol,
+    ethereumUsdcRaw,
+    ethereumEthRaw,
+    hasEthereumBalances,
+  } = useWalletStableBalances();
 
-  const balanceByOption = useMemo(() => {
-    const map = new Map<string, bigint>();
-    let ercIdx = 0;
-    for (const o of options) {
-      if (!o.address) continue;
-      map.set(
-        o.symbol,
-        (optionBalances?.[ercIdx]?.result as bigint | undefined) ?? 0n,
-      );
-      ercIdx += 1;
-    }
-    return map;
-  }, [options, optionBalances]);
+  const balance = asset
+    ? withdrawBalanceForAsset(
+        asset,
+        balanceBySymbol,
+        ethereumUsdcRaw,
+        ethereumEthRaw,
+      )
+    : 0n;
+  const decimals = asset?.decimals ?? 6;
+  const chainLabel = CHAIN_LABELS[chainId] ?? "network";
+
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
-
-  const info = useTokenInfo({
-    token: asset?.address,
-    owner: from,
-  });
-  const native = useBalance({
-    address: from,
-    chainId: polygon.id,
-    query: { enabled: !!from, refetchInterval: 12_000 },
-  });
-  const balance = isPol ? native.data?.value ?? 0n : info.balance ?? 0n;
-  const decimals = asset?.decimals ?? 6;
 
   const { sendTx } = useTxSender();
   const [txHash, setTxHash] = useState<Hex>();
   const [sending, setSending] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const wait = useWaitForTransactionReceipt({ hash: txHash });
+  const wait = useWaitForTransactionReceipt({
+    hash: txHash,
+    chainId: receiptChainId,
+  });
 
   const toValid = isAddress(to.trim());
   let amountWei = 0n;
@@ -521,26 +591,35 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
         from,
         "withdrawal",
         "Withdrawal sent",
-        `You withdrew ${amount} ${symbol}.`,
+        `You withdrew ${amount} ${symbol} on ${chainLabel}.`,
       );
     }
-  }, [wait.isSuccess, confirmed, from, getAccessToken, amount, symbol]);
+  }, [
+    wait.isSuccess,
+    confirmed,
+    from,
+    getAccessToken,
+    amount,
+    symbol,
+    chainLabel,
+  ]);
 
-  if (confirmed && txHash) {
+  if (confirmed && txHash && asset) {
     return (
       <TxSuccessDialog
         title="Withdrawal sent!"
-        description={`Sent ${amount} ${symbol} to ${shortAddr(to.trim())}.`}
+        description={`Sent ${amount} ${symbol} on ${chainLabel} to ${shortAddr(to.trim())}.`}
         txHash={txHash}
-        chainId={polygon.id}
+        chainId={asset.chainId}
         onClose={onClose}
       />
     );
   }
 
   function setMax() {
-    if (isPol) {
-      const reserve = parseUnits("0.01", 18);
+    if (!asset) return;
+    if (isNative) {
+      const reserve = parseUnits(chainId === ETHEREUM_CHAIN_ID ? "0.002" : "0.01", 18);
       const max = balance > reserve ? balance - reserve : 0n;
       setAmount(formatToken(max, decimals, 6));
       return;
@@ -553,19 +632,25 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
     const dest = to.trim() as Address;
     setSending(true);
     try {
-      await ensurePolygon();
+      await ensureChain();
       let hash: Hex;
-      if (isPol) {
-        hash = await sendTx({ to: dest, value: amountWei });
+      if (isNative) {
+        hash = await sendTx(
+          { to: dest, value: amountWei },
+          { chainId: asset.chainId },
+        );
       } else {
-        hash = await sendTx({
-          to: asset.address as Address,
-          data: encodeFunctionData({
-            abi: ERC20_ABI,
-            functionName: "transfer",
-            args: [dest, amountWei],
-          }),
-        });
+        hash = await sendTx(
+          {
+            to: asset.address as Address,
+            data: encodeFunctionData({
+              abi: ERC20_ABI,
+              functionName: "transfer",
+              args: [dest, amountWei],
+            }),
+          },
+          { chainId: asset.chainId },
+        );
       }
       setTxHash(hash);
       push({ title: "Withdrawal submitted", description: "Waiting for confirmation…" });
@@ -600,44 +685,40 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          Send from your wallet to an external Polygon address.
+          Send tokens to any address on the network you select below.
         </p>
 
         {hasEthereumBalances && (
-          <p className="mt-4 text-xs text-muted-foreground">
-            Withdrawals only send from Polygon. Bridge Ethereum USDC to Polygon
-            first (Add funds → Deposit from another wallet or Polygon bridge).
+          <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+            You have funds on Ethereum (e.g. from a card deposit). Select
+            Ethereum below to withdraw them — they are not on Polygon until you
+            bridge.
           </p>
         )}
 
-        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {options.map((o) => {
-            const optBal =
-              o.symbol === "POL"
-                ? native.data?.value ?? 0n
-                : balanceByOption.get(o.symbol) ?? 0n;
-            return (
-              <button
-                key={o.symbol}
-                type="button"
-                onClick={() => setSymbol(o.symbol)}
-                className={cn(
-                  "flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-sm font-medium transition-colors",
-                  symbol === o.symbol
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border text-muted-foreground hover:bg-muted/60",
-                )}
-              >
-                <TokenIcon symbol={o.symbol} size={20} />
-                {o.symbol}
-                {from && (
-                  <span className="font-mono text-[10px] font-normal tabular-nums opacity-80">
-                    {formatToken(optBal, o.decimals, 4)}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div className="mt-5 space-y-4">
+          <WithdrawAssetSection
+            chainId={POLYGON_CHAIN_ID}
+            label={CHAIN_LABELS[POLYGON_CHAIN_ID] ?? "Polygon"}
+            assets={options}
+            selectedKey={selectedKey}
+            from={from}
+            onSelect={setSelectedKey}
+            balanceBySymbol={balanceBySymbol}
+            ethereumUsdcRaw={ethereumUsdcRaw}
+            ethereumEthRaw={ethereumEthRaw}
+          />
+          <WithdrawAssetSection
+            chainId={ETHEREUM_CHAIN_ID}
+            label={CHAIN_LABELS[ETHEREUM_CHAIN_ID] ?? "Ethereum"}
+            assets={options}
+            selectedKey={selectedKey}
+            from={from}
+            onSelect={setSelectedKey}
+            balanceBySymbol={balanceBySymbol}
+            ethereumUsdcRaw={ethereumUsdcRaw}
+            ethereumEthRaw={ethereumEthRaw}
+          />
         </div>
 
         <div className="mt-4">
@@ -657,7 +738,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
             spellCheck={false}
           />
           {to.trim() && !toValid && (
-            <p className="mt-1.5 text-xs text-danger">Enter a valid Polygon address.</p>
+            <p className="mt-1.5 text-xs text-danger">Enter a valid address.</p>
           )}
         </div>
 
@@ -683,7 +764,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
             placeholder="0.00"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Balance: {formatToken(balance, decimals, 4)} {symbol}
+            Balance on {chainLabel}: {formatToken(balance, decimals, 4)} {symbol}
           </p>
           {overBalance && (
             <p className="mt-1 text-xs text-danger">Amount exceeds your balance.</p>
@@ -695,7 +776,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
           {pending
             ? "Sending…"
             : amountWei > 0n && toValid
-              ? `Withdraw ${amount} ${symbol}`
+              ? `Withdraw ${amount} ${symbol} on ${chainLabel}`
               : "Enter address and amount"}
         </Button>
 

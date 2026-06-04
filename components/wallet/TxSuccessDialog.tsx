@@ -4,7 +4,7 @@ import { CheckCircle2, ExternalLink, X } from "lucide-react";
 import type { Hex } from "viem";
 
 import { Button } from "@/components/ui/button";
-import { explorerTx } from "@/lib/chains";
+import { explorerLabel, explorerTx } from "@/lib/chains";
 
 export function TxSuccessDialog({
   title,
@@ -54,7 +54,7 @@ export function TxSuccessDialog({
             rel="noreferrer"
             className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           >
-            View on Polygonscan
+            View on {explorerLabel(chainId)}
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
           <Button className="mt-5 w-full" onClick={onClose}>
