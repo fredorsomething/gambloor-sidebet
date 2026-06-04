@@ -1,13 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { useBalance, useChainId, useReadContracts } from "wagmi";
-import type { Address } from "viem";
-import { polygon } from "wagmi/chains";
-
 import { TokenSymbol } from "@/components/ui/TokenIcon";
-import { ERC20_ABI } from "@/lib/abi";
-import { getWalletStablecoins } from "@/lib/chains";
+import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
 import { formatToken } from "@/lib/utils";
 
 type BalanceRow = {
@@ -16,61 +11,31 @@ type BalanceRow = {
 };
 
 export function ProfileBalances({ address }: { address: string }) {
-  const chainId = useChainId();
-  const owner = address as Address;
-  const onPolygon = chainId === polygon.id;
-  const tokens = getWalletStablecoins(polygon.id);
-
-  const { data: erc20Data, isLoading: erc20Loading } = useReadContracts({
-    allowFailure: true,
-    contracts: tokens.map((t) => ({
-      address: t.address,
-      abi: ERC20_ABI,
-      functionName: "balanceOf" as const,
-      args: [owner],
-      chainId: polygon.id,
-    })),
-    query: { enabled: !!address, refetchInterval: 15_000 },
-  });
-
-  const { data: pol, isLoading: polLoading } = useBalance({
-    address: owner,
-    chainId: polygon.id,
-    query: { enabled: !!address, refetchInterval: 15_000 },
-  });
+  const { balances, polRaw, isLoading, isError } =
+    useWalletStableBalances(address);
 
   const rows = useMemo(() => {
     const out: BalanceRow[] = [];
 
-    const polBal = pol?.value ?? 0n;
-    if (polBal > 0n) {
+    if (polRaw > 0n) {
       out.push({
         symbol: "POL",
-        amount: formatToken(polBal, 18, 4),
+        amount: formatToken(polRaw, 18, 4),
       });
     }
 
-    tokens.forEach((t, i) => {
-      const raw = (erc20Data?.[i]?.result as bigint | undefined) ?? 0n;
-      if (raw <= 0n) return;
+    for (const t of balances) {
+      if (t.raw <= 0n) continue;
       out.push({
         symbol: t.symbol,
-        amount: formatToken(raw, t.decimals, 2),
+        amount: formatToken(t.raw, t.decimals, 2),
       });
-    });
+    }
 
     return out;
-  }, [pol?.value, tokens, erc20Data]);
+  }, [balances, polRaw]);
 
-  if (!onPolygon) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Switch to Polygon to view this wallet&apos;s balances.
-      </p>
-    );
-  }
-
-  if (erc20Loading || polLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-2">
         {[1, 2].map((i) => (
@@ -81,6 +46,14 @@ export function ProfileBalances({ address }: { address: string }) {
           />
         ))}
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Could not load Polygon balances right now.
+      </p>
     );
   }
 

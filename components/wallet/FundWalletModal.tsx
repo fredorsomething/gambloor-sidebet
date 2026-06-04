@@ -45,6 +45,7 @@ import {
 } from "@/lib/chains";
 import { formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { logWalletNotification } from "@/lib/hooks/useNotifications";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
@@ -179,43 +180,15 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
   const { getAccessToken } = usePrivy();
   const { fund: startFiatOnramp } = useFiatOnramp();
   const { createDepositAddress } = useDepositAddress();
-  const tokens = useMemo(() => getWalletStablecoins(), []);
   const polygonUsdc = getTokenBySymbol(polygon.id, "USDC");
   const polygonPusd = getTokenBySymbol(polygon.id, "pUSD");
 
-  const { data: stableBalances } = useReadContracts({
-    allowFailure: true,
-    contracts: address
-      ? tokens.map((t) => ({
-          address: t.address,
-          abi: ERC20_ABI,
-          functionName: "balanceOf" as const,
-          args: [address],
-          chainId: polygon.id,
-        }))
-      : [],
-    query: { enabled: !!address, refetchInterval: 12_000 },
-  });
-
-  const { data: polBalance } = useBalance({
-    address,
-    chainId: polygon.id,
-    query: { enabled: !!address, refetchInterval: 12_000 },
-  });
+  const { balanceBySymbol, multipleWallets } = useWalletStableBalances();
 
   const [copied, setCopied] = useState(false);
   const [onrampPending, setOnrampPending] = useState(false);
   const [depositAddressPending, setDepositAddressPending] = useState(false);
   const fundingBusy = onrampPending || depositAddressPending;
-
-  const balanceBySymbol = useMemo(() => {
-    const map = new Map<string, bigint>();
-    tokens.forEach((t, i) => {
-      map.set(t.symbol, (stableBalances?.[i]?.result as bigint | undefined) ?? 0n);
-    });
-    map.set("POL", polBalance?.value ?? 0n);
-    return map;
-  }, [tokens, stableBalances, polBalance?.value]);
 
   const nativeUsdcBal = balanceBySymbol.get("USDC") ?? 0n;
   const pusdBal = balanceBySymbol.get("pUSD") ?? 0n;
@@ -371,6 +344,8 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           <p className="text-sm font-medium">Or send directly on Polygon</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Copy your address and send tokens on Polygon.
+            {multipleWallets &&
+              " Balances below include every wallet linked to your account."}
           </p>
 
           <div className="mt-3 grid grid-cols-2 gap-2">

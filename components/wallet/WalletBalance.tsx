@@ -14,14 +14,13 @@ import {
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { formatUnits } from "viem";
-import { useAccount, useBalance, useChainId, useReadContracts } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { polygon } from "wagmi/chains";
 
 import { useWalletFunds } from "@/components/wallet/FundWalletModal";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
-import { ERC20_ABI } from "@/lib/abi";
-import { getWalletStablecoins } from "@/lib/chains";
+import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
 import { jsonFetch } from "@/lib/fetcher";
 import { useClickOutside } from "@/lib/useClickOutside";
 import { cn, shortAddr } from "@/lib/utils";
@@ -38,25 +37,12 @@ export function WalletBalance() {
 
   useClickOutside(ref, () => setMenuOpen(false), menuOpen);
 
-  const stables = getWalletStablecoins();
-
-  const { data: stableData } = useReadContracts({
-    allowFailure: true,
-    contracts: stables.map((t) => ({
-      address: t.address,
-      abi: ERC20_ABI,
-      functionName: "balanceOf" as const,
-      args: address ? [address] : undefined,
-      chainId: polygon.id,
-    })),
-    query: { enabled: !!address, refetchInterval: 12_000 },
-  });
-
-  const { data: pol } = useBalance({
-    address,
-    chainId: polygon.id,
-    query: { enabled: !!address, refetchInterval: 12_000 },
-  });
+  const {
+    balances: stableBalances,
+    polRaw,
+    multipleWallets,
+    isError: balancesError,
+  } = useWalletStableBalances();
 
   const { data: positions } = useQuery<{
     totalValue: number;
@@ -82,17 +68,10 @@ export function WalletBalance() {
 
   const onPolygon = chainId === polygon.id;
 
-  const stableBalances = stables
-    .map((t, i) => {
-      const raw = (stableData?.[i]?.result as bigint | undefined) ?? 0n;
-      return { ...t, raw, amount: Number(formatUnits(raw, t.decimals)) };
-    })
-    .sort((a, b) => (a.raw > b.raw ? -1 : a.raw < b.raw ? 1 : 0));
-
   const totalUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
   const nativeUsdc = stableBalances.find((t) => t.symbol === "USDC");
   const pusdBal = stableBalances.find((t) => t.symbol === "pUSD");
-  const polAmount = pol ? Number(pol.formatted) : 0;
+  const polAmount = Number(formatUnits(polRaw, 18));
   const polUsdValue = polAmount * (polPrice?.usdPerPol ?? 0);
   const grandTotal = totalUsd + positionsValue + polUsdValue;
   const lowGas = polAmount === 0;
@@ -226,9 +205,22 @@ export function WalletBalance() {
           </span>
         </div>
 
+        {multipleWallets && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Totals include all wallets linked to your account.
+          </p>
+        )}
+
+        {balancesError && (
+          <div className="mt-3 rounded-lg bg-danger/10 px-2.5 py-2 text-xs text-danger">
+            Could not refresh balances — try again in a moment.
+          </div>
+        )}
+
         {!onPolygon && (
           <div className="mt-3 rounded-lg bg-warning/10 px-2.5 py-2 text-xs text-warning">
-            Wrong network — switch to Polygon to see live balances.
+            Your wallet is not on Polygon — switch networks before sending
+            transactions. Balances above are still read from Polygon.
           </div>
         )}
       </div>
