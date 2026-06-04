@@ -11,11 +11,12 @@ import {
   isAddress,
   type Address,
 } from "viem";
-import { polygon } from "wagmi/chains";
+import { mainnet, polygon } from "wagmi/chains";
 import { useAccount } from "wagmi";
 
 import { ERC20_ABI } from "@/lib/abi";
 import {
+  ETHEREUM_USDC,
   getWalletStablecoins,
   type getTokens,
 } from "@/lib/chains";
@@ -50,6 +51,10 @@ function resolveOwners(args: {
 const polygonRpc =
   process.env.NEXT_PUBLIC_POLYGON_RPC ||
   "https://polygon-bor-rpc.publicnode.com";
+
+const ethereumRpc =
+  process.env.NEXT_PUBLIC_ETHEREUM_RPC ||
+  "https://ethereum.publicnode.com";
 
 type FetchedBalances = {
   perToken: Map<string, bigint>;
@@ -103,12 +108,30 @@ async function fetchPolygonBalances(
   return { perToken, pol };
 }
 
+async function fetchEthereumUsdc(owners: Address[]): Promise<bigint> {
+  const client = createPublicClient({
+    chain: mainnet,
+    transport: http(ethereumRpc),
+  });
+  let sum = 0n;
+  for (const owner of owners) {
+    const raw = await client.readContract({
+      address: ETHEREUM_USDC.address,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [owner],
+    });
+    sum += raw;
+  }
+  return sum;
+}
+
 /**
  * Polygon ERC-20 stable balances for a profile address, or the sum across every
  * Ethereum wallet linked to the signed-in Privy user (embedded + external).
  *
- * Reads go through a public Polygon RPC (not wagmi) so profile pages show
- * correct USDC/pUSD even when the viewer is logged out or on another chain.
+ * Also reads Ethereum mainnet USDC — Privy deposits often land there while POL
+ * gas sits on Polygon at the same address.
  */
 export function useWalletStableBalances(profileAddress?: string) {
   const { authenticated, user } = usePrivy();
@@ -136,17 +159,30 @@ export function useWalletStableBalances(profileAddress?: string) {
 
   const {
     data: fetched,
-    isLoading,
-    isError,
-    refetch,
+    isLoading: polygonLoading,
+    isError: polygonError,
+    refetch: refetchPolygon,
   } = useQuery({
-    queryKey: ["walletBalances", ownersKey],
+    queryKey: ["walletBalances", "polygon", ownersKey],
     enabled: owners.length > 0 && tokens.length > 0,
     refetchInterval: 12_000,
     queryFn: () => fetchPolygonBalances(owners, tokens),
   });
 
+  const {
+    data: ethereumUsdcRaw = 0n,
+    isLoading: ethereumLoading,
+    refetch: refetchEthereum,
+  } = useQuery({
+    queryKey: ["walletBalances", "ethereum-usdc", ownersKey],
+    enabled: owners.length > 0,
+    refetchInterval: 12_000,
+    queryFn: () => fetchEthereumUsdc(owners),
+  });
+
   const polRaw = fetched?.pol ?? 0n;
+  const isLoading = polygonLoading || ethereumLoading;
+  const isError = polygonError;
 
   const balances = useMemo((): WalletStableBalanceRow[] => {
     const perToken = fetched?.perToken;
@@ -171,14 +207,23 @@ export function useWalletStableBalances(profileAddress?: string) {
 
   const multipleWallets = !profileAddress && owners.length > 1;
 
+  const ethereumUsdcAmount = Number(
+    formatUnits(ethereumUsdcRaw, ETHEREUM_USDC.decimals),
+  );
+
   return {
     balances,
     balanceBySymbol,
     polRaw,
+    ethereumUsdcRaw,
+    ethereumUsdcAmount,
     owners,
     multipleWallets,
     isLoading,
     isError,
-    refetch,
+    refetch: () => {
+      void refetchPolygon();
+      void refetchEthereum();
+    },
   };
 }

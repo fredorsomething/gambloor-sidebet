@@ -1,8 +1,22 @@
 import type { Address } from "viem";
-import { polygon } from "wagmi/chains";
+import { mainnet, polygon } from "wagmi/chains";
 
 /** Polygon mainnet only (chain id 137). */
 export const POLYGON_CHAIN_ID = polygon.id;
+
+export const ETHEREUM_CHAIN_ID = mainnet.id;
+
+/** Circle USDC on Ethereum — Privy card deposits sometimes land here instead of Polygon. */
+export const ETHEREUM_USDC = {
+  symbol: "USDC",
+  name: "USD Coin (Ethereum)",
+  address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as Address,
+  decimals: 6,
+} as const;
+
+/** Official Polygon PoS bridge (Ethereum → Polygon). */
+export const POLYGON_BRIDGE_URL =
+  "https://portal.polygon.technology/bridge";
 
 export const SUPPORTED_CHAINS = [polygon] as const;
 export type SupportedChainId = typeof polygon.id;

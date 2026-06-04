@@ -2,17 +2,25 @@
 
 import { useMemo } from "react";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
+import { EthereumUsdcNotice } from "@/components/wallet/EthereumUsdcNotice";
+import { ETHEREUM_USDC } from "@/lib/chains";
 import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
 import { formatToken } from "@/lib/utils";
 
 type BalanceRow = {
   symbol: string;
   amount: string;
+  hint?: string;
 };
 
 export function ProfileBalances({ address }: { address: string }) {
-  const { balances, polRaw, isLoading, isError } =
-    useWalletStableBalances(address);
+  const {
+    balances,
+    polRaw,
+    ethereumUsdcRaw,
+    isLoading,
+    isError,
+  } = useWalletStableBalances(address);
 
   const rows = useMemo(() => {
     const out: BalanceRow[] = [];
@@ -21,6 +29,7 @@ export function ProfileBalances({ address }: { address: string }) {
       out.push({
         symbol: "POL",
         amount: formatToken(polRaw, 18, 4),
+        hint: "Polygon",
       });
     }
 
@@ -29,11 +38,20 @@ export function ProfileBalances({ address }: { address: string }) {
       out.push({
         symbol: t.symbol,
         amount: formatToken(t.raw, t.decimals, 2),
+        hint: "Polygon",
+      });
+    }
+
+    if (ethereumUsdcRaw > 0n) {
+      out.push({
+        symbol: "USDC",
+        amount: formatToken(ethereumUsdcRaw, ETHEREUM_USDC.decimals, 2),
+        hint: "Ethereum",
       });
     }
 
     return out;
-  }, [balances, polRaw]);
+  }, [balances, polRaw, ethereumUsdcRaw]);
 
   if (isLoading) {
     return (
@@ -52,7 +70,7 @@ export function ProfileBalances({ address }: { address: string }) {
   if (isError) {
     return (
       <p className="text-sm text-muted-foreground">
-        Could not load Polygon balances right now.
+        Could not load wallet balances right now.
       </p>
     );
   }
@@ -60,22 +78,35 @@ export function ProfileBalances({ address }: { address: string }) {
   if (rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No token balances on Polygon.
+        No token balances on Polygon or Ethereum.
       </p>
     );
   }
 
   return (
-    <div className="divide-y divide-border">
-      {rows.map((r) => (
-        <div
-          key={r.symbol}
-          className="flex items-center justify-between py-1.5 text-sm"
-        >
-          <TokenSymbol symbol={r.symbol} className="text-muted-foreground" />
-          <span className="font-mono font-medium tabular-nums">{r.amount}</span>
-        </div>
-      ))}
+    <div className="space-y-3">
+      <div className="divide-y divide-border">
+        {rows.map((r) => (
+          <div
+            key={`${r.symbol}-${r.hint}`}
+            className="flex items-center justify-between py-1.5 text-sm"
+          >
+            <span className="flex items-center gap-2">
+              <TokenSymbol symbol={r.symbol} className="text-muted-foreground" />
+              {r.hint && (
+                <span className="text-[10px] text-muted-foreground">{r.hint}</span>
+              )}
+            </span>
+            <span className="font-mono font-medium tabular-nums">{r.amount}</span>
+          </div>
+        ))}
+      </div>
+
+      {ethereumUsdcRaw > 0n && (
+        <EthereumUsdcNotice
+          amountLabel={formatToken(ethereumUsdcRaw, ETHEREUM_USDC.decimals, 2)}
+        />
+      )}
     </div>
   );
 }

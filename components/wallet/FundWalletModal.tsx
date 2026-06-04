@@ -35,9 +35,11 @@ import { polygon } from "wagmi/chains";
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
+import { EthereumUsdcNotice } from "@/components/wallet/EthereumUsdcNotice";
 import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
 import {
+  ETHEREUM_USDC,
   getTokenBySymbol,
   getWalletStablecoins,
   getWithdrawAssets,
@@ -183,7 +185,8 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
   const polygonUsdc = getTokenBySymbol(polygon.id, "USDC");
   const polygonPusd = getTokenBySymbol(polygon.id, "pUSD");
 
-  const { balanceBySymbol, multipleWallets } = useWalletStableBalances();
+  const { balanceBySymbol, multipleWallets, ethereumUsdcRaw } =
+    useWalletStableBalances();
 
   const [copied, setCopied] = useState(false);
   const [onrampPending, setOnrampPending] = useState(false);
@@ -299,8 +302,14 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="mt-4">
+        <div className="mt-4 space-y-3">
           <DepositBettingNote />
+          {ethereumUsdcRaw > 0n && (
+            <EthereumUsdcNotice
+              amountLabel={formatToken(ethereumUsdcRaw, ETHEREUM_USDC.decimals, 2)}
+              onOpenDeposit={() => void onDepositFromExternalWallet()}
+            />
+          )}
         </div>
 
         {address && (
@@ -417,7 +426,9 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const { address: from } = useAccount();
   const { push } = useToast();
   const { getAccessToken } = usePrivy();
+  const { openFund } = useWalletFunds();
   const ensurePolygon = useEnsurePolygon();
+  const { ethereumUsdcRaw } = useWalletStableBalances();
   const options = useMemo(() => getWithdrawAssets(), []);
 
   const [symbol, setSymbol] = useState(options[0]?.symbol ?? "USDC.e");
@@ -583,6 +594,17 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
         <p className="mt-1 text-sm text-muted-foreground">
           Send from your wallet to an external Polygon address.
         </p>
+
+        {ethereumUsdcRaw > 0n && (
+          <EthereumUsdcNotice
+            className="mt-4"
+            amountLabel={formatToken(ethereumUsdcRaw, ETHEREUM_USDC.decimals, 2)}
+            onOpenDeposit={() => {
+              onClose();
+              openFund();
+            }}
+          />
+        )}
 
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {options.map((o) => {

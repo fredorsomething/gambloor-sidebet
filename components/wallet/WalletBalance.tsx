@@ -18,7 +18,10 @@ import { useAccount, useChainId } from "wagmi";
 import { polygon } from "wagmi/chains";
 
 import { useWalletFunds } from "@/components/wallet/FundWalletModal";
+import { EthereumUsdcNotice } from "@/components/wallet/EthereumUsdcNotice";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
+import { ETHEREUM_USDC } from "@/lib/chains";
+import { formatToken } from "@/lib/utils";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
 import { jsonFetch } from "@/lib/fetcher";
@@ -40,6 +43,7 @@ export function WalletBalance() {
   const {
     balances: stableBalances,
     polRaw,
+    ethereumUsdcRaw,
     multipleWallets,
     isError: balancesError,
   } = useWalletStableBalances();
@@ -68,12 +72,16 @@ export function WalletBalance() {
 
   const onPolygon = chainId === polygon.id;
 
-  const totalUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
+  const polygonUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
   const nativeUsdc = stableBalances.find((t) => t.symbol === "USDC");
   const pusdBal = stableBalances.find((t) => t.symbol === "pUSD");
   const polAmount = Number(formatUnits(polRaw, 18));
   const polUsdValue = polAmount * (polPrice?.usdPerPol ?? 0);
-  const grandTotal = totalUsd + positionsValue + polUsdValue;
+  const ethereumUsdcUsd = Number(
+    formatUnits(ethereumUsdcRaw, ETHEREUM_USDC.decimals),
+  );
+  const grandTotal =
+    polygonUsd + ethereumUsdcUsd + positionsValue + polUsdValue;
   const lowGas = polAmount === 0;
 
   const onCopy = () => {
@@ -151,6 +159,28 @@ export function WalletBalance() {
             </div>
           ))}
         </div>
+
+        {ethereumUsdcRaw > 0n && (
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <TokenSymbol symbol="USDC" size={14} />
+                <span className="text-[10px]">Ethereum</span>
+              </span>
+              <span className="font-mono tabular-nums text-warning">
+                {formatToken(ethereumUsdcRaw, ETHEREUM_USDC.decimals, 2)}
+              </span>
+            </div>
+            <EthereumUsdcNotice
+              className="mt-2"
+              amountLabel={formatToken(ethereumUsdcRaw, ETHEREUM_USDC.decimals, 2)}
+              onOpenDeposit={() => {
+                openFund();
+                setMenuOpen(false);
+              }}
+            />
+          </div>
+        )}
 
         {((nativeUsdc?.raw ?? 0n) > 0n || (pusdBal?.raw ?? 0n) > 0n) && (
           <div className="mt-2 space-y-1 border-t border-border pt-2">
