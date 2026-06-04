@@ -33,13 +33,14 @@ import {
 import { polygon } from "wagmi/chains";
 
 import { Button } from "@/components/ui/button";
-import { TokenIcon } from "@/components/ui/TokenIcon";
+import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { useToast } from "@/components/ui/Toast";
 import { TxSuccessDialog } from "@/components/wallet/TxSuccessDialog";
 import { ERC20_ABI } from "@/lib/abi";
 import {
   getTokenBySymbol,
-  getTokens,
+  getWalletStablecoins,
+  getWithdrawAssets,
   MARKET_COLLATERAL_SYMBOL,
 } from "@/lib/chains";
 import { formatCryptoError } from "@/lib/cryptoErrors";
@@ -120,13 +121,31 @@ export function FundWalletProvider({ children }: { children: React.ReactNode }) 
 }
 
 const DEPOSIT_TOKENS = () => {
-  const stables = getTokens().map((t) => ({
+  const stables = getWalletStablecoins().map((t) => ({
     symbol: t.symbol,
     decimals: t.decimals,
     address: t.address as Address,
   }));
   return [...stables, { symbol: "POL", decimals: 18, address: undefined as Address | undefined }];
 };
+
+function DepositBettingNote() {
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed text-muted-foreground">
+      <p>
+        <span className="font-medium text-foreground">To bet on markets:</span> keep{" "}
+        <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> in your wallet, plus a
+        little <TokenSymbol symbol="POL" size={12} /> for gas. Card deposits arrive as native{" "}
+        <TokenSymbol symbol="USDC" size={12} /> — swap to {MARKET_COLLATERAL_SYMBOL} before
+        trading.
+      </p>
+      <p className="mt-2">
+        You can still hold, swap, and withdraw <TokenSymbol symbol="USDC" size={12} /> and{" "}
+        <TokenSymbol symbol="pUSD" size={12} /> from this wallet.
+      </p>
+    </div>
+  );
+}
 
 function DepositTokenTile({
   symbol,
@@ -160,8 +179,9 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
   const { getAccessToken } = usePrivy();
   const { fund: startFiatOnramp } = useFiatOnramp();
   const { createDepositAddress } = useDepositAddress();
-  const tokens = useMemo(() => getTokens(), []);
+  const tokens = useMemo(() => getWalletStablecoins(), []);
   const polygonUsdc = getTokenBySymbol(polygon.id, "USDC");
+  const polygonPusd = getTokenBySymbol(polygon.id, "pUSD");
 
   const { data: stableBalances } = useReadContracts({
     allowFailure: true,
@@ -174,13 +194,13 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           chainId: polygon.id,
         }))
       : [],
-    query: { enabled: !!address },
+    query: { enabled: !!address, refetchInterval: 12_000 },
   });
 
   const { data: polBalance } = useBalance({
     address,
     chainId: polygon.id,
-    query: { enabled: !!address },
+    query: { enabled: !!address, refetchInterval: 12_000 },
   });
 
   const [copied, setCopied] = useState(false);
@@ -198,6 +218,7 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
   }, [tokens, stableBalances, polBalance?.value]);
 
   const nativeUsdcBal = balanceBySymbol.get("USDC") ?? 0n;
+  const pusdBal = balanceBySymbol.get("pUSD") ?? 0n;
 
   const onCopyAddress = useCallback(() => {
     if (!address) return;
@@ -305,6 +326,10 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
+        <div className="mt-4">
+          <DepositBettingNote />
+        </div>
+
         {address && (
           <div className="mt-4 space-y-2">
             <Button
@@ -384,44 +409,75 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        {nativeUsdcBal > 0n && (
-          <Link
-            href="/swap?sell=USDC&buy=USDC.e"
-            onClick={onClose}
-            className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-          >
-            <ArrowDownUp className="h-3 w-3" />
-            Swap USDC → {MARKET_COLLATERAL_SYMBOL}
-          </Link>
+        {(nativeUsdcBal > 0n || pusdBal > 0n) && (
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+            {nativeUsdcBal > 0n && (
+              <Link
+                href="/swap?sell=USDC&buy=USDC.e"
+                onClick={onClose}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                <ArrowDownUp className="h-3 w-3" />
+                Swap USDC → {MARKET_COLLATERAL_SYMBOL}
+              </Link>
+            )}
+            {pusdBal > 0n && polygonPusd && (
+              <Link
+                href="/swap?sell=pUSD&buy=USDC.e"
+                onClick={onClose}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                <ArrowDownUp className="h-3 w-3" />
+                Swap pUSD → {MARKET_COLLATERAL_SYMBOL}
+              </Link>
+            )}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-const WITHDRAW_ASSETS = () => {
-  const stables = getTokens()
-    .filter((t) =>
-      ["USDC.e", "USDC", "pUSD"].includes(t.symbol),
-    )
-    .map((t) => ({
-      symbol: t.symbol,
-      decimals: t.decimals,
-      address: t.address as Address,
-    }));
-  return [...stables, { symbol: "POL", decimals: 18, address: undefined as Address | undefined }];
-};
-
 function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const { address: from } = useAccount();
   const { push } = useToast();
   const { getAccessToken } = usePrivy();
   const ensurePolygon = useEnsurePolygon();
-  const options = useMemo(() => WITHDRAW_ASSETS(), []);
+  const options = useMemo(() => getWithdrawAssets(), []);
 
-  const [symbol, setSymbol] = useState(options[0]?.symbol ?? "USDC");
+  const [symbol, setSymbol] = useState(options[0]?.symbol ?? "USDC.e");
   const asset = options.find((o) => o.symbol === symbol) ?? options[0];
   const isPol = symbol === "POL";
+
+  const { data: optionBalances } = useReadContracts({
+    allowFailure: true,
+    contracts: from
+      ? options
+          .filter((o) => o.address)
+          .map((o) => ({
+            address: o.address!,
+            abi: ERC20_ABI,
+            functionName: "balanceOf" as const,
+            args: [from],
+            chainId: polygon.id,
+          }))
+      : [],
+    query: { enabled: !!from, refetchInterval: 12_000 },
+  });
+
+  const balanceByOption = useMemo(() => {
+    const map = new Map<string, bigint>();
+    let ercIdx = 0;
+    for (const o of options) {
+      if (!o.address) continue;
+      map.set(
+        o.symbol,
+        (optionBalances?.[ercIdx]?.result as bigint | undefined) ?? 0n,
+      );
+      ercIdx += 1;
+    }
+    return map;
+  }, [options, optionBalances]);
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
 
@@ -432,7 +488,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const native = useBalance({
     address: from,
     chainId: polygon.id,
-    query: { enabled: !!from && isPol },
+    query: { enabled: !!from, refetchInterval: 12_000 },
   });
   const balance = isPol ? native.data?.value ?? 0n : info.balance ?? 0n;
   const decimals = asset?.decimals ?? 6;
@@ -553,23 +609,34 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
           Send from your wallet to an external Polygon address.
         </p>
 
-        <div className="mt-5 flex gap-2">
-          {options.map((o) => (
-            <button
-              key={o.symbol}
-              type="button"
-              onClick={() => setSymbol(o.symbol)}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-sm font-medium transition-colors",
-                symbol === o.symbol
-                  ? "border-primary bg-primary/10 text-foreground"
-                  : "border-border text-muted-foreground hover:bg-muted/60",
-              )}
-            >
-              <TokenIcon symbol={o.symbol} size={20} />
-              {o.symbol}
-            </button>
-          ))}
+        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {options.map((o) => {
+            const optBal =
+              o.symbol === "POL"
+                ? native.data?.value ?? 0n
+                : balanceByOption.get(o.symbol) ?? 0n;
+            return (
+              <button
+                key={o.symbol}
+                type="button"
+                onClick={() => setSymbol(o.symbol)}
+                className={cn(
+                  "flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-sm font-medium transition-colors",
+                  symbol === o.symbol
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted/60",
+                )}
+              >
+                <TokenIcon symbol={o.symbol} size={20} />
+                {o.symbol}
+                {from && (
+                  <span className="font-mono text-[10px] font-normal tabular-nums opacity-80">
+                    {formatToken(optBal, o.decimals, 4)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <div className="mt-4">

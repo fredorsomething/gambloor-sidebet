@@ -7,7 +7,7 @@ import { polygon } from "wagmi/chains";
 
 import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { ERC20_ABI } from "@/lib/abi";
-import { getTokens } from "@/lib/chains";
+import { getWalletStablecoins } from "@/lib/chains";
 import { formatToken } from "@/lib/utils";
 
 type BalanceRow = {
@@ -19,7 +19,7 @@ export function ProfileBalances({ address }: { address: string }) {
   const chainId = useChainId();
   const owner = address as Address;
   const onPolygon = chainId === polygon.id;
-  const tokens = getTokens(polygon.id);
+  const tokens = getWalletStablecoins(polygon.id);
 
   const { data: erc20Data, isLoading: erc20Loading } = useReadContracts({
     allowFailure: true,

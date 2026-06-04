@@ -10,8 +10,10 @@ export type SupportedChainId = typeof polygon.id;
 export const DEFAULT_CHAIN_ID: SupportedChainId = polygon.id;
 
 /**
- * Collateral on Polygon mainnet. Stakes use USDC or pUSD (ERC-20).
- * Gas for transactions uses native POL.
+ * ERC-20 tokens held in user wallets on Polygon.
+ * New sidebets and markets settle in USDC.e only; USDC and pUSD remain
+ * swappable and withdrawable for legacy balances.
+ * Gas uses native POL.
  */
 export const TOKENS: Record<
   SupportedChainId,
@@ -61,6 +63,38 @@ export const DEFAULT_SETTLER = (process.env.NEXT_PUBLIC_DEFAULT_SETTLER?.trim() 
 
 export function getTokens(_chainId?: number) {
   return TOKENS[polygon.id];
+}
+
+/** Stablecoins shown in wallet UI (balances, deposit, withdraw, swap). */
+export const WALLET_STABLE_SYMBOLS = ["USDC", "pUSD", "USDC.e"] as const;
+
+export function getWalletStablecoins(_chainId?: number) {
+  const allowed = new Set<string>(WALLET_STABLE_SYMBOLS);
+  return getTokens(_chainId).filter((t) => allowed.has(t.symbol));
+}
+
+export type WithdrawAsset = {
+  symbol: string;
+  decimals: number;
+  address?: Address;
+};
+
+/** Withdraw picker options: all wallet stables plus POL (USDC.e first). */
+export function getWithdrawAssets(_chainId?: number): WithdrawAsset[] {
+  const bySymbol = new Map(
+    getWalletStablecoins(_chainId).map((t) => [t.symbol, t] as const),
+  );
+  const stables = WALLET_STABLE_SYMBOLS.map((sym) => bySymbol.get(sym))
+    .filter((t): t is NonNullable<typeof t> => !!t)
+    .map((t) => ({
+      symbol: t.symbol,
+      decimals: t.decimals,
+      address: t.address,
+    }));
+  return [
+    ...stables,
+    { symbol: "POL", decimals: 18, address: undefined },
+  ];
 }
 
 /** CLOB markets settle only in bridged USDC.e on Polygon. */

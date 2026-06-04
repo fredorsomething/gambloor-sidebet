@@ -21,12 +21,10 @@ import { useWalletFunds } from "@/components/wallet/FundWalletModal";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { ERC20_ABI } from "@/lib/abi";
-import { getTokens } from "@/lib/chains";
+import { getWalletStablecoins } from "@/lib/chains";
 import { jsonFetch } from "@/lib/fetcher";
 import { useClickOutside } from "@/lib/useClickOutside";
 import { cn, shortAddr } from "@/lib/utils";
-
-const STABLE_SYMBOLS = new Set(["USDC", "pUSD", "USDC.e"]);
 
 export function WalletBalance() {
   const { ready, authenticated } = usePrivy();
@@ -40,7 +38,7 @@ export function WalletBalance() {
 
   useClickOutside(ref, () => setMenuOpen(false), menuOpen);
 
-  const stables = getTokens().filter((t) => STABLE_SYMBOLS.has(t.symbol));
+  const stables = getWalletStablecoins();
 
   const { data: stableData } = useReadContracts({
     allowFailure: true,
@@ -84,12 +82,16 @@ export function WalletBalance() {
 
   const onPolygon = chainId === polygon.id;
 
-  const stableBalances = stables.map((t, i) => {
-    const raw = (stableData?.[i]?.result as bigint | undefined) ?? 0n;
-    return { ...t, raw, amount: Number(formatUnits(raw, t.decimals)) };
-  });
+  const stableBalances = stables
+    .map((t, i) => {
+      const raw = (stableData?.[i]?.result as bigint | undefined) ?? 0n;
+      return { ...t, raw, amount: Number(formatUnits(raw, t.decimals)) };
+    })
+    .sort((a, b) => (a.raw > b.raw ? -1 : a.raw < b.raw ? 1 : 0));
 
   const totalUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
+  const nativeUsdc = stableBalances.find((t) => t.symbol === "USDC");
+  const pusdBal = stableBalances.find((t) => t.symbol === "pUSD");
   const polAmount = pol ? Number(pol.formatted) : 0;
   const polUsdValue = polAmount * (polPrice?.usdPerPol ?? 0);
   const grandTotal = totalUsd + positionsValue + polUsdValue;
@@ -157,7 +159,12 @@ export function WalletBalance() {
               className="flex items-center justify-between text-sm"
             >
               <TokenSymbol symbol={t.symbol} className="text-muted-foreground" />
-              <span className="font-mono tabular-nums">
+              <span
+                className={cn(
+                  "font-mono tabular-nums",
+                  t.raw > 0n && "font-semibold text-foreground",
+                )}
+              >
                 {t.amount.toLocaleString(undefined, {
                   maximumFractionDigits: 2,
                 })}
@@ -165,6 +172,31 @@ export function WalletBalance() {
             </div>
           ))}
         </div>
+
+        {((nativeUsdc?.raw ?? 0n) > 0n || (pusdBal?.raw ?? 0n) > 0n) && (
+          <div className="mt-2 space-y-1 border-t border-border pt-2">
+            {(nativeUsdc?.raw ?? 0n) > 0n && (
+              <Link
+                href="/swap?sell=USDC&buy=USDC.e"
+                onClick={() => setMenuOpen(false)}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+              >
+                <ArrowDownUp className="h-3 w-3" />
+                Swap USDC → USDC.e
+              </Link>
+            )}
+            {(pusdBal?.raw ?? 0n) > 0n && (
+              <Link
+                href="/swap?sell=pUSD&buy=USDC.e"
+                onClick={() => setMenuOpen(false)}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+              >
+                <ArrowDownUp className="h-3 w-3" />
+                Swap pUSD → USDC.e
+              </Link>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
           <span className="flex items-center gap-1.5 text-muted-foreground">
