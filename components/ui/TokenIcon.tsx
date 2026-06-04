@@ -7,7 +7,7 @@ const ICONS: Record<string, string> = {
   pusd: "/pusd.png",
   pol: "/pol.svg",
   matic: "/pol.svg",
-  eth: "/eth.svg",
+  eth: "/eth.png",
 };
 
 function iconFor(symbol?: string | null): string | null {
