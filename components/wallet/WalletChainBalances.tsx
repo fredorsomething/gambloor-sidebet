@@ -13,12 +13,14 @@ import { cn, formatToken } from "@/lib/utils";
 export function WalletChainBalances({
   chainGroups,
   className,
+  compact = false,
   showBridgeNotice = true,
   onOpenDeposit,
   emptyMessage = "No token balances on Polygon or Ethereum.",
 }: {
   chainGroups: WalletChainGroup[];
   className?: string;
+  compact?: boolean;
   showBridgeNotice?: boolean;
   onOpenDeposit?: () => void;
   emptyMessage?: string;
@@ -36,10 +38,15 @@ export function WalletChainBalances({
     ?.entries.find((e) => e.symbol === ETHEREUM_USDC.symbol);
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn(compact ? "space-y-2" : "space-y-4", className)}>
       {chainGroups.map((group) => (
         <section key={group.chainId}>
-          <div className="mb-1.5 flex items-center justify-between">
+          <div
+            className={cn(
+              "flex items-center justify-between",
+              compact ? "mb-1" : "mb-1.5",
+            )}
+          >
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide",
@@ -50,6 +57,9 @@ export function WalletChainBalances({
             >
               {group.chainId === POLYGON_CHAIN_ID && (
                 <TokenIcon symbol="POL" size={14} />
+              )}
+              {group.chainId === ETHEREUM_CHAIN_ID && (
+                <TokenIcon symbol="ETH" size={14} />
               )}
               {group.chainLabel}
               {!group.onPlatform && (
@@ -71,7 +81,10 @@ export function WalletChainBalances({
             {group.entries.map((e) => (
               <div
                 key={`${e.chainId}-${e.symbol}`}
-                className="flex items-center justify-between px-3 py-2 text-sm"
+                className={cn(
+                  "flex items-center justify-between px-3 text-sm",
+                  compact ? "py-1.5" : "py-2",
+                )}
               >
                 <TokenSymbol
                   symbol={e.symbol}

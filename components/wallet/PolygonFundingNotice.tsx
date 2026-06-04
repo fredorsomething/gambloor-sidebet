@@ -5,7 +5,35 @@ import { MARKET_COLLATERAL_SYMBOL } from "@/lib/chains";
 import { cn } from "@/lib/utils";
 
 /** Explains that deposits must land on Polygon; Ethereum sends are not supported. */
-export function PolygonFundingNotice({ className }: { className?: string }) {
+export function PolygonFundingNotice({
+  className,
+  compact = false,
+}: {
+  className?: string;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <p
+        className={cn(
+          "rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs leading-snug text-muted-foreground",
+          className,
+        )}
+      >
+        <span className="inline-flex items-center gap-1 font-medium text-foreground">
+          <TokenIcon symbol="POL" size={14} />
+          Polygon only
+        </span>
+        {" — "}
+        <TokenSymbol symbol="USDC" size={12} />,{" "}
+        <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} />,{" "}
+        <TokenSymbol symbol="pUSD" size={12} />,{" "}
+        <TokenSymbol symbol="POL" size={12} />.
+        <span className="text-warning"> Ethereum sends may not be supported.</span>
+      </p>
+    );
+  }
+
   return (
     <div
       className={cn(

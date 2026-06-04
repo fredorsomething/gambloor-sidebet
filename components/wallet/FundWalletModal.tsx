@@ -22,6 +22,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
 import { encodeFunctionData, isAddress, parseUnits, type Address, type Hex } from "viem";
 import {
@@ -42,7 +43,6 @@ import {
   CHAIN_LABELS,
   ETHEREUM_CHAIN_ID,
   getTokenBySymbol,
-  getWalletStablecoins,
   getAllWithdrawAssets,
   MARKET_COLLATERAL_SYMBOL,
   POLYGON_CHAIN_ID,
@@ -126,50 +126,47 @@ export function FundWalletProvider({ children }: { children: React.ReactNode }) 
   );
 }
 
-const DEPOSIT_TOKENS = () => {
-  const stables = getWalletStablecoins().map((t) => ({
-    symbol: t.symbol,
-    decimals: t.decimals,
-    address: t.address as Address,
-  }));
-  return [...stables, { symbol: "POL", decimals: 18, address: undefined as Address | undefined }];
-};
-
-function DepositBettingNote() {
-  return (
-    <div className="rounded-xl border border-border bg-muted/20 p-3 text-xs leading-relaxed text-muted-foreground">
-      <p>
-        <span className="font-medium text-foreground">To bet on markets:</span> keep{" "}
-        <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> plus a little{" "}
-        <TokenSymbol symbol="POL" size={12} /> for gas on Polygon.
-      </p>
-    </div>
-  );
-}
-
-function DepositTokenTile({
-  symbol,
-  balance,
-  decimals,
-  onCopy,
+function WalletFundsModalShell({
+  title,
+  onClose,
+  children,
 }: {
-  symbol: string;
-  balance: bigint;
-  decimals: number;
-  onCopy: () => void;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onCopy}
-      className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-muted/20 p-3 text-center transition-colors hover:border-primary/30 hover:bg-muted/40"
-    >
-      <TokenIcon symbol={symbol} size={28} />
-      <span className="text-sm font-semibold">{symbol}</span>
-      <span className="font-mono text-xs tabular-nums text-muted-foreground">
-        {formatToken(balance, decimals, 4)}
-      </span>
-    </button>
+    <div className="fixed inset-0 z-[160] flex items-end justify-center md:items-center md:p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wallet-funds-modal-title"
+        className="relative flex w-full max-h-[min(90dvh,100%)] flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-xl md:max-h-[min(85dvh,720px)] md:max-w-2xl md:rounded-2xl md:animate-in md:fade-in md:zoom-in-95"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 md:px-5">
+          <h2 id="wallet-funds-modal-title" className="text-lg font-semibold">
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5 md:pb-5">
+          {children}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -282,145 +279,128 @@ function FundWalletModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[160] flex max-md:items-end max-md:overflow-y-auto md:items-center md:justify-center md:p-4">
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-md card p-5 shadow-xl max-md:max-h-[min(92dvh,100%)] max-md:overflow-y-auto max-md:rounded-b-none max-md:rounded-t-2xl max-md:pb-[max(1.25rem,env(safe-area-inset-bottom))] md:p-6 md:animate-in md:fade-in md:zoom-in-95">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Add funds</h2>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
+    <WalletFundsModalShell title="Add funds" onClose={onClose}>
+      <div className="grid gap-4 md:grid-cols-2 md:items-start md:gap-5">
+        <div className="space-y-3">
+          {address ? (
+            <>
+              <Button
+                className="h-auto w-full justify-start gap-2.5 py-2.5"
+                onClick={() => void onBuyWithCard()}
+                disabled={fundingBusy}
+              >
+                <CreditCard className="h-5 w-5 shrink-0" />
+                <span className="text-left">
+                  <span className="block font-semibold">
+                    {onrampPending ? "Opening…" : "Buy with card"}
+                  </span>
+                  <span className="block text-xs font-normal opacity-80">
+                    Debit, credit, Apple Pay & more
+                  </span>
+                </span>
+              </Button>
+
+              <Button
+                variant="outline"
+                className="h-auto w-full justify-start gap-2.5 py-2.5"
+                onClick={() => void onDepositFromExternalWallet()}
+                disabled={fundingBusy || !polygonUsdc}
+              >
+                <Wallet className="h-5 w-5 shrink-0" />
+                <span className="text-left">
+                  <span className="block font-semibold">
+                    {depositAddressPending
+                      ? "Opening…"
+                      : "Deposit from another wallet"}
+                  </span>
+                  <span className="block text-xs font-normal opacity-80">
+                    Any chain — Privy bridges to your wallet
+                  </span>
+                </span>
+              </Button>
+
+              <div className="rounded-xl border border-border bg-muted/30 p-3">
+                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <TokenIcon symbol="POL" size={16} />
+                  Polygon wallet address
+                </div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate font-mono text-sm">
+                    {shortAddr(address)}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={onCopyAddress}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-muted"
+                  >
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5 text-success" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              <PolygonFundingNotice compact />
+
+              <p className="text-xs text-muted-foreground">
+                To bet on markets, keep{" "}
+                <TokenSymbol symbol={MARKET_COLLATERAL_SYMBOL} size={12} /> and a
+                little <TokenSymbol symbol="POL" size={12} /> for gas.
+              </p>
+
+              {(nativeUsdcBal > 0n || pusdBal > 0n) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {nativeUsdcBal > 0n && (
+                    <Link
+                      href="/swap?sell=USDC&buy=USDC.e"
+                      onClick={onClose}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    >
+                      <ArrowDownUp className="h-3 w-3" />
+                      Swap USDC → {MARKET_COLLATERAL_SYMBOL}
+                    </Link>
+                  )}
+                  {pusdBal > 0n && polygonPusd && (
+                    <Link
+                      href="/swap?sell=pUSD&buy=USDC.e"
+                      onClick={onClose}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    >
+                      <ArrowDownUp className="h-3 w-3" />
+                      Swap pUSD → {MARKET_COLLATERAL_SYMBOL}
+                    </Link>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Connect a wallet to add funds.
+            </p>
+          )}
         </div>
 
-        <div className="mt-4">
-          <DepositBettingNote />
-        </div>
-
-        {address && (
-          <div className="mt-4 space-y-2">
-            <Button
-              className="h-auto w-full justify-start gap-3 py-3"
-              onClick={() => void onBuyWithCard()}
-              disabled={fundingBusy}
-            >
-              <CreditCard className="h-5 w-5 shrink-0" />
-              <span className="text-left">
-                <span className="block font-semibold">
-                  {onrampPending ? "Opening…" : "Buy with card"}
-                </span>
-                <span className="block text-xs font-normal opacity-80">
-                  Debit, credit, Apple Pay & more
-                </span>
-              </span>
-            </Button>
-
-            <Button
-              variant="outline"
-              className="h-auto w-full justify-start gap-3 py-3"
-              onClick={() => void onDepositFromExternalWallet()}
-              disabled={fundingBusy || !polygonUsdc}
-            >
-              <Wallet className="h-5 w-5 shrink-0" />
-              <span className="text-left">
-                <span className="block font-semibold">
-                  {depositAddressPending ? "Opening…" : "Deposit from another wallet"}
-                </span>
-                <span className="block text-xs font-normal opacity-80">
-                  Send from any chain — Privy bridges to your wallet
-                </span>
-              </span>
-            </Button>
-          </div>
-        )}
-
-        <div className={cn(address && "mt-5", "space-y-4")}>
+        <div className="space-y-2 md:min-w-0">
           <div>
             <p className="text-sm font-medium">Your balances</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Polygon and Ethereum at this address.
-              {multipleWallets &&
-                " Totals include every wallet linked to your account."}
-            </p>
+            {multipleWallets && (
+              <p className="text-xs text-muted-foreground">
+                Includes every wallet linked to your account.
+              </p>
+            )}
           </div>
-
           <WalletChainBalances
             chainGroups={chainGroups}
-            onOpenDeposit={() => void onDepositFromExternalWallet()}
+            compact
+            showBridgeNotice={false}
             emptyMessage="No balances yet."
           />
-
-          <PolygonFundingNotice />
-
-          <div className="grid grid-cols-2 gap-2">
-            {DEPOSIT_TOKENS().map((t) => (
-              <DepositTokenTile
-                key={t.symbol}
-                symbol={t.symbol}
-                balance={balanceBySymbol.get(t.symbol) ?? 0n}
-                decimals={t.decimals}
-                onCopy={onCopyAddress}
-              />
-            ))}
-          </div>
         </div>
-
-        <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3">
-          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <TokenIcon symbol="POL" size={16} />
-            Your Polygon wallet address
-          </div>
-          <div className="mt-1.5 flex items-center gap-2">
-            <code className="flex-1 truncate font-mono text-sm">
-              {address ? shortAddr(address) : "—"}
-            </code>
-            <button
-              onClick={onCopyAddress}
-              disabled={!address}
-              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
-            >
-              {copied ? (
-                <Check className="h-3.5 w-3.5 text-success" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-        </div>
-
-        {(nativeUsdcBal > 0n || pusdBal > 0n) && (
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
-            {nativeUsdcBal > 0n && (
-              <Link
-                href="/swap?sell=USDC&buy=USDC.e"
-                onClick={onClose}
-                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-              >
-                <ArrowDownUp className="h-3 w-3" />
-                Swap USDC → {MARKET_COLLATERAL_SYMBOL}
-              </Link>
-            )}
-            {pusdBal > 0n && polygonPusd && (
-              <Link
-                href="/swap?sell=pUSD&buy=USDC.e"
-                onClick={onClose}
-                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-              >
-                <ArrowDownUp className="h-3 w-3" />
-                Swap pUSD → {MARKET_COLLATERAL_SYMBOL}
-              </Link>
-            )}
-          </div>
-        )}
       </div>
-    </div>
+    </WalletFundsModalShell>
   );
 }
 
@@ -667,36 +647,19 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
   const pending = sending || wait.isLoading;
 
   return (
-    <div className="fixed inset-0 z-[160] flex max-md:items-end max-md:overflow-y-auto md:items-center md:justify-center md:p-4">
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-md card p-5 shadow-xl max-md:max-h-[min(92dvh,100%)] max-md:overflow-y-auto max-md:rounded-b-none max-md:rounded-t-2xl max-md:pb-[max(1.25rem,env(safe-area-inset-bottom))] md:p-6 md:animate-in md:fade-in md:zoom-in-95">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Withdraw</h2>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <WalletFundsModalShell title="Withdraw" onClose={onClose}>
+      <p className="text-sm text-muted-foreground">
+        Send tokens to any address on the network you select.
+      </p>
 
-        <p className="mt-1 text-sm text-muted-foreground">
-          Send tokens to any address on the network you select below.
+      {hasEthereumBalances && (
+        <p className="mt-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+          You have funds on Ethereum — select Ethereum below to withdraw them.
         </p>
+      )}
 
-        {hasEthereumBalances && (
-          <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-            You have funds on Ethereum (e.g. from a card deposit). Select
-            Ethereum below to withdraw them — they are not on Polygon until you
-            bridge.
-          </p>
-        )}
-
-        <div className="mt-5 space-y-4">
+      <div className="mt-4 grid gap-4 md:grid-cols-2 md:items-start md:gap-5">
+        <div className="space-y-3">
           <WithdrawAssetSection
             chainId={POLYGON_CHAIN_ID}
             label={CHAIN_LABELS[POLYGON_CHAIN_ID] ?? "Polygon"}
@@ -721,72 +684,79 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
           />
         </div>
 
-        <div className="mt-4">
-          <label className="label" htmlFor="withdraw-to">
-            Destination address
-          </label>
-          <input
-            id="withdraw-to"
-            className={cn(
-              "input mt-1.5 font-mono text-sm",
-              to.trim() && !toValid && "border-danger focus:ring-danger/40",
-            )}
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            placeholder="0x…"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          {to.trim() && !toValid && (
-            <p className="mt-1.5 text-xs text-danger">Enter a valid address.</p>
-          )}
-        </div>
-
-        <div className="mt-4">
-          <div className="flex items-center justify-between">
-            <label className="label" htmlFor="withdraw-amount">
-              Amount
+        <div className="space-y-4">
+          <div>
+            <label className="label" htmlFor="withdraw-to">
+              Destination address
             </label>
-            <button
-              type="button"
-              onClick={setMax}
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              Max
-            </button>
+            <input
+              id="withdraw-to"
+              className={cn(
+                "input mt-1.5 font-mono text-sm",
+                to.trim() && !toValid && "border-danger focus:ring-danger/40",
+              )}
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="0x…"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {to.trim() && !toValid && (
+              <p className="mt-1.5 text-xs text-danger">Enter a valid address.</p>
+            )}
           </div>
-          <input
-            id="withdraw-amount"
-            inputMode="decimal"
-            className="input mt-1.5"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-            placeholder="0.00"
-          />
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            Balance on {chainLabel}: {formatToken(balance, decimals, 4)} {symbol}
-          </p>
-          {overBalance && (
-            <p className="mt-1 text-xs text-danger">Amount exceeds your balance.</p>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="label" htmlFor="withdraw-amount">
+                Amount
+              </label>
+              <button
+                type="button"
+                onClick={setMax}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Max
+              </button>
+            </div>
+            <input
+              id="withdraw-amount"
+              inputMode="decimal"
+              className="input mt-1.5"
+              value={amount}
+              onChange={(e) =>
+                setAmount(e.target.value.replace(/[^0-9.]/g, ""))
+              }
+              placeholder="0.00"
+            />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Balance on {chainLabel}: {formatToken(balance, decimals, 4)}{" "}
+              {symbol}
+            </p>
+            {overBalance && (
+              <p className="mt-1 text-xs text-danger">
+                Amount exceeds your balance.
+              </p>
+            )}
+          </div>
+
+          <Button className="w-full gap-2" onClick={onSend} disabled={!canSend}>
+            <ArrowUpRight className="h-4 w-4" />
+            {pending
+              ? "Sending…"
+              : amountWei > 0n && toValid
+                ? `Withdraw ${amount} ${symbol} on ${chainLabel}`
+                : "Enter address and amount"}
+          </Button>
+
+          {txHash && wait.isLoading && (
+            <p className="text-center text-xs text-muted-foreground">
+              Waiting for confirmation…
+            </p>
           )}
         </div>
-
-        <Button className="mt-5 w-full gap-2" onClick={onSend} disabled={!canSend}>
-          <ArrowUpRight className="h-4 w-4" />
-          {pending
-            ? "Sending…"
-            : amountWei > 0n && toValid
-              ? `Withdraw ${amount} ${symbol} on ${chainLabel}`
-              : "Enter address and amount"}
-        </Button>
-
-        {txHash && wait.isLoading && (
-          <p className="mt-3 text-center text-xs text-muted-foreground">
-            Waiting for confirmation…
-          </p>
-        )}
       </div>
-    </div>
+    </WalletFundsModalShell>
   );
 }
 
