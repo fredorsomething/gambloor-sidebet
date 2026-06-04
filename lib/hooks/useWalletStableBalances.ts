@@ -66,7 +66,6 @@ const polygonRpc =
  */
 export function useWalletStableBalances(profileAddress?: string) {
   const { authenticated, user } = usePrivy();
-  const { wallets } = useWallets();
   const { address: wagmiAddress } = useAccount();
 
   const linked = useMemo(
