@@ -73,8 +73,8 @@ export function BetCard({
   const card = (
     <>
       {featured && (
-        <div className="featured-bet-chroma-banner px-3 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-white drop-shadow-sm">
-          Highest stake
+        <div className="featured-bet-chroma-banner">
+          <span className="featured-bet-chroma-banner-text">Highest stake</span>
         </div>
       )}
       <div className="flex items-center justify-between gap-2 px-4 pt-3">

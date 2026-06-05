@@ -206,7 +206,7 @@
   }
 
   .featured-bet-chroma {
-    @apply rounded-2xl p-[2px];
+    @apply h-fit w-full self-start rounded-2xl p-px;
     background: linear-gradient(
       90deg,
       #ff3366,
@@ -219,17 +219,18 @@
       #ff3366
     );
     background-size: 400% 100%;
-    animation: chroma-border 5s linear infinite;
+    animation: chroma-border 14s linear infinite;
     box-shadow:
-      0 0 18px hsl(280 100% 60% / 0.22),
-      0 0 36px hsl(200 100% 55% / 0.12);
+      0 0 12px hsl(280 100% 60% / 0.18),
+      0 0 24px hsl(200 100% 55% / 0.1);
   }
 
   .featured-bet-chroma-inner {
-    @apply rounded-[calc(1rem-2px)] border-0 shadow-none;
+    @apply rounded-[calc(1rem-1px)] border-0 shadow-none;
   }
 
   .featured-bet-chroma-banner {
+    @apply px-2 py-0.5 text-center;
     background: linear-gradient(
       90deg,
       #ff3366,
@@ -242,7 +243,19 @@
       #ff3366
     );
     background-size: 400% 100%;
-    animation: chroma-border 5s linear infinite;
+    animation: chroma-border 14s linear infinite;
+  }
+
+  .featured-bet-chroma-banner-text {
+    @apply text-[10px] font-extrabold uppercase tracking-wider text-white;
+    -webkit-text-stroke: 0.75px rgba(0, 0, 0, 0.65);
+    paint-order: stroke fill;
+    text-shadow:
+      0 0 1px rgba(0, 0, 0, 0.9),
+      0 1px 0 rgba(0, 0, 0, 0.85),
+      0 -1px 0 rgba(0, 0, 0, 0.85),
+      1px 0 0 rgba(0, 0, 0, 0.85),
+      -1px 0 0 rgba(0, 0, 0, 0.85);
   }
 }
 
