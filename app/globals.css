@@ -230,7 +230,7 @@
   }
 
   .featured-bet-chroma-banner {
-    @apply px-2 py-0.5 text-center;
+    @apply flex items-center justify-center px-3 py-2 text-center;
     background: linear-gradient(
       90deg,
       #ff3366,
@@ -247,15 +247,15 @@
   }
 
   .featured-bet-chroma-banner-text {
-    @apply text-[10px] font-extrabold uppercase tracking-wider text-white;
-    -webkit-text-stroke: 0.75px rgba(0, 0, 0, 0.65);
+    @apply block w-full text-base font-black uppercase leading-none tracking-wide text-white sm:text-lg;
+    -webkit-text-stroke: 1.25px rgba(0, 0, 0, 0.75);
     paint-order: stroke fill;
     text-shadow:
-      0 0 1px rgba(0, 0, 0, 0.9),
-      0 1px 0 rgba(0, 0, 0, 0.85),
-      0 -1px 0 rgba(0, 0, 0, 0.85),
-      1px 0 0 rgba(0, 0, 0, 0.85),
-      -1px 0 0 rgba(0, 0, 0, 0.85);
+      0 0 2px rgba(0, 0, 0, 0.95),
+      0 2px 0 rgba(0, 0, 0, 0.9),
+      0 -1px 0 rgba(0, 0, 0, 0.9),
+      1.5px 0 0 rgba(0, 0, 0, 0.9),
+      -1.5px 0 0 rgba(0, 0, 0, 0.9);
   }
 }
 
