@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { ChevronDown, Filter } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -88,6 +89,7 @@ function emptyMessage(filter: FeedFilter): string {
 export function Feed() {
   const [filter, setFilter] = useState<FeedFilter>("All");
   const [sort, setSort] = useState<FeedSort>("Newest");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const betsQ = useQuery<ListBetsResponse>({
     queryKey: ["feed", "bets"],
@@ -151,41 +153,87 @@ export function Feed() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {FEED_FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
+      <div>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((open) => !open)}
+          aria-expanded={filtersOpen}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium transition-colors hover:bg-muted/60",
+            filtersOpen && "border-primary/40 bg-muted/40",
+          )}
+        >
+          <Filter className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span>Filters</span>
+          {!filtersOpen && (filter !== "All" || sort !== "Newest") && (
+            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary">
+              {filter !== "All" && sort !== "Newest"
+                ? `${filter} · ${sort}`
+                : filter !== "All"
+                  ? filter
+                  : sort}
+            </span>
+          )}
+          <ChevronDown
             className={cn(
-              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
-              filter === f
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300",
+              filtersOpen && "rotate-180",
             )}
-          >
-            {f}
-          </button>
-        ))}
-        <span
-          className="mx-0.5 hidden h-5 w-px shrink-0 bg-border sm:block"
-          aria-hidden
-        />
-        {FEED_SORTS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setSort(s)}
-            className={cn(
-              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
-              sort === s
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-            )}
-          >
-            {s}
-          </button>
-        ))}
+          />
+        </button>
+
+        <div
+          className={cn(
+            "grid transition-[grid-template-rows] duration-300 ease-in-out",
+            filtersOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-2 pt-3 transition-[opacity,transform] duration-300 ease-out",
+                filtersOpen
+                  ? "translate-y-0 opacity-100"
+                  : "-translate-y-1 opacity-0",
+              )}
+            >
+              {FEED_FILTERS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFilter(f)}
+                  className={cn(
+                    "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                    filter === f
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  {f}
+                </button>
+              ))}
+              <span
+                className="mx-0.5 hidden h-5 w-px shrink-0 bg-border sm:block"
+                aria-hidden
+              />
+              {FEED_SORTS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSort(s)}
+                  className={cn(
+                    "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                    sort === s
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {loading && (

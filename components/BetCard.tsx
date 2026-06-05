@@ -70,17 +70,10 @@ export function BetCard({
     ? Math.floor(new Date(bet.estimatedEndDate).getTime() / 1000)
     : 0;
 
-  return (
-    <Link
-      href={`/bets/${bet.id}`}
-      className={cn(
-        "card group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
-        featured &&
-          "border-primary/50 shadow-lg shadow-primary/10 ring-2 ring-primary/25",
-      )}
-    >
+  const card = (
+    <>
       {featured && (
-        <div className="bg-gradient-to-r from-primary to-[hsl(222_89%_45%)] px-3 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+        <div className="featured-bet-chroma-banner px-3 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-white drop-shadow-sm">
           Highest stake
         </div>
       )}
@@ -230,6 +223,27 @@ export function BetCard({
           </p>
         )}
       </div>
+    </>
+  );
+
+  const linkClassName = cn(
+    "card group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
+    featured && "featured-bet-chroma-inner",
+  );
+
+  if (featured) {
+    return (
+      <div className="featured-bet-chroma">
+        <Link href={`/bets/${bet.id}`} className={linkClassName}>
+          {card}
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <Link href={`/bets/${bet.id}`} className={linkClassName}>
+      {card}
     </Link>
   );
 }

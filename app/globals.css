@@ -204,4 +204,53 @@
   .pill-active {
     @apply border-foreground bg-foreground text-background hover:text-background;
   }
+
+  .featured-bet-chroma {
+    @apply rounded-2xl p-[2px];
+    background: linear-gradient(
+      90deg,
+      #ff3366,
+      #ff9933,
+      #ffee33,
+      #33ff66,
+      #33ddff,
+      #6633ff,
+      #ff33cc,
+      #ff3366
+    );
+    background-size: 400% 100%;
+    animation: chroma-border 5s linear infinite;
+    box-shadow:
+      0 0 18px hsl(280 100% 60% / 0.22),
+      0 0 36px hsl(200 100% 55% / 0.12);
+  }
+
+  .featured-bet-chroma-inner {
+    @apply rounded-[calc(1rem-2px)] border-0 shadow-none;
+  }
+
+  .featured-bet-chroma-banner {
+    background: linear-gradient(
+      90deg,
+      #ff3366,
+      #ff9933,
+      #ffee33,
+      #33ff66,
+      #33ddff,
+      #6633ff,
+      #ff33cc,
+      #ff3366
+    );
+    background-size: 400% 100%;
+    animation: chroma-border 5s linear infinite;
+  }
+}
+
+@keyframes chroma-border {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 400% 50%;
+  }
 }
