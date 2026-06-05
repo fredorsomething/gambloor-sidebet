@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { BetCard } from "@/components/BetCard";
 import { MarketCard } from "@/components/markets/MarketCard";
 import { Button } from "@/components/ui/button";
+import { sidebetPoolWei } from "@/lib/betEconomics";
 import { resolveBetStatus } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,36 @@ type FeedItem =
 
 const FEED_FILTERS = ["All", "Open", "Matched", "Settled"] as const;
 type FeedFilter = (typeof FEED_FILTERS)[number];
+
+const FEED_SORTS = ["Newest", "Highest stake", "Lowest stake"] as const;
+type FeedSort = (typeof FEED_SORTS)[number];
+
+function feedItemPool(item: FeedItem): bigint {
+  return item.kind === "sidebet" ? sidebetPoolWei(item.bet) : 0n;
+}
+
+function compareFeedItems(a: FeedItem, b: FeedItem, sort: FeedSort): number {
+  if (sort === "Newest") {
+    return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+  }
+
+  const poolDiff =
+    sort === "Highest stake"
+      ? feedItemPool(b) > feedItemPool(a)
+        ? 1
+        : feedItemPool(b) < feedItemPool(a)
+          ? -1
+          : 0
+      : feedItemPool(a) > feedItemPool(b)
+        ? 1
+        : feedItemPool(a) < feedItemPool(b)
+          ? -1
+          : 0;
+
+  return poolDiff !== 0
+    ? poolDiff
+    : Date.parse(b.createdAt) - Date.parse(a.createdAt);
+}
 
 function matchesFeedFilter(item: FeedItem, filter: FeedFilter): boolean {
   if (filter === "All") return true;
@@ -56,6 +87,7 @@ function emptyMessage(filter: FeedFilter): string {
  */
 export function Feed() {
   const [filter, setFilter] = useState<FeedFilter>("All");
+  const [sort, setSort] = useState<FeedSort>("Newest");
 
   const betsQ = useQuery<ListBetsResponse>({
     queryKey: ["feed", "bets"],
@@ -72,7 +104,7 @@ export function Feed() {
     refetchInterval: 15_000,
   });
 
-  const items = useMemo<FeedItem[]>(() => {
+  const { featuredBet, gridItems } = useMemo(() => {
     const bets: FeedItem[] = (betsQ.data?.items ?? []).map((bet) => ({
       kind: "sidebet",
       createdAt: bet.createdAt,
@@ -83,32 +115,78 @@ export function Feed() {
       createdAt: market.createdAt,
       market,
     }));
-    return [...bets, ...markets]
-      .filter((item) => matchesFeedFilter(item, filter))
-      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  }, [betsQ.data, marketsQ.data, filter]);
+    const filtered = [...bets, ...markets].filter((item) =>
+      matchesFeedFilter(item, filter),
+    );
+
+    const sidebets = filtered.filter(
+      (item): item is Extract<FeedItem, { kind: "sidebet" }> =>
+        item.kind === "sidebet",
+    );
+    const topSidebet =
+      sidebets.length > 0
+        ? sidebets.reduce((best, item) =>
+            sidebetPoolWei(item.bet) > sidebetPoolWei(best.bet) ? item : best,
+          )
+        : null;
+    const featured =
+      topSidebet && sidebetPoolWei(topSidebet.bet) > 0n ? topSidebet : null;
+
+    const sorted = filtered
+      .filter(
+        (item) =>
+          !(
+            featured &&
+            item.kind === "sidebet" &&
+            item.bet.id === featured.bet.id
+          ),
+      )
+      .sort((a, b) => compareFeedItems(a, b, sort));
+
+    return { featuredBet: featured, gridItems: sorted };
+  }, [betsQ.data, marketsQ.data, filter, sort]);
 
   const loading = betsQ.isLoading || marketsQ.isLoading;
   const errored = betsQ.isError || marketsQ.isError;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {FEED_FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={cn(
-              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
-              filter === f
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-            )}
-          >
-            {f}
-          </button>
-        ))}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {FEED_FILTERS.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={cn(
+                "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                filter === f
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              )}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Sort</span>
+          {FEED_SORTS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSort(s)}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                sort === s
+                  ? "bg-muted text-foreground ring-1 ring-border"
+                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              )}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && (
@@ -128,7 +206,7 @@ export function Feed() {
         </div>
       )}
 
-      {!loading && !errored && items.length === 0 && (
+      {!loading && !errored && !featuredBet && gridItems.length === 0 && (
         <div className="card p-10 text-center">
           <p className="text-muted-foreground">{emptyMessage(filter)}</p>
           {(filter === "All" || filter === "Open") && (
@@ -139,17 +217,24 @@ export function Feed() {
         </div>
       )}
 
-      {!loading && !errored && items.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) =>
-            item.kind === "sidebet" ? (
-              <BetCard key={`sidebet-${item.bet.id}`} bet={item.bet} />
-            ) : (
-              <MarketCard
-                key={`market-${item.market.id}`}
-                market={item.market}
-              />
-            ),
+      {!loading && !errored && (featuredBet || gridItems.length > 0) && (
+        <div className="space-y-3">
+          {featuredBet && (
+            <BetCard bet={featuredBet.bet} featured />
+          )}
+          {gridItems.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {gridItems.map((item) =>
+                item.kind === "sidebet" ? (
+                  <BetCard key={`sidebet-${item.bet.id}`} bet={item.bet} />
+                ) : (
+                  <MarketCard
+                    key={`market-${item.market.id}`}
+                    market={item.market}
+                  />
+                ),
+              )}
+            </div>
           )}
         </div>
       )}

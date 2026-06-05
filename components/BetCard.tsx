@@ -6,10 +6,14 @@ import { OpenBetTakePanel } from "@/components/OpenBetTakePanel";
 import { Identity } from "@/components/profile/Identity";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";
 import { TypeTag } from "@/components/ui/TypeTag";
-import { acceptorTakeEconomics, sidebetPayoutWei } from "@/lib/betEconomics";
+import {
+  acceptorTakeEconomics,
+  sidebetPoolWei,
+  sidebetPayoutWei,
+} from "@/lib/betEconomics";
 import { resolveBetStatus } from "@/lib/betStatus";
 import { binaryOutcomeIndexTone, outcomeToneClass } from "@/lib/outcomeTone";
-import { formatToken, fromNowUnix } from "@/lib/utils";
+import { cn, formatToken, fromNowUnix } from "@/lib/utils";
 import type { BetRow } from "@/lib/types";
 
 function outcomePillClass(outcomes: string[], i: number): string {
@@ -34,11 +38,17 @@ function statusLabel(bet: BetRow): React.ReactNode {
   }
 }
 
-export function BetCard({ bet }: { bet: BetRow }) {
+export function BetCard({
+  bet,
+  featured,
+}: {
+  bet: BetRow;
+  featured?: boolean;
+}) {
   const status = resolveBetStatus(bet);
   const proposerStake = BigInt(bet.proposerStake || bet.amount || "0");
   const acceptorStake = BigInt(bet.acceptorStake || bet.amount || "0");
-  const poolWei = proposerStake + acceptorStake;
+  const poolWei = sidebetPoolWei(bet);
   const payoutWei = sidebetPayoutWei(proposerStake, acceptorStake, bet.feeBps);
   const takeEconomics = acceptorTakeEconomics(
     proposerStake,
@@ -63,8 +73,17 @@ export function BetCard({ bet }: { bet: BetRow }) {
   return (
     <Link
       href={`/bets/${bet.id}`}
-      className="card group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+      className={cn(
+        "card group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
+        featured &&
+          "border-primary/50 shadow-lg shadow-primary/10 ring-2 ring-primary/25",
+      )}
     >
+      {featured && (
+        <div className="bg-gradient-to-r from-primary to-[hsl(222_89%_45%)] px-4 py-1.5 text-center text-xs font-semibold uppercase tracking-wide text-primary-foreground">
+          Highest stake on the site
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2 px-4 pt-3">
         <TypeTag kind="sidebet" />
         <span className="text-xs font-medium text-muted-foreground">
