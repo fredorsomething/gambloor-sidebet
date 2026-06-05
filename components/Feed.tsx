@@ -151,42 +151,41 @@ export function Feed() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {FEED_FILTERS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              className={cn(
-                "rounded-full px-4 py-2 text-sm font-medium transition-colors",
-                filter === f
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              )}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Sort</span>
-          {FEED_SORTS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setSort(s)}
-              className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                sort === s
-                  ? "bg-muted text-foreground ring-1 ring-border"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              )}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {FEED_FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              filter === f
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            )}
+          >
+            {f}
+          </button>
+        ))}
+        <span
+          className="mx-0.5 hidden h-5 w-px shrink-0 bg-border sm:block"
+          aria-hidden
+        />
+        {FEED_SORTS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSort(s)}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              sort === s
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            )}
+          >
+            {s}
+          </button>
+        ))}
       </div>
 
       {loading && (
@@ -218,23 +217,19 @@ export function Feed() {
       )}
 
       {!loading && !errored && (featuredBet || gridItems.length > 0) && (
-        <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {featuredBet && (
             <BetCard bet={featuredBet.bet} featured />
           )}
-          {gridItems.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {gridItems.map((item) =>
-                item.kind === "sidebet" ? (
-                  <BetCard key={`sidebet-${item.bet.id}`} bet={item.bet} />
-                ) : (
-                  <MarketCard
-                    key={`market-${item.market.id}`}
-                    market={item.market}
-                  />
-                ),
-              )}
-            </div>
+          {gridItems.map((item) =>
+            item.kind === "sidebet" ? (
+              <BetCard key={`sidebet-${item.bet.id}`} bet={item.bet} />
+            ) : (
+              <MarketCard
+                key={`market-${item.market.id}`}
+                market={item.market}
+              />
+            ),
           )}
         </div>
       )}

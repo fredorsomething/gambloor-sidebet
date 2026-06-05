@@ -80,8 +80,8 @@ export function BetCard({
       )}
     >
       {featured && (
-        <div className="bg-gradient-to-r from-primary to-[hsl(222_89%_45%)] px-4 py-1.5 text-center text-xs font-semibold uppercase tracking-wide text-primary-foreground">
-          Highest stake on the site
+        <div className="bg-gradient-to-r from-primary to-[hsl(222_89%_45%)] px-3 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+          Highest stake
         </div>
       )}
       <div className="flex items-center justify-between gap-2 px-4 pt-3">
