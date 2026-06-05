@@ -229,7 +229,7 @@ export function BetCard({
   if (featured) {
     return (
       <div className="featured-bet-chroma">
-        <span className="featured-bet-chroma-tab">Highest Stake</span>
+        <span className="featured-bet-chroma-tab">Highest Stake 👀</span>
         <Link href={`/bets/${bet.id}`} className={linkClassName}>
           {card}
         </Link>
