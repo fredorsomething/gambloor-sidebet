@@ -74,8 +74,8 @@ export function NegotiationCard({
     <div
       className={
         compact
-          ? "w-full max-w-sm space-y-3 rounded-xl border border-border bg-card p-4 text-foreground shadow-sm"
-          : "rounded-xl border border-border p-4 space-y-3"
+          ? "w-full max-w-full space-y-3 rounded-xl border border-border bg-card p-3 text-foreground shadow-sm sm:max-w-sm sm:p-4"
+          : "space-y-3 rounded-xl border border-border p-4"
       }
     >
       <div className="flex items-start justify-between gap-2">
@@ -102,7 +102,7 @@ export function NegotiationCard({
         <Identity address={n.fromAddress} size={20} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/30 p-3 text-sm">
+      <div className="grid grid-cols-1 gap-3 rounded-lg bg-muted/30 p-3 text-sm sm:grid-cols-2">
         <div>
           <div className="label">Proposer stakes</div>
           <div className="mt-0.5 inline-flex items-center font-mono font-semibold">
@@ -140,13 +140,24 @@ export function NegotiationCard({
       )}
 
       {n.status === "Pending" && negotiationBetOpen && (
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           {isRecipient && onDecline && onAccept && (
             <>
-              <Button variant="ghost" size="sm" onClick={onDecline} disabled={busy}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onDecline}
+                disabled={busy}
+                className="w-full sm:w-auto"
+              >
                 Decline
               </Button>
-              <Button size="sm" onClick={onAccept} disabled={busy}>
+              <Button
+                size="sm"
+                onClick={onAccept}
+                disabled={busy}
+                className="w-full sm:w-auto"
+              >
                 Accept terms
               </Button>
             </>
@@ -219,7 +230,13 @@ export function NegotiationCard({
 
       {n.status === "Pending" && isRecipient && onCounter && negotiationBetOpen && (
         <div className="border-t border-border pt-2">
-          <Button variant="outline" size="sm" onClick={onCounter} disabled={busy}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCounter}
+            disabled={busy}
+            className="w-full sm:w-auto"
+          >
             Send counter-offer
           </Button>
         </div>

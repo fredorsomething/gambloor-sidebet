@@ -85,7 +85,10 @@ function MessagesInner() {
   const [draft, setDraft] = useState("");
   const [gifUrl, setGifUrl] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
-  const [offerComposeBetId, setOfferComposeBetId] = useState<number | null>(null);
+  type OfferCompose =
+    | { betId: number; anchor: "card"; negId: number }
+    | { betId: number; anchor: "dock" };
+  const [offerCompose, setOfferCompose] = useState<OfferCompose | null>(null);
 
   async function authedFetch<T>(url: string, init?: RequestInit): Promise<T> {
     const token = await getAccessToken();
@@ -198,7 +201,7 @@ function MessagesInner() {
         }),
       }),
     onSuccess: () => {
-      setOfferComposeBetId(null);
+      setOfferCompose(null);
       qc.invalidateQueries({ queryKey: ["dm-thread", me, selected] });
       qc.invalidateQueries({ queryKey: ["dm-convos", me] });
       push({ title: "Offer sent", variant: "success" });
@@ -229,15 +232,21 @@ function MessagesInner() {
   });
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const composeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (focusBetId && Number.isFinite(focusBetId)) {
-      setOfferComposeBetId(focusBetId);
+      setOfferCompose({ betId: focusBetId, anchor: "dock" });
     }
   }, [focusBetId, selected]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [threadQ.data?.messages.length, selected]);
+
+  useEffect(() => {
+    if (offerCompose?.anchor !== "card") return;
+    composeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [offerCompose]);
 
   if (ready && !authenticated) {
     return (
@@ -262,10 +271,34 @@ function MessagesInner() {
     ? `@${counterparty.username}`
     : shortAddr(selected ?? "");
 
+  const composeBetId = offerCompose?.betId ?? focusBetId;
   const activeBetCtx =
-    betContext.find((b) => b.bet.id === (offerComposeBetId ?? focusBetId)) ??
+    betContext.find((b) => b.bet.id === composeBetId) ??
     betContext[0] ??
     null;
+
+  function renderNegotiationCompose(
+    ctx: BetContextRow,
+    stakes?: { proposerStake: string; acceptorStake: string },
+  ) {
+    return (
+      <NegotiationCompose
+        tokenSym={ctx.bet.tokenSymbol || "USDC"}
+        decimals={ctx.bet.decimals}
+        defaultProposerStake={stakes?.proposerStake ?? ctx.proposerStake}
+        defaultAcceptorStake={stakes?.acceptorStake ?? ctx.acceptorStake}
+        submitLabel="Send counter-offer"
+        pending={sendOffer.isPending}
+        onCancel={() => setOfferCompose(null)}
+        onSubmit={(p) =>
+          sendOffer.mutate({
+            betId: ctx.bet.id,
+            ...p,
+          })
+        }
+      />
+    );
+  }
 
   function openPublishEscrow(betId: number) {
     router.push(`/bets/${betId}#revise-escrow`);
@@ -280,10 +313,17 @@ function MessagesInner() {
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="mb-4 text-2xl font-bold">Messages</h1>
-      <div className="grid h-[70vh] gap-4 overflow-hidden rounded-2xl md:grid-cols-[300px_1fr]">
+      <div
+        className={cn(
+          "grid gap-4 overflow-hidden rounded-2xl md:grid-cols-[300px_1fr]",
+          selected
+            ? "h-[calc(100dvh-5.5rem)] md:h-[70vh]"
+            : "h-[min(70vh,calc(100dvh-5.5rem))]",
+        )}
+      >
         <aside
           className={cn(
-            "card flex flex-col overflow-hidden p-0",
+            "card flex min-h-0 flex-col overflow-hidden p-0",
             selected && "hidden md:flex",
           )}
         >
@@ -352,7 +392,7 @@ function MessagesInner() {
 
         <section
           className={cn(
-            "card flex flex-col overflow-hidden p-0",
+            "card flex min-h-0 flex-col overflow-hidden p-0",
             !selected && "hidden md:flex",
           )}
         >
@@ -425,13 +465,16 @@ function MessagesInner() {
                         key={b.bet.id}
                         type="button"
                         onClick={() =>
-                          setOfferComposeBetId(
-                            offerComposeBetId === b.bet.id ? null : b.bet.id,
+                          setOfferCompose((prev) =>
+                            prev?.betId === b.bet.id && prev.anchor === "dock"
+                              ? null
+                              : { betId: b.bet.id, anchor: "dock" },
                           )
                         }
                         className={cn(
                           "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
-                          offerComposeBetId === b.bet.id ||
+                          (offerCompose?.betId === b.bet.id &&
+                            offerCompose.anchor === "dock") ||
                             focusBetId === b.bet.id
                             ? "border-primary bg-primary/10"
                             : "border-border hover:bg-muted",
@@ -445,27 +488,7 @@ function MessagesInner() {
                 </div>
               )}
 
-              {activeBetCtx && offerComposeBetId != null && !blockedByMe && (
-                <div className="border-b border-border px-4 py-3">
-                  <NegotiationCompose
-                    tokenSym={activeBetCtx.bet.tokenSymbol || "USDC"}
-                    decimals={activeBetCtx.bet.decimals}
-                    defaultProposerStake={activeBetCtx.proposerStake}
-                    defaultAcceptorStake={activeBetCtx.acceptorStake}
-                    submitLabel="Send counter-offer"
-                    pending={sendOffer.isPending}
-                    onCancel={() => setOfferComposeBetId(null)}
-                    onSubmit={(p) =>
-                      sendOffer.mutate({
-                        betId: activeBetCtx.bet.id,
-                        ...p,
-                      })
-                    }
-                  />
-                </div>
-              )}
-
-              <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 sm:p-4">
                 {(threadQ.data?.messages ?? []).map((m) => {
                   if (m.negotiation) {
                     const bundle = m.negotiation;
@@ -557,10 +580,35 @@ function MessagesInner() {
                           }
                           onCounter={
                             n.status === "Pending"
-                              ? () => setOfferComposeBetId(b.id)
+                              ? () =>
+                                  setOfferCompose({
+                                    betId: b.id,
+                                    anchor: "card",
+                                    negId: n.id,
+                                  })
                               : undefined
                           }
                         />
+                        {offerCompose?.anchor === "card" &&
+                          offerCompose.negId === n.id &&
+                          offerCompose.betId === b.id && (
+                            <div
+                              ref={composeRef}
+                              className="mt-2 w-full max-w-full sm:max-w-sm"
+                            >
+                              {renderNegotiationCompose(
+                                betContext.find((row) => row.bet.id === b.id) ?? {
+                                  bet: b,
+                                  proposerStake: n.proposerStake,
+                                  acceptorStake: n.acceptorStake,
+                                },
+                                {
+                                  proposerStake: n.proposerStake,
+                                  acceptorStake: n.acceptorStake,
+                                },
+                              )}
+                            </div>
+                          )}
                         <span className="px-1 text-[10px] text-muted-foreground">
                           {timeLabel(m.createdAt)}
                         </span>
@@ -638,6 +686,14 @@ function MessagesInner() {
                 <div ref={bottomRef} />
               </div>
 
+              {activeBetCtx &&
+                offerCompose?.anchor === "dock" &&
+                !blockedByMe && (
+                  <div className="shrink-0 border-t border-border bg-card px-3 py-3 sm:px-4">
+                    {renderNegotiationCompose(activeBetCtx)}
+                  </div>
+                )}
+
               {gifUrl && (
                 <div className="border-t border-border px-3 pt-2">
                   <div className="relative inline-block">
@@ -663,7 +719,7 @@ function MessagesInner() {
                   Messaging is disabled while this user is blocked.
                 </div>
               ) : (
-                <div className="flex items-end gap-2 border-t border-border p-3">
+                <div className="flex shrink-0 items-end gap-2 border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                   <button
                     type="button"
                     onClick={() => setGifOpen(true)}

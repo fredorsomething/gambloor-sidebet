@@ -56,8 +56,8 @@ export function NegotiationCompose({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="space-y-1.5 block">
           <span className="label">Proposer stakes</span>
           <input
@@ -100,13 +100,22 @@ export function NegotiationCompose({
           maxLength={1000}
         />
       </label>
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         {onCancel && (
-          <Button variant="ghost" onClick={onCancel} disabled={pending}>
+          <Button
+            variant="ghost"
+            onClick={onCancel}
+            disabled={pending}
+            className="w-full sm:w-auto"
+          >
             Cancel
           </Button>
         )}
-        <Button onClick={handleSubmit} disabled={pending}>
+        <Button
+          onClick={handleSubmit}
+          disabled={pending}
+          className="w-full sm:w-auto"
+        >
           {pending ? "Sending…" : submitLabel}
         </Button>
       </div>
