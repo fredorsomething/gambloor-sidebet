@@ -72,11 +72,6 @@ export function BetCard({
 
   const card = (
     <>
-      {featured && (
-        <div className="featured-bet-chroma-banner">
-          <span className="featured-bet-chroma-banner-text">Highest stake</span>
-        </div>
-      )}
       <div className="flex items-center justify-between gap-2 px-4 pt-3">
         <TypeTag kind="sidebet" />
         <span className="text-xs font-medium text-muted-foreground">
@@ -227,13 +222,14 @@ export function BetCard({
   );
 
   const linkClassName = cn(
-    "card group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
+    "card group flex h-full flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
     featured && "featured-bet-chroma-inner",
   );
 
   if (featured) {
     return (
       <div className="featured-bet-chroma">
+        <span className="featured-bet-chroma-tab">Highest Stake</span>
         <Link href={`/bets/${bet.id}`} className={linkClassName}>
           {card}
         </Link>
