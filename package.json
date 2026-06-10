@@ -12,6 +12,7 @@
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "badges:grant-og": "tsx scripts/grantOgBadge.ts",
     "db:studio": "prisma studio",
     "db:reset-clob": "tsx prisma/reset-clob.ts",
     "engine:dev": "tsx watch engine/index.ts",

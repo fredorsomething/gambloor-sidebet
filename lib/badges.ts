@@ -6,6 +6,7 @@ export type BadgeKind =
   | "Staff"
   | "Trusted"
   | "Resolver"
+  | "OG"
   | "Supporter";
 
 /** Badges an admin can assign (Admin is always derived from the admin wallet). */
@@ -16,13 +17,18 @@ export const ASSIGNABLE_BADGES: BadgeKind[] = [
   "Resolver",
 ];
 
-const PERSISTABLE_BADGES: BadgeKind[] = [...ASSIGNABLE_BADGES, "Supporter"];
+const PERSISTABLE_BADGES: BadgeKind[] = [
+  ...ASSIGNABLE_BADGES,
+  "OG",
+  "Supporter",
+];
 
 const DISPLAY_ORDER: BadgeKind[] = [
   "Admin",
   "Staff",
   "Resolver",
   "Trusted",
+  "OG",
   "Supporter",
   "User",
 ];

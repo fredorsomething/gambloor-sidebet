@@ -1,4 +1,5 @@
 import {
+  Crown,
   Heart,
   Scale,
   ShieldAlert,
@@ -49,6 +50,12 @@ export const BADGE_VISUAL: Record<BadgeKind, BadgeVisual> = {
     className: "border-success/40 bg-success/10 text-success",
     lockedClassName: "border-border/60 bg-muted/20 text-muted-foreground/50",
   },
+  OG: {
+    label: "OG",
+    icon: Crown,
+    className: "border-purple-500/50 bg-purple-500/15 text-purple-400",
+    lockedClassName: "border-purple-500/30 bg-purple-500/10 text-purple-400/70",
+  },
   Supporter: {
     label: "Supporter",
     icon: Heart,
@@ -60,6 +67,7 @@ export const BADGE_VISUAL: Record<BadgeKind, BadgeVisual> = {
 /** Badges shown greyed out in the cosmetics catalog (not bought here). */
 export const LOCKED_CATALOG_BADGES: BadgeKind[] = [
   "User",
+  "OG",
   "Staff",
   "Trusted",
   "Resolver",
@@ -68,6 +76,7 @@ export const LOCKED_CATALOG_BADGES: BadgeKind[] = [
 
 export const LOCKED_CATALOG_HINT: Partial<Record<BadgeKind, string>> = {
   User: "Everyone starts with this badge.",
+  OG: "Granted to early Sidebet users.",
   Staff: "Granted by the platform team.",
   Trusted: "Granted to verified traders.",
   Resolver: "Granted to approved settlers.",
