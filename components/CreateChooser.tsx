@@ -15,21 +15,19 @@ const OPTIONS: {
   id: CreateType;
   label: string;
   icon: typeof Swords;
-  description: string;
+  tagline: string;
 }[] = [
   {
     id: "sidebet",
     label: "Sidebet",
     icon: Swords,
-    description:
-      "A private 1v1 escrow. You pick your side and stake; one counterparty takes the other side. Best for settling a specific argument with a friend.",
+    tagline: "1v1 with a friend",
   },
   {
     id: "market",
     label: "Market",
     icon: BarChart3,
-    description:
-      "A public prediction market with an order book. Anyone can buy and sell shares of each outcome. Best for opening a bet to the whole site.",
+    tagline: "Open to everyone",
   },
 ];
 
@@ -49,8 +47,7 @@ export function CreateChooser({
   const [type, setType] = useState<CreateType>(initialType);
   const effectiveType =
     type === "market" && !allowMarket ? "sidebet" : type;
-  const active =
-    visibleOptions.find((o) => o.id === effectiveType) ?? visibleOptions[0]!;
+  const showTypePicker = visibleOptions.length > 1;
 
   return (
     <div className="space-y-6">
@@ -61,63 +58,54 @@ export function CreateChooser({
         </div>
       )}
 
-      <div
-        className={cn(
-          "grid grid-cols-1 gap-3",
-          visibleOptions.length > 1 && "sm:grid-cols-2",
-        )}
-      >
-        {visibleOptions.map((o) => {
-          const Icon = o.icon;
-          const selected = effectiveType === o.id;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() => setType(o.id)}
-              className={cn(
-                "rounded-xl border-2 p-4 text-left transition-all",
-                selected
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/40",
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-lg",
-                    selected
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </span>
-                <span className="font-semibold">{o.label}</span>
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                {o.description}
-              </p>
-            </button>
-          );
-        })}
-      </div>
+      {showTypePicker && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {visibleOptions.map((o) => {
+            const Icon = o.icon;
+            const selected = effectiveType === o.id;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => setType(o.id)}
+                className={cn(
+                  "rounded-xl border-2 p-4 text-left transition-all",
+                  selected
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/40",
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-lg",
+                      selected
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <span className="font-semibold">{o.label}</span>
+                    <p className="text-xs text-muted-foreground">{o.tagline}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      <div>
-        <h2 className="text-lg font-semibold">
-          {type === "sidebet" ? "Propose a sidebet" : "Create a market"}
-        </h2>
-        <p className="mb-4 text-sm text-muted-foreground">{active.description}</p>
-        {effectiveType === "sidebet" ? (
-          <ChainGuard>
-            <CreateBetForm />
-          </ChainGuard>
-        ) : (
-          <ChainGuard require="market">
-            <CreateMarketForm />
-          </ChainGuard>
-        )}
-      </div>
+      {effectiveType === "sidebet" ? (
+        <ChainGuard>
+          <CreateBetForm />
+        </ChainGuard>
+      ) : (
+        <ChainGuard require="market">
+          <CreateMarketForm />
+        </ChainGuard>
+      )}
     </div>
   );
 }

@@ -37,15 +37,12 @@ import {
   ACCEPT_EXPIRY_PRESETS,
   NO_ACCEPT_DEADLINE,
   acceptDeadlineUnixFromDuration,
+  resolveAcceptExpirySeconds,
   validateAcceptDeadlineUnix,
   type AcceptExpiryPresetId,
+  type AcceptExpiryUnit,
 } from "@/lib/sidebetExpiry";
-import {
-  buildTermsHash,
-  formatToken,
-  parseAmount,
-  shortAddr,
-} from "@/lib/utils";
+import { buildTermsHash, formatToken, parseAmount } from "@/lib/utils";
 
 type Step = "idle" | "approving" | "creating" | "indexing" | "done";
 type BinaryStyle = "yes-no" | "up-down";
@@ -87,8 +84,11 @@ export function CreateBetForm() {
   const [customSettler, setCustomSettler] = useState<string | null>(null);
   const [settlerFeeBps, setSettlerFeeBps] = useState(0);
   const [endDate, setEndDate] = useState(""); // yyyy-mm-dd
-  const [offerExpires, setOfferExpires] = useState(true);
-  const [expiryPreset, setExpiryPreset] = useState<AcceptExpiryPresetId>("1d");
+  const [offerExpires, setOfferExpires] = useState(false);
+  const [expiryPreset, setExpiryPreset] = useState<AcceptExpiryPresetId>("24h");
+  const [customExpiryValue, setCustomExpiryValue] = useState("1");
+  const [customExpiryUnit, setCustomExpiryUnit] =
+    useState<AcceptExpiryUnit>("days");
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -198,9 +198,17 @@ export function CreateBetForm() {
     if (!customSettler && getAddress(settler) === getAddress(account))
       return "You can't be your own settler";
     if (offerExpires) {
-      const preset = ACCEPT_EXPIRY_PRESETS.find((p) => p.id === expiryPreset);
-      if (!preset) return "Pick a valid offer expiry";
-      const acceptDeadline = acceptDeadlineUnixFromDuration(preset.seconds);
+      const durationSec = resolveAcceptExpirySeconds(
+        expiryPreset,
+        expiryPreset === "custom"
+          ? {
+              value: Number(customExpiryValue),
+              unit: customExpiryUnit,
+            }
+          : undefined,
+      );
+      if (durationSec == null) return "Pick a valid offer expiry";
+      const acceptDeadline = acceptDeadlineUnixFromDuration(durationSec);
       const dlErr = validateAcceptDeadlineUnix(acceptDeadline);
       if (dlErr) return dlErr;
     }
@@ -269,7 +277,15 @@ export function CreateBetForm() {
       : 0;
     const acceptDeadline = offerExpires
       ? acceptDeadlineUnixFromDuration(
-          ACCEPT_EXPIRY_PRESETS.find((p) => p.id === expiryPreset)!.seconds,
+          resolveAcceptExpirySeconds(
+            expiryPreset,
+            expiryPreset === "custom"
+              ? {
+                  value: Number(customExpiryValue),
+                  unit: customExpiryUnit,
+                }
+              : undefined,
+          )!,
         )
       : NO_ACCEPT_DEADLINE;
 
@@ -590,10 +606,7 @@ export function CreateBetForm() {
           />
         </Field>
 
-        <Field
-          label="Settler"
-          hint="Pick @admin, an approved settler, or paste a custom wallet to declare the outcome. Payouts auto-settle on-chain when both sides agree."
-        >
+        <Field label="Who settles it?">
           <SettlerSelect
             value={customSettler ?? settler}
             onChange={(addr, feeBps, isCustom) => {
@@ -612,43 +625,67 @@ export function CreateBetForm() {
           />
         </Field>
 
-        <Field
-          label="Offer expiry"
-          hint="If nobody takes the other side by then, your stake is refunded from escrow automatically. Minimum 10 minutes, or no expiry."
-        >
+        <Field label="Offer expiry">
           <div className="space-y-3">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={offerExpires}
                 onChange={(e) => setOfferExpires(e.target.checked)}
                 disabled={isBusy}
               />
-              <span>Expire this offer if unmatched</span>
+              <span>Expire if nobody takes the other side</span>
             </label>
             {offerExpires && (
-              <select
-                className="input"
-                value={expiryPreset}
-                onChange={(e) =>
-                  setExpiryPreset(e.target.value as AcceptExpiryPresetId)
-                }
-                disabled={isBusy}
-              >
-                {ACCEPT_EXPIRY_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-2">
+                <select
+                  className="input"
+                  value={expiryPreset}
+                  onChange={(e) =>
+                    setExpiryPreset(e.target.value as AcceptExpiryPresetId)
+                  }
+                  disabled={isBusy}
+                >
+                  {ACCEPT_EXPIRY_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                  <option value="custom">Custom</option>
+                </select>
+                {expiryPreset === "custom" && (
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      className="input w-24 font-mono"
+                      min={1}
+                      value={customExpiryValue}
+                      onChange={(e) => setCustomExpiryValue(e.target.value)}
+                      disabled={isBusy}
+                    />
+                    <select
+                      className="input flex-1"
+                      value={customExpiryUnit}
+                      onChange={(e) =>
+                        setCustomExpiryUnit(e.target.value as AcceptExpiryUnit)
+                      }
+                      disabled={isBusy}
+                    >
+                      <option value="minutes">minutes</option>
+                      <option value="hours">hours</option>
+                      <option value="days">days</option>
+                    </select>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Unmatched? Your stake comes back automatically.
+                </p>
+              </div>
             )}
           </div>
         </Field>
 
-        <Field
-          label="Estimated end date"
-          hint="Optional — informational date the market is expected to resolve."
-        >
+        <Field label="Expected end date (optional)">
           <input
             type="date"
             className="input"
@@ -658,29 +695,12 @@ export function CreateBetForm() {
         </Field>
       </div>
 
-      <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
-        <div>
-          Escrow: <span className="font-mono">{shortAddr(escrow ?? "")}</span>
-        </div>
-        <div>
-          Platform fee: <b>{(settlerFeeBps / 100).toFixed(2)}%</b> of the pool
-          (to admin). Winner takes the pool less this fee. If the
-          winning outcome is one nobody backed, both stakes are refunded.
-        </div>
-        <div>
-          You will sign{" "}
-          {needsApproval ? (
-            <span>
-              <b>two</b> transactions: an ERC-20 approval, then{" "}
-              <code>createBet</code>
-            </span>
-          ) : (
-            <span>
-              <b>one</b> transaction: <code>createBet</code>
-            </span>
-          )}
-          . Your stake is pulled into escrow on the create tx.
-        </div>
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{(settlerFeeBps / 100).toFixed(2)}% platform fee</span>
+        {" · "}
+        {needsApproval ? "2 wallet signatures" : "1 wallet signature"}
+        {" · "}
+        stake goes into escrow on create
       </div>
 
       {error && (

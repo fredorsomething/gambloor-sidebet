@@ -3,6 +3,7 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { jsonFetch } from "@/lib/fetcher";
 import {
   createPublicClient,
   formatUnits,
@@ -161,12 +162,24 @@ async function fetchEthereumBalances(owners: Address[]): Promise<EthereumFetched
   return { usdc, eth };
 }
 
+function entryUsd(
+  entry: WalletBalanceEntry,
+  prices: { usdPerPol: number; usdPerEth: number },
+): number {
+  if (entry.symbol === "POL") return entry.amount * prices.usdPerPol;
+  if (entry.symbol === "ETH") return entry.amount * prices.usdPerEth;
+  return entry.amount;
+}
+
 function buildChainGroups(args: {
   polygonBalances: WalletStableBalanceRow[];
   polRaw: bigint;
   ethereumUsdc: bigint;
   ethereumEth: bigint;
+  usdPerPol: number;
+  usdPerEth: number;
 }): WalletChainGroup[] {
+  const prices = { usdPerPol: args.usdPerPol, usdPerEth: args.usdPerEth };
   const groups: WalletChainGroup[] = [];
 
   const polygonEntries: WalletBalanceEntry[] = [];
@@ -202,7 +215,7 @@ function buildChainGroups(args: {
       chainLabel: "Polygon",
       onPlatform: true,
       entries: polygonEntries,
-      totalUsd: polygonEntries.reduce((acc, e) => acc + e.amount, 0),
+      totalUsd: polygonEntries.reduce((acc, e) => acc + entryUsd(e, prices), 0),
     });
   }
 
@@ -238,7 +251,7 @@ function buildChainGroups(args: {
       chainLabel: "Ethereum",
       onPlatform: false,
       entries: ethereumEntries,
-      totalUsd: ethereumEntries.reduce((acc, e) => acc + e.amount, 0),
+      totalUsd: ethereumEntries.reduce((acc, e) => acc + entryUsd(e, prices), 0),
     });
   }
 
@@ -320,6 +333,23 @@ export function useWalletStableBalances(profileAddress?: string) {
     return map;
   }, [balances, polRaw]);
 
+  const { data: polPrice } = useQuery({
+    queryKey: ["pol-usd"],
+    queryFn: () => jsonFetch<{ usdPerPol: number }>("/api/wallet/pol-usd"),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  const { data: ethPrice } = useQuery({
+    queryKey: ["eth-usd"],
+    queryFn: () => jsonFetch<{ usdPerEth: number }>("/api/wallet/eth-usd"),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  const usdPerPol = polPrice?.usdPerPol ?? 0;
+  const usdPerEth = ethPrice?.usdPerEth ?? 0;
+
   const chainGroups = useMemo(
     () =>
       buildChainGroups({
@@ -327,16 +357,18 @@ export function useWalletStableBalances(profileAddress?: string) {
         polRaw,
         ethereumUsdc: ethereumUsdcRaw,
         ethereumEth: ethereumEthRaw,
+        usdPerPol,
+        usdPerEth,
       }),
-    [balances, polRaw, ethereumUsdcRaw, ethereumEthRaw],
+    [balances, polRaw, ethereumUsdcRaw, ethereumEthRaw, usdPerPol, usdPerEth],
   );
 
   const polygonUsd =
     balances.reduce((acc, t) => acc + t.amount, 0) +
-    Number(formatUnits(polRaw, 18));
+    Number(formatUnits(polRaw, 18)) * usdPerPol;
   const ethereumUsd =
     Number(formatUnits(ethereumUsdcRaw, ETHEREUM_USDC.decimals)) +
-    Number(formatUnits(ethereumEthRaw, 18));
+    Number(formatUnits(ethereumEthRaw, 18)) * usdPerEth;
 
   const multipleWallets = !profileAddress && owners.length > 1;
 

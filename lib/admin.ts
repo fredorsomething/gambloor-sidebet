@@ -29,6 +29,6 @@ export function isAdminUser(user?: {
 
 /** Label shown in settler pickers. Admin keeps a friendly name; others use wallet only. */
 export function formatSettlerLabel(address: string): string {
-  if (isAdminAddress(address)) return "Default - @Admin";
+  if (isAdminAddress(address)) return "@Admin (default)";
   return shortAddr(address);
 }

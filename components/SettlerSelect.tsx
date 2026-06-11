@@ -18,8 +18,7 @@ type Props = {
 };
 
 /**
- * Pick an approved settler or paste a custom wallet that resolves just this bet.
- * Custom settlers use the platform fee; @admin can always settle as a fallback.
+ * Pick the default admin settler, a whitelisted settler, or a custom wallet.
  */
 export function SettlerSelect({
   value,
@@ -115,56 +114,72 @@ export function SettlerSelect({
     return <div className="text-sm text-muted-foreground">Loading settlers…</div>;
   }
 
-  if (options.length === 0 && !adminOption) {
-    return (
-      <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
-        No approved settlers are available yet. Paste a custom settler wallet
-        below, or ask an admin to approve one.
-      </div>
-    );
+  const showCustomSelected =
+    customActive &&
+    customValid &&
+    value.toLowerCase() === customNormalized.toLowerCase();
+
+  const dropdownOptions = [
+    ...(adminOption ? [adminOption] : []),
+    ...listOptions,
+  ];
+
+  function clearCustom() {
+    setCustomActive(false);
+    setCustomInput("");
+    const pick = adminOption ?? options[0];
+    if (pick) selectApproved(pick.address, pick.feeBps);
   }
 
-  const showCustomSelected =
-    customActive && customValid && value.toLowerCase() === customNormalized.toLowerCase();
-
   return (
-    <div className="space-y-3">
-      {adminOption && (
-        <SettlerOption
-          selected={!showCustomSelected && value.toLowerCase() === adminOption.address.toLowerCase()}
-          label={formatSettlerLabel(adminOption.address)}
-          sub={`${shortAddr(adminOption.address)} · fee ${(adminOption.feeBps / 100).toFixed(2)}%`}
-          onSelect={() => selectApproved(adminOption.address, adminOption.feeBps)}
-        />
+    <div className="space-y-4">
+      {dropdownOptions.length > 0 && !showCustomSelected && (
+        <select
+          className="input"
+          value={value}
+          onChange={(e) => {
+            const addr = e.target.value;
+            const pick = dropdownOptions.find(
+              (s) => s.address.toLowerCase() === addr.toLowerCase(),
+            );
+            if (pick) selectApproved(pick.address, pick.feeBps);
+          }}
+        >
+          {adminOption && (
+            <option value={adminOption.address}>
+              {formatSettlerLabel(adminOption.address)} ·{" "}
+              {(adminOption.feeBps / 100).toFixed(2)}% fee
+            </option>
+          )}
+          {listOptions.length > 0 && (
+            <optgroup label="Whitelisted">
+              {listOptions.map((s) => (
+                <option key={s.address} value={s.address}>
+                  {formatSettlerLabel(s.address)} · {(s.feeBps / 100).toFixed(2)}% fee
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
       )}
 
-      {listOptions.length > 0 && (
-        <div className="space-y-2">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Whitelisted settlers
+      {showCustomSelected && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm">
+          <span>
+            Custom: <span className="font-mono">{shortAddr(customNormalized)}</span>
           </span>
-          {listOptions.map((s) => (
-            <SettlerOption
-              key={s.address}
-              selected={
-                !showCustomSelected &&
-                value.toLowerCase() === s.address.toLowerCase()
-              }
-              label={formatSettlerLabel(s.address)}
-              sub={`fee ${(s.feeBps / 100).toFixed(2)}%`}
-              onSelect={() => selectApproved(s.address, s.feeBps)}
-            />
-          ))}
+          <button
+            type="button"
+            onClick={clearCustom}
+            className="shrink-0 text-xs text-muted-foreground underline hover:text-foreground"
+          >
+            Use @Admin instead
+          </button>
         </div>
       )}
 
-      <div className="space-y-2 rounded-md border border-dashed border-border/80 p-3">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Add custom settler
-        </span>
-        <p className="text-[11px] text-muted-foreground">
-          Paste a wallet that will declare the winning outcome for this sidebet. Once they've determined the outcome, payout settles automatically.
-        </p>
+      <div className="space-y-2 rounded-lg border border-dashed border-border/70 bg-muted/20 p-3">
+        <span className="text-sm font-medium">Custom settler</span>
         <div className="flex gap-2">
           <input
             className="input flex-1 font-mono text-sm"
@@ -190,49 +205,14 @@ export function SettlerSelect({
         )}
         {showCustomSelected && (
           <p className="text-xs text-success">
-            Custom settler selected: {shortAddr(customNormalized)}
+            Using {shortAddr(customNormalized)}
           </p>
         )}
+        <p className="text-xs text-muted-foreground">
+          Your counterparty will see this wallet and has to agree before the bet
+          locks in.
+        </p>
       </div>
     </div>
-  );
-}
-
-function SettlerOption({
-  selected,
-  label,
-  sub,
-  onSelect,
-}: {
-  selected: boolean;
-  label: string;
-  sub: string;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`flex w-full items-center justify-between gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
-        selected
-          ? "border-[hsl(var(--primary))]/60 bg-[hsl(var(--primary))]/10"
-          : "border-border hover:border-border/80"
-      }`}
-    >
-      <span className="min-w-0">
-        <span className="block truncate font-medium">{label}</span>
-        <span className="block font-mono text-xs text-muted-foreground">{sub}</span>
-      </span>
-      <span
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-          selected
-            ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-white"
-            : "border-border text-transparent"
-        }`}
-        aria-hidden
-      >
-        ✓
-      </span>
-    </button>
   );
 }

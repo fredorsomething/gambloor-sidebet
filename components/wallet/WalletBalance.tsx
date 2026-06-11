@@ -1,7 +1,6 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownUp,
   ArrowUpRight,
@@ -13,7 +12,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { formatUnits } from "viem";
 import { useAccount, useChainId } from "wagmi";
 import { polygon } from "wagmi/chains";
 
@@ -23,6 +21,7 @@ import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
 import { jsonFetch } from "@/lib/fetcher";
 import { useClickOutside } from "@/lib/useClickOutside";
+import { useQuery } from "@tanstack/react-query";
 import { shortAddr } from "@/lib/utils";
 
 export function WalletBalance() {
@@ -41,6 +40,7 @@ export function WalletBalance() {
     balances: stableBalances,
     chainGroups,
     polRaw,
+    polygonUsd,
     ethereumUsd,
     multipleWallets,
     isError: balancesError,
@@ -59,24 +59,14 @@ export function WalletBalance() {
   const positionsValue = positions?.totalValue ?? 0;
   const sidebetValue = positions?.sidebetValue ?? 0;
 
-  const { data: polPrice } = useQuery<{ usdPerPol: number }>({
-    queryKey: ["pol-usd"],
-    queryFn: () => jsonFetch("/api/wallet/pol-usd"),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-  });
-
   if (!ready || !authenticated || !address) return null;
 
   const onPolygon = chainId === polygon.id;
 
-  const polygonStablesUsd = stableBalances.reduce((acc, t) => acc + t.amount, 0);
   const nativeUsdc = stableBalances.find((t) => t.symbol === "USDC");
   const pusdBal = stableBalances.find((t) => t.symbol === "pUSD");
-  const polAmount = Number(formatUnits(polRaw, 18));
-  const polUsdValue = polAmount * (polPrice?.usdPerPol ?? 0);
-  const grandTotal =
-    polygonStablesUsd + ethereumUsd + positionsValue + polUsdValue;
+  const polAmount = polRaw > 0n ? Number(polRaw) / 1e18 : 0;
+  const grandTotal = polygonUsd + ethereumUsd + positionsValue;
   const lowGas = polAmount === 0;
 
   const onCopy = () => {
