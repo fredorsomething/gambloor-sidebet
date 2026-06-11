@@ -2,7 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { Button } from "@/components/ui/button";
 import { ConnectButton } from "@/components/ConnectButton";

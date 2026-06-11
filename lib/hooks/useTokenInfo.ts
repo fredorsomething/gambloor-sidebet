@@ -2,7 +2,7 @@
 
 import { useReadContract } from "wagmi";
 import type { Address } from "viem";
-import { mainnet, polygon } from "wagmi/chains";
+import { mainnet, polygon } from "@/lib/viemChains";
 import { ERC20_ABI } from "@/lib/abi";
 import { ETHEREUM_CHAIN_ID, POLYGON_CHAIN_ID } from "@/lib/chains";
 

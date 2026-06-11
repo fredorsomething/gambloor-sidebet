@@ -14,7 +14,7 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { polygon } from "viem/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { ADMIN_ADDRESS } from "@/lib/admin";

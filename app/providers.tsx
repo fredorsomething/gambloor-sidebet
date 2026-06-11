@@ -4,7 +4,7 @@ import { PrivyProvider } from "@privy-io/react-auth";
 import { WagmiProvider } from "@privy-io/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
-import { mainnet, polygon } from "wagmi/chains";
+import { mainnet, polygon } from "@/lib/viemChains";
 
 import { wagmiConfig } from "@/lib/wagmi";
 import { pickActiveWalletForWagmi } from "@/lib/privyWallets";

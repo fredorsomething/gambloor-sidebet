@@ -25,7 +25,7 @@ import {
   useBalance,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { mainnet, polygon } from "wagmi/chains";
+import { mainnet, polygon } from "@/lib/viemChains";
 
 import { Button } from "@/components/ui/button";
 import { TokenIcon, TokenSymbol } from "@/components/ui/TokenIcon";

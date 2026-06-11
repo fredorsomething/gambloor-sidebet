@@ -3,7 +3,7 @@
  * Polygon mainnet only (chain id 137).
  */
 import { createPublicClient, http, type Address, type PublicClient } from "viem";
-import { polygon } from "viem/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { POLYGON_CHAIN_ID } from "@/lib/chains";
 import {

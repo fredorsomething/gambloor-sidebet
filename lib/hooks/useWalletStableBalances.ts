@@ -12,7 +12,7 @@ import {
   isAddress,
   type Address,
 } from "viem";
-import { mainnet, polygon } from "wagmi/chains";
+import { mainnet, polygon } from "@/lib/viemChains";
 import { useAccount } from "wagmi";
 
 import { ERC20_ABI } from "@/lib/abi";

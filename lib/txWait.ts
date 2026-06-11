@@ -8,7 +8,7 @@ export async function waitForTxReceipt(
   timeoutMs = 60_000,
 ): Promise<void> {
   const { createPublicClient, http } = await import("viem");
-  const { polygon } = await import("wagmi/chains");
+  const { polygon } = await import("@/lib/viemChains");
   const rpc =
     process.env.NEXT_PUBLIC_POLYGON_RPC ||
     "https://polygon-bor-rpc.publicnode.com";
@@ -29,7 +29,7 @@ export async function waitForAllowance(
   hash: Hex,
 ): Promise<void> {
   const { createPublicClient, http } = await import("viem");
-  const { polygon } = await import("wagmi/chains");
+  const { polygon } = await import("@/lib/viemChains");
   const rpc =
     process.env.NEXT_PUBLIC_POLYGON_RPC ||
     "https://polygon-bor-rpc.publicnode.com";

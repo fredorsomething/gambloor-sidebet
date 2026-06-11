@@ -1,5 +1,5 @@
 import type { Address } from "viem";
-import { mainnet, polygon } from "wagmi/chains";
+import { mainnet, polygon } from "@/lib/viemChains";
 
 /** Polygon mainnet only (chain id 137). */
 export const POLYGON_CHAIN_ID = polygon.id;

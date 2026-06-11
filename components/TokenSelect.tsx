@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { Address } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { TokenIcon } from "@/components/ui/TokenIcon";
 import { ERC20_ABI } from "@/lib/abi";

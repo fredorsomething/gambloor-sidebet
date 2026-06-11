@@ -17,8 +17,11 @@ export function linkedEthereumAddresses(user: User | null | undefined): Set<stri
 }
 
 export function isPrivyEmbeddedWallet(
-  wallet: Pick<ConnectedWallet, "walletClientType" | "connectorType">,
+  wallet:
+    | Pick<ConnectedWallet, "walletClientType" | "connectorType">
+    | undefined,
 ): boolean {
+  if (!wallet) return false;
   return (
     wallet.walletClientType === "privy" ||
     wallet.walletClientType === "privy-v2" ||
@@ -36,7 +39,7 @@ export function userHasEmbeddedLinkedAccount(
       account.type === "wallet" &&
       isPrivyEmbeddedWallet({
         walletClientType: account.walletClientType,
-        connectorType: account.connectorType,
+        connectorType: account.connectorType ?? "embedded",
       }),
   );
 }

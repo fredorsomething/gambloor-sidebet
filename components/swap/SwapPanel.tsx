@@ -17,7 +17,7 @@ import {
   useReadContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { Button } from "@/components/ui/button";
 import { TokenIcon } from "@/components/ui/TokenIcon";
@@ -513,7 +513,6 @@ function useTokenBalance(
 
 async function getPublicClient() {
   const { createPublicClient, http } = await import("viem");
-  const { polygon } = await import("wagmi/chains");
   const rpc =
     process.env.NEXT_PUBLIC_POLYGON_RPC ||
     "https://polygon-bor-rpc.publicnode.com";

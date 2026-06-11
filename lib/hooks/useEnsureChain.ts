@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useWallets } from "@privy-io/react-auth";
 import { useAccount, useSwitchChain } from "wagmi";
-import { mainnet, polygon } from "wagmi/chains";
+import { mainnet, polygon } from "@/lib/viemChains";
 
 import { ETHEREUM_CHAIN_ID, POLYGON_CHAIN_ID } from "@/lib/chains";
 

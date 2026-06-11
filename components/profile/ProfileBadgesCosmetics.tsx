@@ -16,7 +16,7 @@ import {
   useSwitchChain,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";

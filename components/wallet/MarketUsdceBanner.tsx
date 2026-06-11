@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowDownUp } from "lucide-react";
 import { parseUnits, type Address } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { Button } from "@/components/ui/button";
 import { TokenSymbol } from "@/components/ui/TokenIcon";

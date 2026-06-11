@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useChainId } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import {
   getEscrowAddress,

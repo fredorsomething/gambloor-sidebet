@@ -4,7 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";

@@ -13,7 +13,7 @@ import {
   type Hex,
 } from "viem";
 import { useAccount, useSendTransaction } from "wagmi";
-import { mainnet, polygon } from "wagmi/chains";
+import { mainnet, polygon } from "@/lib/viemChains";
 
 import { ETHEREUM_CHAIN_ID, POLYGON_CHAIN_ID } from "@/lib/chains";
 import { isPrivyEmbeddedWallet } from "@/lib/privyWallets";

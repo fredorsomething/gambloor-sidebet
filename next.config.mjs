@@ -37,6 +37,14 @@ const nextConfig = {
     // libraries try to `require` even when bundled for the browser.
     config.externals.push("pino-pretty", "lokijs", "encoding");
 
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings ?? []),
+      {
+        module: /ox\/_esm\/tempo\/internal\/virtualMasterPool/,
+        message: /Critical dependency/,
+      },
+    ];
+
     // @react-native-async-storage/async-storage is an optional peer dep of
     // WalletConnect / MetaMask SDK used only in React Native. Alias it to
     // `false` so webpack ignores the require entirely on web builds.

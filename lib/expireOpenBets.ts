@@ -6,7 +6,7 @@
  * because `expireOpenBet` is permissionless once the deadline passes.
  */
 import { getAddress, type Address, type Hex } from "viem";
-import { polygon } from "viem/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { autoSettleEnabled, getKeeperWallet } from "@/lib/autoSettle";

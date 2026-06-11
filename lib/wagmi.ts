@@ -2,7 +2,7 @@
 
 import { createConfig } from "@privy-io/wagmi";
 import { http } from "wagmi";
-import { mainnet, polygon } from "wagmi/chains";
+import { mainnet, polygon } from "@/lib/viemChains";
 
 const polygonRpc =
   process.env.NEXT_PUBLIC_POLYGON_RPC ||

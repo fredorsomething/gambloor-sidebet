@@ -13,7 +13,7 @@ import {
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useAccount, useChainId } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { useWalletFunds } from "@/components/wallet/FundWalletModal";
 import { WalletChainBalances } from "@/components/wallet/WalletChainBalances";

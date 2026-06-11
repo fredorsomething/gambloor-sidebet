@@ -1,6 +1,6 @@
 "use client";
 
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { useEnsureChain } from "@/lib/hooks/useEnsureChain";
 

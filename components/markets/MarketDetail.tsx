@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract } from "wagmi";
-import { polygon } from "wagmi/chains";
+import { polygon } from "@/lib/viemChains";
 
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
