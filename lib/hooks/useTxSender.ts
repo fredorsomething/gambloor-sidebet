@@ -84,40 +84,43 @@ export function useTxSender() {
   const { sendTransaction: privySend } = usePrivySendTransaction();
   const wagmiSend = useSendTransaction();
 
+  const embeddedWallet = useMemo(
+    () => getEmbeddedConnectedWallet(wallets),
+    [wallets],
+  );
+
   const isEmbedded = useMemo(() => {
     if (!address) return false;
-    // @privy-io/wagmi exposes embedded wallets as injected connectors like
-    // io.privy.wallet.0x… — those must not use wagmi sendTransaction (chain ends
-    // up undefined and the Privy provider rejects the call).
+    const active = address.toLowerCase();
+    if (embeddedWallet?.address?.toLowerCase() === active) return true;
     if (isPrivyWagmiConnector(connector?.id)) return true;
-    const embedded = getEmbeddedConnectedWallet(wallets);
-    if (
-      embedded?.address?.toLowerCase() === address.toLowerCase()
-    ) {
-      return true;
-    }
-    const active = wallets.find(
-      (x) => x.address?.toLowerCase() === address.toLowerCase(),
-    );
-    return isPrivyEmbeddedWallet(active);
-  }, [wallets, address, connector?.id]);
+    const wallet = wallets.find((w) => w.address?.toLowerCase() === active);
+    return isPrivyEmbeddedWallet(wallet);
+  }, [wallets, address, connector?.id, embeddedWallet]);
 
   const sendTx = useCallback(
     async (tx: RawTx, opts?: SendTxOptions): Promise<Hex> => {
       const showWalletUIs = opts?.showWalletUIs ?? false;
       const chainId = resolveTxChainId(opts?.chainId);
-      if (isEmbedded && address) {
+      const sponsor = opts?.sponsor ?? true;
+      const signingAddress = (embeddedWallet?.address ?? address) as
+        | Address
+        | undefined;
+
+      if (isEmbedded && signingAddress) {
         const { hash } = await privySend(
           {
             to: tx.to,
             chainId,
             data: tx.data,
             value: tx.value ?? 0n,
-            gasLimit: tx.gas,
+            // 0x / wagmi gas estimates assume an EOA payer — let Privy quote
+            // sponsored gas instead when using native gas sponsorship.
+            ...(sponsor ? {} : tx.gas ? { gasLimit: tx.gas } : {}),
           },
           {
-            address,
-            sponsor: opts?.sponsor ?? true,
+            address: signingAddress,
+            sponsor,
             uiOptions: { showWalletUIs },
           },
         );
@@ -132,7 +135,7 @@ export function useTxSender() {
         gas: tx.gas,
       });
     },
-    [isEmbedded, address, privySend, wagmiSend],
+    [isEmbedded, embeddedWallet, address, privySend, wagmiSend],
   );
 
   const writeContract = useCallback(
@@ -155,5 +158,5 @@ export function useTxSender() {
     [sendTx],
   );
 
-  return { sendTx, writeContract, isEmbedded };
+  return { sendTx, writeContract, isEmbedded, embeddedWallet };
 }

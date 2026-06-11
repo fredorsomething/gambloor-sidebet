@@ -54,13 +54,7 @@ export function SwapPanel() {
   const searchParams = useSearchParams();
   const { authenticated, login } = usePrivy();
   const { address } = useAccount();
-  const { sendTx } = useTxSender();
-  /** Swaps always prompt via Privy for embedded wallets (overrides global showWalletUIs: false). */
-  const sendSwapTx = useCallback(
-    (tx: Parameters<typeof sendTx>[0]) =>
-      sendTx(tx, { showWalletUIs: true }),
-    [sendTx],
-  );
+  const { sendTx, isEmbedded } = useTxSender();
   const { push } = useToast();
   const ensurePolygon = useEnsurePolygon();
 
@@ -99,7 +93,7 @@ export function SwapPanel() {
 
   const balance = useTokenBalance(address, sellAsset);
   const spendableBalance =
-    sellAsset.symbol === "POL"
+    sellAsset.symbol === "POL" && !isEmbedded
       ? balance > POL_GAS_RESERVE
         ? balance - POL_GAS_RESERVE
         : 0n
@@ -208,7 +202,7 @@ export function SwapPanel() {
     if (!address) return;
     const allowance = await readAllowance(token, spender, address);
     if (allowance >= needed) return;
-    const hash = await sendSwapTx({
+    const hash = await sendTx({
       to: token,
       data: encodeFunctionData({
         abi: ERC20_ABI,
@@ -227,7 +221,7 @@ export function SwapPanel() {
     const usdce = usdceAddress();
     if (wrapping) {
       await ensureApproval(usdce, COLLATERAL_ONRAMP, sellAmountWei);
-      const hash = await sendSwapTx({
+      const hash = await sendTx({
         to: COLLATERAL_ONRAMP,
         data: encodeFunctionData({
           abi: WRAP_ABI,
@@ -238,7 +232,7 @@ export function SwapPanel() {
       setTxHash(hash);
     } else {
       await ensureApproval(sellAsset.address!, COLLATERAL_OFFRAMP, sellAmountWei);
-      const hash = await sendSwapTx({
+      const hash = await sendTx({
         to: COLLATERAL_OFFRAMP,
         data: encodeFunctionData({
           abi: WRAP_ABI,
@@ -277,11 +271,10 @@ export function SwapPanel() {
       await ensureApproval(sellAsset.address, spender, sellAmountWei);
     }
 
-    const hash = await sendSwapTx({
+    const hash = await sendTx({
       to: quote.transaction.to as Address,
       data: quote.transaction.data as Hex,
       value: BigInt(quote.transaction.value || "0"),
-      gas: quote.transaction.gas ? BigInt(quote.transaction.gas) : undefined,
     });
     setTxHash(hash);
     push({ title: "Swap submitted", description: "Waiting for confirmation…" });
@@ -301,7 +294,7 @@ export function SwapPanel() {
       push({
         title: "Insufficient balance",
         description:
-          sellAsset.symbol === "POL"
+          sellAsset.symbol === "POL" && !isEmbedded
             ? "Keep some POL for network fees, or enter a smaller amount."
             : undefined,
         variant: "danger",
