@@ -19,6 +19,7 @@ import { useWalletFunds } from "@/components/wallet/FundWalletModal";
 import { WalletChainBalances } from "@/components/wallet/WalletChainBalances";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { useWalletStableBalances } from "@/lib/hooks/useWalletStableBalances";
+import { useTxSender } from "@/lib/hooks/useTxSender";
 import { jsonFetch } from "@/lib/fetcher";
 import { useClickOutside } from "@/lib/useClickOutside";
 import { useQuery } from "@tanstack/react-query";
@@ -29,6 +30,7 @@ export function WalletBalance() {
   const { address } = useAccount();
   const chainId = useChainId();
   const { openFund, openWithdraw } = useWalletFunds();
+  const { isEmbedded } = useTxSender();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -67,7 +69,7 @@ export function WalletBalance() {
   const pusdBal = stableBalances.find((t) => t.symbol === "pUSD");
   const polAmount = polRaw > 0n ? Number(polRaw) / 1e18 : 0;
   const grandTotal = polygonUsd + ethereumUsd + positionsValue;
-  const lowGas = polAmount === 0;
+  const lowGas = !isEmbedded && polAmount === 0;
 
   const onCopy = () => {
     navigator.clipboard?.writeText(address);

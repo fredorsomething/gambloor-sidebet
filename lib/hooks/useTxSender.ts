@@ -43,6 +43,11 @@ export type SendTxOptions = {
   showWalletUIs?: boolean;
   /** Target chain for the transaction (defaults to Polygon). */
   chainId?: number;
+  /**
+   * Privy native gas sponsorship (POL on Polygon). Defaults to true for embedded
+   * wallets when unset — requires App pays + client sponsorship in the dashboard.
+   */
+  sponsor?: boolean;
 };
 
 function isPrivyEmbeddedWallet(
@@ -110,7 +115,11 @@ export function useTxSender() {
             value: tx.value ?? 0n,
             gasLimit: tx.gas,
           },
-          { address, uiOptions: { showWalletUIs } },
+          {
+            address,
+            sponsor: opts?.sponsor ?? true,
+            uiOptions: { showWalletUIs },
+          },
         );
         return hash;
       }

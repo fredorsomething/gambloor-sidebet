@@ -750,6 +750,7 @@ function WithdrawWalletModal({ onClose }: { onClose: () => void }) {
 /** Slim inline prompt shown on tx pages when the wallet has no POL for gas. */
 export function LowGasBanner({ className }: { className?: string }) {
   const { address, isConnected } = useAccount();
+  const { isEmbedded } = useTxSender();
   const { openFund } = useWalletFunds();
   const { data: balance } = useBalance({
     address,
@@ -758,6 +759,8 @@ export function LowGasBanner({ className }: { className?: string }) {
   });
 
   if (!isConnected || !address) return null;
+  // Privy embedded wallets use app-sponsored POL gas on Polygon.
+  if (isEmbedded) return null;
   if (!balance || balance.value > 0n) return null;
 
   return (

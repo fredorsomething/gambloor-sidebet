@@ -32,7 +32,7 @@ export const DEFAULT_CHAIN_ID: SupportedChainId = polygon.id;
  * ERC-20 tokens held in user wallets on Polygon.
  * New sidebets and markets settle in USDC.e only; USDC and pUSD remain
  * swappable and withdrawable for legacy balances.
- * Gas uses native POL.
+ * Embedded wallets use Privy-sponsored POL for gas; external wallets pay POL.
  */
 export const TOKENS: Record<
   SupportedChainId,
