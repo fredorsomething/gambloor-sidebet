@@ -87,10 +87,15 @@ export function BetCard({
           fallback
         />
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-base font-semibold leading-snug group-hover:text-primary">
+          <h3 className="line-clamp-2 min-h-[2.75rem] text-base font-semibold leading-snug group-hover:text-primary">
             {bet.title}
           </h3>
-          <CollapsibleBlurb text={bet.description} maxLines={2} className="mt-1" />
+          <CollapsibleBlurb
+            text={bet.description}
+            maxLines={2}
+            reserveToggle
+            className="mt-1"
+          />
         </div>
       </div>
 
@@ -183,7 +188,7 @@ export function BetCard({
         ) : null}
       </div>
 
-      <div className="border-t border-border px-4 py-2.5">
+      <div className="mt-auto border-t border-border px-4 py-2.5">
         {(isMatched || isSettled || isRefunded) && bet.acceptor ? (
           <div className="flex items-center justify-between gap-3">
             <VsPlayer

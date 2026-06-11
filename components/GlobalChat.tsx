@@ -45,6 +45,7 @@ type ChatMessage = {
 type ChatResponse = { messages: ChatMessage[]; online: number };
 
 const LAST_READ_KEY = "sb_chat_last_read_id";
+const CHAT_PANEL_WIDTH_PX = 320;
 
 function readLastReadId(): number | null {
   try {
@@ -251,7 +252,7 @@ export function GlobalChat() {
     send.mutate({ body, gifUrl });
   }
 
-  function CollapseTab({ expanded }: { expanded: boolean }) {
+  function ChatToggleTab({ expanded }: { expanded: boolean }) {
     const unreadLabel =
       unreadCount > 0
         ? `, ${unreadCount} new message${unreadCount === 1 ? "" : "s"}`
@@ -261,11 +262,10 @@ export function GlobalChat() {
         type="button"
         onClick={() => setChatOpen(!expanded)}
         className={cn(
-          "relative hidden shrink-0 flex-col items-center justify-center gap-1 border border-border bg-card text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground md:flex",
-          expanded
-            ? "h-20 w-7 rounded-r-xl border-l-0"
-            : "fixed left-0 top-1/2 z-50 h-24 w-8 -translate-y-1/2 rounded-r-xl border-l-0",
+          "fixed top-1/2 z-[60] flex h-24 w-5 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-border bg-card text-muted-foreground shadow-lg transition-[left] duration-300 ease-out hover:bg-muted hover:text-foreground",
+          expanded ? "hidden md:flex" : "flex",
         )}
+        style={{ left: expanded ? CHAT_PANEL_WIDTH_PX : 0 }}
         aria-label={
           expanded ? "Minimize chat" : `Open global chat${unreadLabel}`
         }
@@ -279,57 +279,16 @@ export function GlobalChat() {
           </span>
         )}
         {expanded ? (
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-5 w-5 text-primary" />
         ) : (
-          <>
-            <ChevronRight className="h-5 w-5 text-primary" />
-            <MessageCircle className="h-4 w-4 text-primary" />
-            <span className="text-[10px] font-semibold tabular-nums text-success">
-              {online}
-            </span>
-          </>
+          <ChevronRight className="h-5 w-5 text-primary" />
         )}
-      </button>
-    );
-  }
-
-  /** Mobile-only tab when chat is collapsed. */
-  function MobileOpenTab() {
-    const unreadLabel =
-      unreadCount > 0
-        ? `, ${unreadCount} new message${unreadCount === 1 ? "" : "s"}`
-        : "";
-    return (
-      <button
-        type="button"
-        onClick={() => setChatOpen(true)}
-        className="fixed left-0 top-1/2 z-50 flex h-24 w-8 -translate-y-1/2 flex-col items-center justify-center gap-1 rounded-r-xl border border-l-0 border-border bg-card text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground md:hidden"
-        aria-label={`Open global chat${unreadLabel}`}
-      >
-        {unreadCount > 0 && (
-          <span
-            className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold leading-none text-white shadow-sm"
-            aria-hidden
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-        <ChevronRight className="h-5 w-5 text-primary" />
-        <MessageCircle className="h-4 w-4 text-primary" />
-        <span className="text-[10px] font-semibold tabular-nums text-success">
-          {online}
-        </span>
       </button>
     );
   }
 
   if (!open) {
-    return (
-      <>
-        <CollapseTab expanded={false} />
-        <MobileOpenTab />
-      </>
-    );
+    return <ChatToggleTab expanded={false} />;
   }
 
   return (
@@ -475,9 +434,9 @@ export function GlobalChat() {
               </p>
             )}
         </aside>
-
-        <CollapseTab expanded />
       </div>
+
+      <ChatToggleTab expanded />
 
       {gifOpen && (
         <GifPicker

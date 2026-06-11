@@ -231,6 +231,51 @@
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
   }
+
+  .hero-create-btn {
+    @apply relative inline-flex items-center justify-center overflow-hidden rounded-xl font-bold tracking-tight text-primary;
+    background: linear-gradient(
+      135deg,
+      #ffffff 0%,
+      #eef4ff 35%,
+      #ffffff 50%,
+      #e4edff 75%,
+      #ffffff 100%
+    );
+    background-size: 220% 220%;
+    animation: hero-create-bg 5s ease-in-out infinite;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 0 28px rgba(255, 255, 255, 0.35),
+      0 6px 24px rgba(0, 0, 0, 0.18);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .hero-create-btn:hover {
+    transform: scale(1.03);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      0 0 40px rgba(255, 255, 255, 0.55),
+      0 8px 32px rgba(0, 0, 0, 0.22);
+  }
+
+  .hero-create-btn:active {
+    transform: scale(0.98);
+  }
+
+  .hero-create-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 42%,
+      rgba(255, 255, 255, 0.85) 50%,
+      transparent 58%
+    );
+    transform: translateX(-120%);
+    animation: hero-create-shine 3s ease-in-out infinite;
+  }
 }
 
 @keyframes chroma-border {
@@ -239,5 +284,25 @@
   }
   100% {
     background-position: 400% 50%;
+  }
+}
+
+@keyframes hero-create-bg {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes hero-create-shine {
+  0%,
+  70% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
   }
 }
