@@ -25,7 +25,7 @@ export function BrandLogo({ linked = true, className }: Props) {
   if (!linked) return <span className="inline-flex shrink-0">{inner}</span>;
 
   return (
-    <Link href="/" className="inline-flex shrink-0 items-center">
+    <Link href="/home" className="inline-flex shrink-0 items-center">
       {inner}
     </Link>
   );

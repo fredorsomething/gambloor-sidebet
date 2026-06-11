@@ -31,7 +31,7 @@ import { useProfile } from "@/lib/hooks/useProfile";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
-  { href: "/", label: "Markets", icon: LayoutGrid },
+  { href: "/home", label: "Markets", icon: LayoutGrid },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/users", label: "Directory", icon: Users },
 ];
@@ -41,7 +41,7 @@ const ACTIONS = [
   { href: "/me", label: "My positions", description: "Bets you're in", icon: Box },
   { href: "/messages", label: "Messages", description: "Your direct messages", icon: Mail },
   { href: "/how-it-works", label: "How it works", description: "Rules & settlement", icon: HelpCircle },
-  { href: "/referrals", label: "Referrals", description: "Earn 35% of referral fees", icon: Gift },
+  { href: "/referrals", label: "Referrals", description: "Earn 35% of proceeds from referrals", icon: Gift },
 ];
 
 /** Hamburger menu + slide-out drawer for small screens. Hidden on lg+. */
@@ -114,8 +114,8 @@ export function MobileNav() {
               <nav className="space-y-1">
                 {LINKS.map((l) => {
                   const active =
-                    l.href === "/"
-                      ? pathname === "/"
+                    l.href === "/home"
+                      ? pathname === "/home" || pathname === "/"
                       : pathname.startsWith(l.href);
                   const Icon = l.icon;
                   return (

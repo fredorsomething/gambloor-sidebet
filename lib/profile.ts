@@ -1,12 +1,21 @@
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 
-export function validateUsername(username: string): string | null {
+export function validateUsername(
+  username: string,
+  opts?: { required?: boolean },
+): string | null {
   const t = username.trim();
-  if (!t) return null;
+  if (!t) return opts?.required ? "Username is required." : null;
   if (!USERNAME_RE.test(t)) {
     return "Username must be 3–20 characters: letters, numbers, underscores only.";
   }
   return null;
+}
+
+export function needsProfileSetup(
+  profile: { username?: string | null } | null | undefined,
+): boolean {
+  return !profile?.username?.trim();
 }
 
 export function validateBio(bio: string): string | null {

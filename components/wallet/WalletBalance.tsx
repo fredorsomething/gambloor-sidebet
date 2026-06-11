@@ -128,7 +128,7 @@ export function WalletBalance() {
               openFund();
               setMenuOpen(false);
             }}
-            emptyMessage="No balances on Polygon or Ethereum."
+            emptyMessage="No balances."
           />
         </div>
 

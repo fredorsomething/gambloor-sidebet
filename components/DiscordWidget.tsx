@@ -39,7 +39,14 @@ function displayMembers(members: DiscordWidgetData["members"]) {
   return members.filter((m) => !/bot|tool/i.test(m.username)).slice(0, 3);
 }
 
-export function DiscordWidget({ className }: { className?: string }) {
+export function DiscordWidget({
+  className,
+  size = "compact",
+}: {
+  className?: string;
+  size?: "compact" | "bar";
+}) {
+  const isBar = size === "bar";
   const { data, isLoading, isError } = useQuery<DiscordWidgetData>({
     queryKey: ["discord-widget"],
     queryFn: () => jsonFetch("/api/discord/widget"),
@@ -64,12 +71,18 @@ export function DiscordWidget({ className }: { className?: string }) {
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        "group inline-flex w-fit max-w-full shrink-0 items-center gap-2 rounded-lg border border-[#5865F2]/30 bg-card px-2.5 py-1.5 text-xs shadow-sm transition-colors hover:border-[#5865F2]/50 hover:bg-muted/40",
+        "group inline-flex w-fit max-w-full shrink-0 items-center rounded-lg border border-[#5865F2]/30 bg-card shadow-sm transition-colors hover:border-[#5865F2]/50 hover:bg-muted/40",
+        isBar ? "gap-2.5 px-3 py-2.5 text-sm" : "gap-2 px-2.5 py-1.5 text-xs",
         className,
       )}
     >
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#5865F2] text-white">
-        <DiscordMark className="h-3.5 w-3.5" />
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-md bg-[#5865F2] text-white",
+          isBar ? "h-8 w-8" : "h-6 w-6",
+        )}
+      >
+        <DiscordMark className={isBar ? "h-4 w-4" : "h-3.5 w-3.5"} />
       </span>
       <span className="whitespace-nowrap font-medium">
         Join our discord!
@@ -91,9 +104,12 @@ export function DiscordWidget({ className }: { className?: string }) {
               <img
                 src={m.avatar_url}
                 alt=""
-                width={16}
-                height={16}
-                className="h-4 w-4 rounded-full border border-card bg-muted object-cover"
+                width={isBar ? 20 : 16}
+                height={isBar ? 20 : 16}
+                className={cn(
+                  "rounded-full border border-card bg-muted object-cover",
+                  isBar ? "h-5 w-5" : "h-4 w-4",
+                )}
               />
               <span
                 className={cn(

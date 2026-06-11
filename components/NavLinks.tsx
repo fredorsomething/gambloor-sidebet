@@ -10,7 +10,7 @@ import { isAdminAddress } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
-  { href: "/", label: "Markets" },
+  { href: "/home", label: "Markets" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/users", label: "Directory" },
 ];
@@ -43,7 +43,7 @@ const ACTIONS = [
   {
     href: "/referrals",
     label: "Referrals",
-    description: "Earn 35% of referral fees",
+    description: "Earn 35% of proceeds",
     icon: Gift,
   },
 ];
@@ -71,7 +71,9 @@ export function NavLinks() {
     <nav className="hidden items-center gap-1 text-sm lg:flex">
       {LINKS.map((l) => {
         const active =
-          l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);
+          l.href === "/home"
+            ? pathname === "/home" || pathname === "/"
+            : pathname.startsWith(l.href);
         return (
           <Link
             key={l.href}

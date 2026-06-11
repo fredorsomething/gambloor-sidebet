@@ -306,3 +306,904 @@
     transform: translateX(120%);
   }
 }
+
+@keyframes landing-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes onboarding-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes onboarding-intro-bird-left-move {
+  0% {
+    left: -22%;
+  }
+  25% {
+    left: 24%;
+  }
+  25%,
+  76% {
+    left: 24%;
+  }
+  100% {
+    left: -26%;
+  }
+}
+
+@keyframes onboarding-intro-bird-right-move {
+  0% {
+    right: -22%;
+  }
+  25% {
+    right: 24%;
+  }
+  25%,
+  76% {
+    right: 24%;
+  }
+  100% {
+    right: -26%;
+  }
+}
+
+@keyframes onboarding-intro-bird-left-waddle {
+  0% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  3% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  6% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  9% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  12% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  15% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  18% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  21% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  24% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  25%,
+  75% {
+    transform: translateY(0) rotate(0deg);
+  }
+  46% {
+    transform: translateY(-10px) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(0) rotate(0deg);
+  }
+  77% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  80% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  83% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  86% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  89% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  92% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  95% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  98% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+}
+
+@keyframes onboarding-intro-bird-right-waddle {
+  0% {
+    transform: translateY(0) rotate(4deg);
+  }
+  3% {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+  6% {
+    transform: translateY(0) rotate(4deg);
+  }
+  9% {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+  12% {
+    transform: translateY(0) rotate(4deg);
+  }
+  15% {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+  18% {
+    transform: translateY(0) rotate(4deg);
+  }
+  21% {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+  24% {
+    transform: translateY(0) rotate(4deg);
+  }
+  25%,
+  75% {
+    transform: translateY(0) rotate(0deg);
+  }
+  77% {
+    transform: translateY(0) rotate(4deg);
+  }
+  80% {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+  83% {
+    transform: translateY(0) rotate(4deg);
+  }
+  86% {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+  89% {
+    transform: translateY(0) rotate(4deg);
+  }
+  92% {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+  95% {
+    transform: translateY(0) rotate(4deg);
+  }
+  98% {
+    transform: translateY(-4px) rotate(-4deg);
+  }
+  100% {
+    transform: translateY(0) rotate(4deg);
+  }
+}
+
+@keyframes onboarding-intro-bird-left-flip {
+  0%,
+  71% {
+    transform: scaleX(1);
+  }
+  72%,
+  100% {
+    transform: scaleX(-1);
+  }
+}
+
+@keyframes onboarding-intro-bird-right-flip {
+  0%,
+  71% {
+    transform: scaleX(-1);
+  }
+  72%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes onboarding-intro-stake-left {
+  0%,
+  26% {
+    opacity: 0;
+    left: 26%;
+    bottom: 22%;
+    transform: scale(0.5);
+  }
+  30% {
+    opacity: 1;
+    left: 26%;
+    bottom: 22%;
+    transform: scale(1);
+  }
+  38% {
+    opacity: 1;
+    left: 43%;
+    bottom: 34%;
+    transform: scale(1);
+  }
+  42%,
+  50% {
+    opacity: 1;
+    left: 45%;
+    bottom: 34%;
+    transform: scale(1);
+  }
+  58% {
+    opacity: 0.9;
+    left: 31%;
+    bottom: 32%;
+    transform: scale(0.7);
+  }
+  64% {
+    opacity: 0.5;
+    left: 30%;
+    bottom: 27%;
+    transform: scale(0.45);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    left: 30%;
+    bottom: 24%;
+    transform: scale(0.12);
+  }
+}
+
+@keyframes onboarding-intro-stake-right {
+  0%,
+  26% {
+    opacity: 0;
+    left: 58%;
+    bottom: 22%;
+    transform: scale(0.5);
+  }
+  30% {
+    opacity: 1;
+    left: 58%;
+    bottom: 22%;
+    transform: scale(1);
+  }
+  38% {
+    opacity: 1;
+    left: 51%;
+    bottom: 34%;
+    transform: scale(1);
+  }
+  42%,
+  50% {
+    opacity: 1;
+    left: 49%;
+    bottom: 34%;
+    transform: scale(1);
+  }
+  58% {
+    opacity: 0.9;
+    left: 31%;
+    bottom: 32%;
+    transform: scale(0.7);
+  }
+  64% {
+    opacity: 0.5;
+    left: 30%;
+    bottom: 27%;
+    transform: scale(0.45);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    left: 30%;
+    bottom: 24%;
+    transform: scale(0.12);
+  }
+}
+
+@keyframes onboarding-bird-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-12deg);
+  }
+  70% {
+    transform: scale(1.08) rotate(4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes onboarding-bird-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  25% {
+    transform: rotate(-6deg) translateY(-3px);
+  }
+  75% {
+    transform: rotate(6deg) translateY(-2px);
+  }
+}
+
+@keyframes onboarding-usdc-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  65% {
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes onboarding-bird-think {
+  0%,
+  100% {
+    transform: rotate(-4deg) translateY(0);
+  }
+  50% {
+    transform: rotate(4deg) translateY(-4px);
+  }
+}
+
+@keyframes onboarding-bird-nod {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  30% {
+    transform: rotate(-8deg) translateY(2px);
+  }
+  60% {
+    transform: rotate(6deg) translateY(0);
+  }
+}
+
+@keyframes onboarding-bird-shake {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-5deg);
+  }
+  40% {
+    transform: rotate(5deg);
+  }
+  60% {
+    transform: rotate(-4deg);
+  }
+}
+
+@keyframes onboarding-settler-drop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+@keyframes onboarding-payout-dash {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+@keyframes onboarding-idea-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  16% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  26% {
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+}
+
+@keyframes onboarding-bird-rage {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+    filter: brightness(1.1) sepia(0.8) saturate(4) hue-rotate(-18deg);
+  }
+  15% {
+    transform: rotate(-8deg) translateY(-2px);
+  }
+  30% {
+    transform: rotate(8deg) translateY(1px);
+  }
+  45% {
+    transform: rotate(-7deg) translateY(-1px);
+  }
+  60% {
+    transform: rotate(7deg) translateY(2px);
+  }
+  75% {
+    transform: rotate(-5deg);
+  }
+}
+
+@keyframes onboarding-steam-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scaleY(0.5);
+  }
+  30% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scaleY(1.2);
+  }
+}
+
+@keyframes onboarding-chat-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes onboarding-gateway-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: translateY(-6px) scale(1.03);
+    opacity: 1;
+  }
+}
+
+@keyframes onboarding-gateway-shimmer {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes onboarding-gateway-aurora {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.08) rotate(3deg);
+  }
+}
+
+@keyframes onboarding-gateway-star-drift {
+  0% {
+    transform: translateY(0);
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateY(-24px);
+    opacity: 0;
+  }
+}
+
+@keyframes onboarding-vortex-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes onboarding-rift-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.85;
+  }
+}
+
+@keyframes onboarding-vortex-pull {
+  0% {
+    transform: rotate(0deg) translateX(118px) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: rotate(180deg) translateX(72px) rotate(-180deg) scale(0.88);
+    opacity: 0.95;
+  }
+  100% {
+    transform: rotate(360deg) translateX(118px) rotate(-360deg) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes onboarding-let-me-in-glow {
+  0%,
+  100% {
+    opacity: 0.88;
+    filter: brightness(1);
+    letter-spacing: 0.02em;
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.25);
+    letter-spacing: 0.08em;
+  }
+}
+
+@keyframes landing-orb-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(12px, -18px) scale(1.06);
+  }
+}
+
+@keyframes landing-enter-shine {
+  0%,
+  70% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@layer components {
+  .landing-screen {
+    @apply text-foreground;
+  }
+
+  .landing-orb {
+    @apply pointer-events-none absolute rounded-full blur-3xl;
+    animation: landing-orb-drift 12s ease-in-out infinite;
+  }
+
+  .landing-orb-a {
+    left: -8%;
+    top: 8%;
+    height: 280px;
+    width: 280px;
+    background: hsl(var(--primary) / 0.22);
+  }
+
+  .landing-orb-b {
+    right: -6%;
+    top: 28%;
+    height: 320px;
+    width: 320px;
+    background: hsl(222 89% 55% / 0.14);
+    animation-delay: -4s;
+  }
+
+  .landing-orb-c {
+    bottom: 4%;
+    left: 30%;
+    height: 240px;
+    width: 240px;
+    background: hsl(var(--success) / 0.1);
+    animation-delay: -7s;
+  }
+
+  .landing-fade-up {
+    animation: landing-fade-up 0.7s ease-out both;
+  }
+
+  .onboarding-step {
+    animation: onboarding-step-in 0.35s ease-out both;
+  }
+
+  .onboarding-nav-arrow {
+    color: hsl(210 35% 96%);
+    opacity: 0.92;
+    transition: opacity 0.2s ease;
+  }
+
+  .onboarding-nav-next:hover .onboarding-nav-arrow {
+    opacity: 1;
+  }
+
+  .onboarding-nav-glow {
+    color: hsl(210 40% 98%);
+    text-shadow:
+      0 0 10px hsl(210 85% 92% / 0.95),
+      0 0 22px hsl(215 90% 78% / 0.6),
+      0 0 36px hsl(220 100% 72% / 0.3);
+    transition: text-shadow 0.2s ease;
+  }
+
+  .onboarding-nav-next:hover .onboarding-nav-glow {
+    text-shadow:
+      0 0 12px hsl(210 95% 96% / 1),
+      0 0 26px hsl(215 95% 82% / 0.8),
+      0 0 44px hsl(220 100% 74% / 0.45);
+  }
+
+  .onboarding-intro-scene {
+    --intro-cycle: 9s;
+  }
+
+  .onboarding-intro-bird-l-move {
+    animation: onboarding-intro-bird-left-move var(--intro-cycle) linear infinite;
+  }
+
+  .onboarding-intro-bird-r-move {
+    animation: onboarding-intro-bird-right-move var(--intro-cycle) linear infinite;
+  }
+
+  .onboarding-intro-bird-l-waddle {
+    animation: onboarding-intro-bird-left-waddle var(--intro-cycle) linear infinite;
+  }
+
+  .onboarding-intro-bird-r-waddle {
+    animation: onboarding-intro-bird-right-waddle var(--intro-cycle) linear infinite;
+  }
+
+  .onboarding-intro-stake-l {
+    animation: onboarding-intro-stake-left var(--intro-cycle) ease-in-out infinite;
+  }
+
+  .onboarding-intro-stake-r {
+    animation: onboarding-intro-stake-right var(--intro-cycle) ease-in-out infinite;
+  }
+
+  .onboarding-intro-bird-l-flip {
+    animation: onboarding-intro-bird-left-flip var(--intro-cycle) ease-in-out infinite;
+  }
+
+  .onboarding-intro-bird-r-flip {
+    animation: onboarding-intro-bird-right-flip var(--intro-cycle) ease-in-out infinite;
+  }
+
+  .onboarding-bird-pop {
+    animation: onboarding-bird-pop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  .onboarding-bird-wiggle {
+    animation: onboarding-bird-wiggle 2.4s ease-in-out infinite;
+  }
+
+  .onboarding-usdc-pop {
+    animation: onboarding-usdc-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  .onboarding-bird-think {
+    animation: onboarding-bird-think 2.8s ease-in-out infinite;
+  }
+
+  .onboarding-bird-nod {
+    animation: onboarding-bird-nod 1.8s ease-in-out infinite;
+  }
+
+  .onboarding-bird-shake {
+    animation: onboarding-bird-shake 1.6s ease-in-out infinite;
+  }
+
+  .onboarding-settler-drop {
+    animation: onboarding-settler-drop 2.4s ease-in-out infinite;
+  }
+
+  .onboarding-payout-line {
+    animation: onboarding-payout-dash 1.8s linear infinite;
+  }
+
+  .onboarding-idea-pop {
+    animation: onboarding-idea-pop 2.4s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
+    transform-origin: center bottom;
+  }
+
+  .onboarding-bird-rage {
+    animation: onboarding-bird-rage 0.45s ease-in-out infinite;
+  }
+
+  .onboarding-steam-puff {
+    animation: onboarding-steam-rise 0.7s ease-out infinite;
+  }
+
+  .onboarding-chat-msg {
+    animation: onboarding-chat-in 0.35s ease-out both;
+  }
+
+  .onboarding-gateway-aurora {
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 40%, hsl(var(--primary) / 0.35), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 30% 60%, hsl(280 70% 55% / 0.12), transparent),
+      radial-gradient(ellipse 50% 40% at 70% 55%, hsl(190 90% 55% / 0.1), transparent);
+    animation: onboarding-gateway-aurora 6s ease-in-out infinite;
+  }
+
+  .onboarding-gateway-stars {
+    background-image: radial-gradient(circle, hsl(210 40% 98% / 0.45) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black, transparent);
+    animation: onboarding-gateway-star-drift 8s linear infinite;
+  }
+
+  .onboarding-gateway-arch {
+    border-radius: 999px 999px 24px 24px;
+    border: 1px solid hsl(var(--primary) / 0.45);
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary) / 0.22) 0%,
+      hsl(222 47% 6% / 0.95) 45%,
+      hsl(222 47% 2%) 100%
+    );
+    box-shadow:
+      0 0 60px hsl(var(--primary) / 0.35),
+      inset 0 0 40px hsl(var(--primary) / 0.15);
+  }
+
+  .onboarding-gateway-shimmer {
+    border-radius: 999px 999px 16px 16px;
+    background: linear-gradient(
+      180deg,
+      hsl(210 100% 92% / 0.12) 0%,
+      transparent 55%
+    );
+    animation: onboarding-gateway-shimmer 3s ease-in-out infinite;
+  }
+
+  .onboarding-gateway-bird {
+    animation: onboarding-gateway-breathe 3.2s ease-in-out infinite;
+    filter: drop-shadow(0 4px 12px hsl(var(--primary) / 0.4));
+  }
+
+  .onboarding-vortex-ring {
+    @apply absolute inset-0 rounded-full;
+    border: 2px solid transparent;
+  }
+
+  .onboarding-vortex-ring-1 {
+    background: conic-gradient(
+      from 0deg,
+      hsl(var(--primary) / 0.9),
+      hsl(var(--primary) / 0.05),
+      hsl(222 89% 72% / 0.8),
+      hsl(var(--primary) / 0.05),
+      hsl(var(--primary) / 0.9)
+    );
+    animation: onboarding-vortex-spin 3s linear infinite;
+    mask: radial-gradient(circle, transparent 42%, black 48%, black 88%, transparent 94%);
+    -webkit-mask: radial-gradient(circle, transparent 42%, black 48%, black 88%, transparent 94%);
+  }
+
+  .onboarding-vortex-ring-2 {
+    inset: 12%;
+    background: conic-gradient(
+      from 180deg,
+      hsl(var(--primary) / 0.5),
+      transparent,
+      hsl(var(--primary) / 0.6),
+      transparent
+    );
+    animation: onboarding-vortex-spin 2.2s linear infinite reverse;
+    mask: radial-gradient(circle, transparent 50%, black 58%, black 92%, transparent 98%);
+    -webkit-mask: radial-gradient(circle, transparent 50%, black 58%, black 92%, transparent 98%);
+  }
+
+  .onboarding-vortex-ring-3 {
+    inset: 24%;
+    border-color: hsl(var(--primary) / 0.35);
+    animation: onboarding-vortex-spin 1.6s linear infinite;
+    mask: radial-gradient(circle, transparent 55%, black 62%, black 90%, transparent 96%);
+    -webkit-mask: radial-gradient(circle, transparent 55%, black 62%, black 90%, transparent 96%);
+  }
+
+  .onboarding-vortex-core {
+    @apply absolute rounded-full;
+    inset: 34%;
+    background: radial-gradient(
+      circle,
+      hsl(222 47% 2%) 0%,
+      hsl(var(--primary) / 0.35) 55%,
+      transparent 72%
+    );
+    box-shadow:
+      0 0 40px hsl(var(--primary) / 0.45),
+      inset 0 0 30px hsl(var(--primary) / 0.25);
+    animation: onboarding-rift-pulse 2.4s ease-in-out infinite;
+  }
+
+  .onboarding-vortex-bird {
+    animation: onboarding-vortex-pull 3.5s ease-in-out infinite;
+  }
+
+  .onboarding-let-me-in {
+    @apply cursor-pointer;
+    color: hsl(210 40% 98%);
+    text-shadow:
+      0 0 14px hsl(210 90% 92% / 0.9),
+      0 0 32px hsl(var(--primary) / 0.55);
+    box-shadow:
+      0 0 24px hsl(var(--primary) / 0.35),
+      inset 0 1px 0 hsl(210 100% 98% / 0.15);
+    animation: onboarding-let-me-in-glow 2.2s ease-in-out infinite;
+  }
+
+  .onboarding-let-me-in:hover:not(:disabled) {
+    animation: onboarding-let-me-in-glow 0.8s ease-in-out infinite;
+    transform: scale(1.04);
+    border-color: hsl(var(--primary) / 0.5);
+    background: hsl(var(--primary) / 0.12);
+  }
+
+  .landing-enter-btn {
+    @apply relative inline-flex items-center justify-center overflow-hidden rounded-2xl px-10 py-4 text-primary shadow-lg transition-transform hover:scale-[1.03] active:scale-[0.98];
+    background: linear-gradient(
+      135deg,
+      #ffffff 0%,
+      #eef4ff 35%,
+      #ffffff 50%,
+      #e4edff 75%,
+      #ffffff 100%
+    );
+    background-size: 220% 220%;
+    animation:
+      landing-fade-up 0.7s ease-out both,
+      hero-create-bg 5s ease-in-out infinite;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 0 40px hsl(var(--primary) / 0.35),
+      0 8px 32px rgba(0, 0, 0, 0.2);
+  }
+
+  .landing-enter-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 42%,
+      rgba(255, 255, 255, 0.85) 50%,
+      transparent 58%
+    );
+    transform: translateX(-120%);
+    animation: landing-enter-shine 3s ease-in-out infinite;
+  }
+
+  .landing-enter-btn:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      0 0 56px hsl(var(--primary) / 0.5),
+      0 10px 40px rgba(0, 0, 0, 0.24);
+  }
+}

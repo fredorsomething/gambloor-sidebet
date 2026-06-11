@@ -9,6 +9,7 @@ import { mainnet, polygon } from "wagmi/chains";
 import { wagmiConfig } from "@/lib/wagmi";
 import { pickActiveWalletForWagmi } from "@/lib/privyWallets";
 import { AppReadyGate } from "@/components/AppReadyGate";
+import { ProfileSetupGate } from "@/components/ProfileSetupGate";
 import { ReferralAttribution } from "@/components/ReferralAttribution";
 import { ReferralCapture } from "@/components/ReferralCapture";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -87,7 +88,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 <ReferralCapture />
               </Suspense>
               <ReferralAttribution />
-              <AppReadyGate>{children}</AppReadyGate>
+              <AppReadyGate>
+                <ProfileSetupGate>{children}</ProfileSetupGate>
+              </AppReadyGate>
             </ToastProvider>
           </FundWalletProvider>
         </WagmiProvider>

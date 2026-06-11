@@ -152,13 +152,15 @@ export function parseInternalLink(input: string): ParsedInternalLink | null {
 }
 
 const SITE_PAGE_LABELS: Record<string, string> = {
-  "/": "Markets",
+  "/": "Welcome",
+  "/home": "Markets",
   "/leaderboard": "Leaderboard",
   "/users": "Directory",
   "/create": "Create a bet",
   "/me": "My positions",
   "/swap": "Swap tokens",
   "/how-it-works": "How it works",
+  "/onboarding": "Onboarding",
   "/terms": "Terms of Service",
   "/privacy": "Privacy Policy",
   "/messages": "Messages",

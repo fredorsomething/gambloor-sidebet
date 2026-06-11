@@ -121,8 +121,7 @@ export default function RootLayout({
                       href="mailto:support@sidebet.lol"
                       className="underline hover:text-foreground"
                     >
-                      support@sidebet.lol
-                    </a>
+                    For support create a ticket in our Discord!                    </a>
                   </p>
                 </div>
                 <a

@@ -131,7 +131,7 @@ export default function TermsPage() {
             href="mailto:support@sidebet.lol"
             className="text-primary underline-offset-2 hover:underline"
           >
-            support@sidebet.lol
+             For support create a ticket in our Discord!
           </a>
           . Box, LLC · Omonoias Ave 13, Limassol 3052, Cyprus.
         </p>

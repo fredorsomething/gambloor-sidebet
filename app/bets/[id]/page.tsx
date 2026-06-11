@@ -85,7 +85,7 @@ export default async function BetDetailPage({
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <Link
-          href="/"
+          href="/home"
           className="text-xs text-muted-foreground hover:text-foreground"
         >
           ← Back to feed

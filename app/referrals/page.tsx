@@ -109,7 +109,7 @@ export default function ReferralsPage() {
         <Gift className="mx-auto h-10 w-10 text-primary" />
         <h1 className="text-xl font-semibold">Referrals</h1>
         <p className="text-sm text-muted-foreground">
-          Sign in to create referral links and earn {35}% of fees from users you
+          Sign in to create referral links and earn {35}% of proceeds from users you
           bring to Sidebet.
         </p>
         <div className="flex justify-center">

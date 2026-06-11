@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { Button } from "@/components/ui/button";
 import {
   ESCROW_ADDRESS,
   ESCROW_V2_ADDRESS,
@@ -35,7 +36,7 @@ export default function HowItWorksPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-10 pb-16">
-      <header className="space-y-3">
+      <header className="space-y-4">
         <h1 className="text-3xl font-bold tracking-tight">How it works</h1>
         <p className="text-muted-foreground">
           sidebet lets you bet on anything with anyone. Stakes are escrowed in
@@ -43,6 +44,9 @@ export default function HowItWorksPage() {
           declared — so neither side can run off with the pot. Here&apos;s the
           quick tour.
         </p>
+        <Button asChild size="lg" className="w-full sm:w-auto">
+          <Link href="/onboarding">Onboarding cards</Link>
+        </Button>
       </header>
 
       {/* Two formats */}
@@ -254,7 +258,7 @@ export default function HowItWorksPage() {
             Create a sidebet
           </Link>
           <Link
-            href="/"
+            href="/home"
             className="rounded-xl border border-border bg-card px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-muted/60"
           >
             Browse markets

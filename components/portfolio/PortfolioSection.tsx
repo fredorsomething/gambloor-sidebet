@@ -100,7 +100,7 @@ export function PortfolioSection({ address }: { address: string }) {
         <div className="card p-8 text-center">
           <p className="text-sm text-muted-foreground">No open positions yet.</p>
           <Link
-            href="/"
+            href="/home"
             className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Browse markets

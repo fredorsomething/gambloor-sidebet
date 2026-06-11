@@ -17,6 +17,8 @@ type Props = {
   onPick: (file: File, previewUrl: string) => void;
   onClear: () => void;
   disabled?: boolean;
+  /** Minimal avatar-only picker for onboarding setup */
+  variant?: "default" | "compact";
 };
 
 export function AvatarUploadZone({
@@ -26,6 +28,7 @@ export function AvatarUploadZone({
   onPick,
   onClear,
   disabled,
+  variant = "default",
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -58,6 +61,62 @@ export function AvatarUploadZone({
     setDragOver(false);
     if (disabled) return;
     handleFile(e.dataTransfer.files?.[0]);
+  }
+
+  if (variant === "compact") {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <div className="relative shrink-0">
+          <Avatar
+            address={address}
+            url={displayUrl}
+            size={96}
+            className="ring-2 ring-border/80"
+          />
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => inputRef.current?.click()}
+            className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card shadow-sm transition-colors hover:bg-muted disabled:opacity-50"
+            aria-label="Change photo"
+          >
+            <Camera className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => inputRef.current?.click()}
+            className="font-medium text-foreground/80 transition-colors hover:text-foreground"
+          >
+            {displayUrl ? "Change photo" : "Add photo"}
+          </button>
+          {displayUrl && (
+            <>
+              <span aria-hidden>·</span>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={onClear}
+                className="transition-colors hover:text-danger"
+              >
+                Remove
+              </button>
+            </>
+          )}
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept={AVATAR_ACCEPT}
+          className="hidden"
+          onChange={onInputChange}
+          disabled={disabled}
+        />
+        {localError && <p className="text-xs text-danger">{localError}</p>}
+      </div>
+    );
   }
 
   return (

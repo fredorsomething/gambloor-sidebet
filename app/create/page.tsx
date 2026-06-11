@@ -17,12 +17,12 @@ export default async function CreatePage({
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">
-          {settings.allowMarketCreation ? "Create a bet" : "Propose a sidebet"}
+          {settings.allowMarketCreation ? "Create a bet" : "Create a sidebet"}
         </h1>
         <p className="text-sm text-muted-foreground">
           {settings.allowMarketCreation
             ? "Pick your format, fill in the details, and you're live."
-            : "Settle an argument with a friend — pick a side, set the stakes, share the link."}
+            : "Write your rules, pick a side, set the stakes and share the link."}
         </p>
       </div>
       <CreateChooser defaultType={defaultType} />

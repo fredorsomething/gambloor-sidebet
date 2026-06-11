@@ -23,7 +23,7 @@ export default function MarketDetailPage({
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <Link
-          href="/"
+          href="/home"
           className="text-xs text-muted-foreground hover:text-foreground"
         >
           ← Back to feed
