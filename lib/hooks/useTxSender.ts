@@ -16,6 +16,7 @@ import { useAccount, useSendTransaction } from "wagmi";
 import { mainnet, polygon } from "wagmi/chains";
 
 import { ETHEREUM_CHAIN_ID, POLYGON_CHAIN_ID } from "@/lib/chains";
+import { isPrivyEmbeddedWallet } from "@/lib/privyWallets";
 
 function resolveTxChainId(chainId?: number) {
   const id = chainId ?? POLYGON_CHAIN_ID;
@@ -50,34 +51,19 @@ export type SendTxOptions = {
   sponsor?: boolean;
 };
 
-function isPrivyEmbeddedWallet(
-  wallet: { walletClientType?: string; connectorType?: string } | undefined,
-): boolean {
-  if (!wallet) return false;
-  const wt = wallet.walletClientType;
-  return (
-    wt === "privy" ||
-    wt === "privy-v2" ||
-    wallet.connectorType === "embedded"
-  );
-}
-
-/**
- * Unified transaction sender that works for BOTH Privy-managed (embedded) and
- * external wallets.
- *
- * Embedded wallets must go through Privy's signing service via its own
- * `useSendTransaction`. Routing them through wagmi's connector emits a
- * `wallet_sendTransaction` RPC call that hits the read-only RPC node (which
- * rejects it with "Unsupported method"). External wallets keep using wagmi so
- * their own confirmation UX is preserved.
- */
 function isPrivyWagmiConnector(connectorId: string | undefined): boolean {
   if (!connectorId) return false;
   const id = connectorId.toLowerCase();
   return id === "io.privy.wallet" || id.startsWith("io.privy.wallet.");
 }
 
+/**
+ * Unified transaction sender.
+ *
+ * Privy gas sponsorship only applies to embedded wallets (`sponsor: true` on
+ * `useSendTransaction`). External wallets (MetaMask, Phantom, etc.) always pay
+ * their own POL — wagmi is used as a fallback when no embedded wallet exists.
+ */
 export function useTxSender() {
   const { address, connector } = useAccount();
   const { wallets } = useWallets();
@@ -89,25 +75,33 @@ export function useTxSender() {
     [wallets],
   );
 
+  const canUseSponsoredGas = !!embeddedWallet?.address;
+
   const isEmbedded = useMemo(() => {
-    if (!address) return false;
-    const active = address.toLowerCase();
-    if (embeddedWallet?.address?.toLowerCase() === active) return true;
+    if (!address || !embeddedWallet?.address) return false;
+    if (embeddedWallet.address.toLowerCase() === address.toLowerCase()) {
+      return true;
+    }
     if (isPrivyWagmiConnector(connector?.id)) return true;
-    const wallet = wallets.find((w) => w.address?.toLowerCase() === active);
+    const wallet = wallets.find(
+      (w) => w.address?.toLowerCase() === address.toLowerCase(),
+    );
     return isPrivyEmbeddedWallet(wallet);
   }, [wallets, address, connector?.id, embeddedWallet]);
+
+  const isExternalWalletActive = useMemo(() => {
+    if (!address || !embeddedWallet?.address) return false;
+    return address.toLowerCase() !== embeddedWallet.address.toLowerCase();
+  }, [address, embeddedWallet]);
 
   const sendTx = useCallback(
     async (tx: RawTx, opts?: SendTxOptions): Promise<Hex> => {
       const showWalletUIs = opts?.showWalletUIs ?? false;
       const chainId = resolveTxChainId(opts?.chainId);
       const sponsor = opts?.sponsor ?? true;
-      const signingAddress = (embeddedWallet?.address ?? address) as
-        | Address
-        | undefined;
+      const signingAddress = embeddedWallet?.address as Address | undefined;
 
-      if (isEmbedded && signingAddress) {
+      if (signingAddress) {
         const { hash } = await privySend(
           {
             to: tx.to,
@@ -126,6 +120,7 @@ export function useTxSender() {
         );
         return hash;
       }
+
       return wagmiSend.sendTransactionAsync({
         chainId,
         account: address,
@@ -135,7 +130,7 @@ export function useTxSender() {
         gas: tx.gas,
       });
     },
-    [isEmbedded, embeddedWallet, address, privySend, wagmiSend],
+    [embeddedWallet, address, privySend, wagmiSend],
   );
 
   const writeContract = useCallback(
@@ -158,5 +153,12 @@ export function useTxSender() {
     [sendTx],
   );
 
-  return { sendTx, writeContract, isEmbedded, embeddedWallet };
+  return {
+    sendTx,
+    writeContract,
+    isEmbedded,
+    embeddedWallet,
+    canUseSponsoredGas,
+    isExternalWalletActive,
+  };
 }

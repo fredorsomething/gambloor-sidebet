@@ -57,10 +57,10 @@ const RULES: Array<{
     description: "You declined the transaction in your wallet.",
   },
   {
-    test: /insufficient funds for gas|overshot|tx cost.*balance/i,
+    test: /insufficient funds for gas|overshot|tx cost.*balance|not enough pol|network fee/i,
     title: "Not enough for gas",
     description:
-      "Keep some POL in your wallet for network fees, or use a smaller amount.",
+      "Sidebet covers gas on your built-in wallet. If you signed in with MetaMask or Phantom, switch to email/SMS login, or keep POL in your external wallet for fees.",
   },
   {
     test: /insufficient funds|exceeds balance|transfer amount exceeds|insufficient balance/i,

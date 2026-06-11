@@ -30,7 +30,7 @@ export function WalletBalance() {
   const { address } = useAccount();
   const chainId = useChainId();
   const { openFund, openWithdraw } = useWalletFunds();
-  const { isEmbedded } = useTxSender();
+  const { canUseSponsoredGas } = useTxSender();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -69,7 +69,7 @@ export function WalletBalance() {
   const pusdBal = stableBalances.find((t) => t.symbol === "pUSD");
   const polAmount = polRaw > 0n ? Number(polRaw) / 1e18 : 0;
   const grandTotal = polygonUsd + ethereumUsd + positionsValue;
-  const lowGas = !isEmbedded && polAmount === 0;
+  const lowGas = !canUseSponsoredGas && polAmount === 0;
 
   const onCopy = () => {
     navigator.clipboard?.writeText(address);

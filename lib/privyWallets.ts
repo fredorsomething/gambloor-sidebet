@@ -26,6 +26,21 @@ export function isPrivyEmbeddedWallet(
   );
 }
 
+/** True when the Privy user has a linked embedded (Sidebet) wallet account. */
+export function userHasEmbeddedLinkedAccount(
+  user: User | null | undefined,
+): boolean {
+  if (!user) return false;
+  return user.linkedAccounts.some(
+    (account) =>
+      account.type === "wallet" &&
+      isPrivyEmbeddedWallet({
+        walletClientType: account.walletClientType,
+        connectorType: account.connectorType,
+      }),
+  );
+}
+
 /**
  * Pick the wagmi-active wallet for a Privy session.
  * Never selects browser-detected wallets that aren't linked to the user —

@@ -13,6 +13,7 @@ import { ProfileSetupGate } from "@/components/ProfileSetupGate";
 import { ReferralAttribution } from "@/components/ReferralAttribution";
 import { ReferralCapture } from "@/components/ReferralCapture";
 import { ToastProvider } from "@/components/ui/Toast";
+import { EnsureEmbeddedWallet } from "@/components/wallet/EnsureEmbeddedWallet";
 import { EnsureLinkedActiveWallet } from "@/components/wallet/EnsureLinkedActiveWallet";
 import { FundWalletProvider } from "@/components/wallet/FundWalletModal";
 
@@ -63,7 +64,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
         embeddedWallets: {
           ethereum: {
-            createOnLogin: "users-without-wallets",
+            // Every user gets a Sidebet embedded wallet, even if they sign in with
+            // MetaMask / Phantom. Gas sponsorship only works on embedded wallets.
+            createOnLogin: "all-users",
           },
           // Skip Privy's per-action confirmation modal for embedded wallets.
           // The user already authenticated into the app, so signing CLOB limit
@@ -81,6 +84,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           config={wagmiConfig}
           setActiveWalletForWagmi={pickActiveWalletForWagmi}
         >
+          <EnsureEmbeddedWallet />
           <EnsureLinkedActiveWallet />
           <FundWalletProvider>
             <ToastProvider>

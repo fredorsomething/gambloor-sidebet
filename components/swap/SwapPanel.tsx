@@ -54,7 +54,7 @@ export function SwapPanel() {
   const searchParams = useSearchParams();
   const { authenticated, login } = usePrivy();
   const { address } = useAccount();
-  const { sendTx, isEmbedded } = useTxSender();
+  const { sendTx, canUseSponsoredGas } = useTxSender();
   const { push } = useToast();
   const ensurePolygon = useEnsurePolygon();
 
@@ -93,7 +93,7 @@ export function SwapPanel() {
 
   const balance = useTokenBalance(address, sellAsset);
   const spendableBalance =
-    sellAsset.symbol === "POL" && !isEmbedded
+    sellAsset.symbol === "POL" && !canUseSponsoredGas
       ? balance > POL_GAS_RESERVE
         ? balance - POL_GAS_RESERVE
         : 0n
@@ -294,7 +294,7 @@ export function SwapPanel() {
       push({
         title: "Insufficient balance",
         description:
-          sellAsset.symbol === "POL" && !isEmbedded
+          sellAsset.symbol === "POL" && !canUseSponsoredGas
             ? "Keep some POL for network fees, or enter a smaller amount."
             : undefined,
         variant: "danger",
