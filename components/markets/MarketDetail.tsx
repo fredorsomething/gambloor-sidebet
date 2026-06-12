@@ -220,17 +220,29 @@ export function MarketDetail({ id }: { id: number }) {
       return;
     }
     setSubmitting(true);
+    let fundingTxHash: string | undefined;
     try {
       // Just-in-time funding: a BUY moves exactly its collateral (cost + fee)
       // from the wallet to the treasury now, then the order is placed. Unused
       // funds and all proceeds are auto-returned to the wallet by the engine.
-      let fundingTxHash: string | undefined;
       if (args.side === "BUY") {
         const treasury = config.data?.treasury;
         if (!treasury) {
           push({
             title: "Trading unavailable",
             description: "Treasury not configured.",
+            variant: "danger",
+          });
+          setSubmitting(false);
+          return;
+        }
+        try {
+          await jsonFetch("/api/exchange/health");
+        } catch {
+          push({
+            title: "Orderbook unavailable",
+            description:
+              "The matching engine is offline. Wait a moment and try again — don't send USDC.e until it's back.",
             variant: "danger",
           });
           setSubmitting(false);
@@ -296,7 +308,31 @@ export function MarketDetail({ id }: { id: number }) {
       const { title, description } = formatCryptoError(err, {
         fallbackTitle: "Order failed",
       });
-      push({ title, description, variant: "danger" });
+      if (fundingTxHash && account) {
+        try {
+          await authFetch("/api/exchange/recover-funding", {
+            method: "POST",
+            body: JSON.stringify({
+              address: account,
+              fundingTxHash,
+              chainId: polygon.id,
+            }),
+          });
+          push({
+            title,
+            description: `${description} Your USDC.e is being returned to your wallet.`,
+            variant: "danger",
+          });
+        } catch {
+          push({
+            title,
+            description: `${description} Recovery failed — save tx ${fundingTxHash.slice(0, 10)}… and contact support.`,
+            variant: "danger",
+          });
+        }
+      } else {
+        push({ title, description, variant: "danger" });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -768,7 +804,20 @@ function CompleteSetPanel({
       return;
     }
     setBusy("mint");
+    let fundingTxHash: string | undefined;
     try {
+      try {
+        await jsonFetch("/api/exchange/health");
+      } catch {
+        push({
+          title: "Orderbook unavailable",
+          description:
+            "The matching engine is offline. Wait and try again — don't send USDC.e until it's back.",
+          variant: "danger",
+        });
+        setBusy(null);
+        return;
+      }
       const micro = BigInt(Math.round(mintSets * 1_000_000));
       await ensurePolygon();
       const hash = await writeContract({
@@ -778,6 +827,7 @@ function CompleteSetPanel({
         args: [treasury as Address, micro],
       });
       if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+      fundingTxHash = hash;
       await authFetch(`/api/markets/${marketId}/sets`, {
         method: "POST",
         body: JSON.stringify({
@@ -796,7 +846,27 @@ function CompleteSetPanel({
       onChanged();
     } catch (err) {
       const { title, description } = formatCryptoError(err, { fallbackTitle: "Mint failed" });
-      push({ title, description, variant: "danger" });
+      if (fundingTxHash && account) {
+        try {
+          await authFetch("/api/exchange/recover-funding", {
+            method: "POST",
+            body: JSON.stringify({
+              address: account,
+              fundingTxHash,
+              chainId: polygon.id,
+            }),
+          });
+          push({
+            title,
+            description: `${description} Your USDC.e is being returned to your wallet.`,
+            variant: "danger",
+          });
+        } catch {
+          push({ title, description, variant: "danger" });
+        }
+      } else {
+        push({ title, description, variant: "danger" });
+      }
     } finally {
       setBusy(null);
     }

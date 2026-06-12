@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { getAddress, parseEventLogs, parseAbiItem } from "viem";
+import { getAddress } from "viem";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -9,9 +9,10 @@ import { getPublicClient } from "@/lib/onchain";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import {
   enginePlaceOrder,
-  engineCreditDeposit,
+  engineRefundOrphanFunding,
   EngineError,
 } from "@/lib/engineClient";
+import { verifyFundingTransfer } from "@/lib/fundingVerification";
 import {
   MAX_PRICE,
   MIN_PRICE,
@@ -22,10 +23,6 @@ import {
 } from "@/lib/exchange/units";
 
 export const dynamic = "force-dynamic";
-
-const TRANSFER_EVENT = parseAbiItem(
-  "event Transfer(address indexed from, address indexed to, uint256 value)",
-);
 
 const HEX_TX = /^0x[0-9a-fA-F]{64}$/;
 
@@ -94,10 +91,12 @@ export async function POST(
   const qtyMicro = parseAmount(d.shares);
   if (qtyMicro <= 0n) return jsonErr("shares must be positive", 400);
 
-  // Just-in-time funding: a BUY must arrive with a confirmed on-chain transfer
-  // of at least the order's collateral (cost + fee) to the treasury. We verify
-  // it, credit the ledger, and then place — so funds leave the wallet only when
-  // the order is posted. USDC.e has 6 decimals, matching our micro-units 1:1.
+  let fundingDeposit:
+    | { amount: string; txHash: string; logIndex: number; chainId: number }
+    | undefined;
+
+  // Just-in-time funding: verify the on-chain transfer, then credit + place in
+  // one engine call so a failed order never strands USDC.e in the treasury.
   if (d.side === "BUY") {
     if (!d.fundingTxHash) {
       return jsonErr("buy orders must include a funding transfer", 400);
@@ -108,57 +107,28 @@ export async function POST(
     const publicClient = getPublicClient(market.chainId);
     if (!publicClient) return jsonErr("unsupported chain", 400);
 
-    const required = costOf(priceMicro, qtyMicro) + feeOf(costOf(priceMicro, qtyMicro), market.feeBps);
+    const required =
+      costOf(priceMicro, qtyMicro) +
+      feeOf(costOf(priceMicro, qtyMicro), market.feeBps);
 
-    let transferred = 0n;
-    let fundingLogIndex = -1;
-    try {
-      const treasury = getAddress(treasuryRaw);
-      const token = getAddress(market.token);
-      const receipt = await publicClient.getTransactionReceipt({
-        hash: d.fundingTxHash as `0x${string}`,
-      });
-      if (receipt.status !== "success") {
-        return jsonErr("funding transfer did not succeed", 400);
-      }
-      const transfers = parseEventLogs({
-        abi: [TRANSFER_EVENT],
-        logs: receipt.logs,
-        eventName: "Transfer",
-      });
-      for (const t of transfers) {
-        if (getAddress(t.address) !== token) continue;
-        if (getAddress(t.args.from) !== maker) continue;
-        if (getAddress(t.args.to) !== treasury) continue;
-        transferred += t.args.value;
-        if (fundingLogIndex < 0) fundingLogIndex = t.logIndex;
-      }
-    } catch (err) {
-      console.error("funding verification failed", err);
-      return jsonErr("could not verify funding transfer", 400);
-    }
-
-    if (fundingLogIndex < 0 || transferred < required) {
+    const verified = await verifyFundingTransfer({
+      publicClient,
+      txHash: d.fundingTxHash as `0x${string}`,
+      token: market.token,
+      maker,
+      treasury: treasuryRaw,
+    });
+    if ("error" in verified) return jsonErr(verified.error, 400);
+    if (verified.transferred < required) {
       return jsonErr("funding transfer is insufficient for this order", 400);
     }
 
-    try {
-      // Idempotent per (txHash, logIndex). If it returns `credited: false`, the
-      // funds were already credited (e.g. the bridge indexed the same transfer,
-      // or this tx was reused). Either way the engine's free-balance check below
-      // enforces single use, so we can safely proceed.
-      await engineCreditDeposit({
-        address: maker.toLowerCase(),
-        amount: transferred.toString(),
-        txHash: d.fundingTxHash,
-        logIndex: fundingLogIndex,
-        chainId: market.chainId,
-      });
-    } catch (err) {
-      if (err instanceof EngineError) return jsonErr(err.message, err.status);
-      console.error("credit deposit failed", err);
-      return jsonErr("failed to credit funding", 500);
-    }
+    fundingDeposit = {
+      amount: verified.transferred.toString(),
+      txHash: d.fundingTxHash,
+      logIndex: verified.logIndex,
+      chainId: market.chainId,
+    };
   }
 
   try {
@@ -170,11 +140,27 @@ export async function POST(
       type: d.type,
       price: priceMicro.toString(),
       qty: qtyMicro.toString(),
+      deposit: fundingDeposit,
     });
     return jsonOk(result, { status: 201 });
   } catch (err) {
+    // Last-resort safety net: if the engine credited the transfer but the order
+    // still failed (or the RPC died mid-flight), return the USDC.e to the user.
+    if (fundingDeposit) {
+      try {
+        await engineRefundOrphanFunding({
+          address: maker.toLowerCase(),
+          amount: fundingDeposit.amount,
+          txHash: fundingDeposit.txHash,
+          logIndex: fundingDeposit.logIndex,
+          chainId: fundingDeposit.chainId,
+        });
+      } catch (refundErr) {
+        console.error("orphan funding refund failed", refundErr);
+      }
+    }
     if (err instanceof EngineError) return jsonErr(err.message, err.status);
     console.error("place order failed", err);
-    return jsonErr("failed to place order", 500);
+    return jsonErr("failed to place order — your USDC.e is being returned", 500);
   }
 }

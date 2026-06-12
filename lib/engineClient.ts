@@ -60,8 +60,31 @@ export function enginePlaceOrder(params: {
   type: "LIMIT" | "MARKET";
   price: string; // micro
   qty: string; // micro
+  deposit?: { amount: string; txHash: string; logIndex: number; chainId: number };
 }): Promise<EnginePlaceResult> {
   return rpc<EnginePlaceResult>("placeOrder", params);
+}
+
+export function engineRefundOrphanFunding(params: {
+  address: string;
+  amount: string;
+  txHash: string;
+  logIndex: number;
+  chainId: number;
+}): Promise<{ refunded: string; credited: boolean }> {
+  return rpc("refundOrphanFunding", params);
+}
+
+/** Returns true when the matching engine health endpoint responds OK. */
+export async function engineIsHealthy(): Promise<boolean> {
+  try {
+    const res = await fetch(`${ENGINE_URL}/health`, { cache: "no-store" });
+    if (!res.ok) return false;
+    const json = (await res.json()) as { ok?: boolean };
+    return json.ok === true;
+  } catch {
+    return false;
+  }
 }
 
 export function engineCancelOrder(params: {

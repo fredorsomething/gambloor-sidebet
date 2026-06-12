@@ -61,7 +61,41 @@ export function startServer(engine: ExchangeEngine) {
         type: (p.type as OrderType) ?? "LIMIT",
         price: BigInt(p.price ?? "0"),
         qty: BigInt(p.qty),
+        deposit: p.deposit
+          ? {
+              amount: BigInt(p.deposit.amount),
+              txHash: String(p.deposit.txHash),
+              logIndex: Number(p.deposit.logIndex),
+              chainId: Number(p.deposit.chainId ?? 137),
+            }
+          : undefined,
       }),
+
+    // Credit an on-chain treasury transfer and immediately return it to the
+    // user's wallet. Used when the orderbook rejected an order after the user
+    // already sent USDC.e, or when the API could not reach the engine in time.
+    refundOrphanFunding: async (p) => {
+      const address = String(p.address).toLowerCase();
+      const amount = BigInt(p.amount);
+      const credited = await engine.ledger.creditDeposit({
+        address,
+        amount,
+        txHash: String(p.txHash),
+        logIndex: Number(p.logIndex),
+        chainId: Number(p.chainId ?? 137),
+      });
+      const { balance } = await engine.ledger.getCollateral(address);
+      const toRefund = credited ? amount : balance >= amount ? amount : balance;
+      if (toRefund > 0n) {
+        await engine.ledger.requestWithdrawal({
+          address,
+          amount: toRefund,
+          fee: 0n,
+          status: "Pending",
+        });
+      }
+      return { refunded: toRefund.toString(), credited };
+    },
 
     cancelOrder: async (p) =>
       engine.cancelOrder(Number(p.marketId), String(p.orderId), String(p.owner)),

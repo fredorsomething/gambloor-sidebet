@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { getAddress, parseEventLogs, parseAbiItem } from "viem";
+import { getAddress } from "viem";
 
 import { verifyWalletAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -10,16 +10,13 @@ import { jsonErr, jsonOk } from "@/lib/serialize";
 import {
   engineSplitSet,
   engineMergeSet,
-  engineRequestWithdrawal,
+  engineRefundOrphanFunding,
   EngineError,
 } from "@/lib/engineClient";
+import { verifyFundingTransfer } from "@/lib/fundingVerification";
 import { parseAmount } from "@/lib/exchange/units";
 
 export const dynamic = "force-dynamic";
-
-const TRANSFER_EVENT = parseAbiItem(
-  "event Transfer(address indexed from, address indexed to, uint256 value)",
-);
 const HEX_TX = /^0x[0-9a-fA-F]{64}$/;
 
 const Schema = z.object({
@@ -109,54 +106,44 @@ export async function POST(
   // A complete set costs exactly $1, so qty micro-shares require qty micro-USDC.
   const required = qtyMicro;
 
-  let transferred = 0n;
-  let fundingLogIndex = -1;
-  try {
-    const treasury = getAddress(treasuryRaw);
-    const token = getAddress(market.token);
-    const receipt = await publicClient.getTransactionReceipt({
-      hash: d.fundingTxHash as `0x${string}`,
-    });
-    if (receipt.status !== "success") {
-      return jsonErr("funding transfer did not succeed", 400);
-    }
-    const transfers = parseEventLogs({
-      abi: [TRANSFER_EVENT],
-      logs: receipt.logs,
-      eventName: "Transfer",
-    });
-    for (const t of transfers) {
-      if (getAddress(t.address) !== token) continue;
-      if (getAddress(t.args.from) !== owner) continue;
-      if (getAddress(t.args.to) !== treasury) continue;
-      transferred += t.args.value;
-      if (fundingLogIndex < 0) fundingLogIndex = t.logIndex;
-    }
-  } catch (err) {
-    console.error("set funding verification failed", err);
-    return jsonErr("could not verify funding transfer", 400);
-  }
-
-  if (fundingLogIndex < 0 || transferred < required) {
+  const verified = await verifyFundingTransfer({
+    publicClient,
+    txHash: d.fundingTxHash as `0x${string}`,
+    token: market.token,
+    maker: owner,
+    treasury: treasuryRaw,
+  });
+  if ("error" in verified) return jsonErr(verified.error, 400);
+  if (verified.transferred < required) {
     return jsonErr("funding transfer is insufficient to mint these sets", 400);
   }
+
+  const fundingDeposit = {
+    amount: verified.transferred.toString(),
+    txHash: d.fundingTxHash,
+    logIndex: verified.logIndex,
+    chainId: market.chainId,
+  };
 
   try {
     const res = await engineSplitSet({
       marketId: id,
       owner: owner.toLowerCase(),
       qty: qtyMicro.toString(),
-      deposit: {
-        amount: transferred.toString(),
-        txHash: d.fundingTxHash,
-        logIndex: fundingLogIndex,
-        chainId: market.chainId,
-      },
+      deposit: fundingDeposit,
     });
     return jsonOk(res, { status: 201 });
   } catch (err) {
+    try {
+      await engineRefundOrphanFunding({
+        address: owner.toLowerCase(),
+        ...fundingDeposit,
+      });
+    } catch (refundErr) {
+      console.error("orphan set funding refund failed", refundErr);
+    }
     if (err instanceof EngineError) return jsonErr(err.message, err.status);
     console.error("split set failed", err);
-    return jsonErr("failed to mint set", 500);
+    return jsonErr("failed to mint set — your USDC.e is being returned", 500);
   }
 }

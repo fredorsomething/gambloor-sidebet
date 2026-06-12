@@ -129,6 +129,28 @@ export class ExchangeEngine {
     return out;
   }
 
+  /**
+   * Return freshly credited JIT collateral to the user's wallet when an order or
+   * mint fails after we credited their on-chain transfer. Idempotent sweeps
+   * handle any balance that slips through.
+   */
+  private async refundFreshCredit(owner: string, amount: bigint, ref: string): Promise<void> {
+    if (amount <= 0n) return;
+    try {
+      await this.ledger.requestWithdrawal({
+        address: owner,
+        amount,
+        fee: 0n,
+        status: "Pending",
+      });
+      console.warn(
+        `[engine] queued ${amount} refund to ${owner} after failed op (${ref})`,
+      );
+    } catch (err) {
+      console.error(`[engine] CRITICAL: failed to queue refund for ${owner}`, err);
+    }
+  }
+
   async placeOrder(input: {
     marketId: number;
     maker: string;
@@ -137,10 +159,22 @@ export class ExchangeEngine {
     type: OrderType;
     price: bigint;
     qty: bigint;
+    deposit?: { amount: bigint; txHash: string; logIndex: number; chainId: number };
   }): Promise<PlaceResult> {
     const st = await this.ensureMarket(input.marketId);
 
     return this.enqueue(input.marketId, async () => {
+      const maker = input.maker.toLowerCase();
+      let freshCredit = 0n;
+      if (input.deposit) {
+        const credited = await this.ledger.creditDeposit({
+          address: maker,
+          ...input.deposit,
+        });
+        if (credited) freshCredit = input.deposit.amount;
+      }
+
+      try {
       if (st.status !== "Open") throw new Error("market is not open for trading");
       if (input.qty <= 0n) throw new Error("qty must be positive");
       if (input.outcomeIndex < 0 || input.outcomeIndex >= st.numOutcomes) {
@@ -149,8 +183,6 @@ export class ExchangeEngine {
       if (input.type === "LIMIT" && !isValidPrice(input.price)) {
         throw new Error("price out of range");
       }
-
-      const maker = input.maker.toLowerCase();
       const incoming: IncomingOrder = {
         marketId: input.marketId,
         maker,
@@ -234,6 +266,16 @@ export class ExchangeEngine {
           side: f.takerSide,
         })),
       };
+      } catch (err) {
+        if (freshCredit > 0n) {
+          await this.refundFreshCredit(
+            maker,
+            freshCredit,
+            input.deposit!.txHash,
+          );
+        }
+        throw err;
+      }
     });
   }
 
@@ -253,20 +295,33 @@ export class ExchangeEngine {
   }): Promise<{ ok: true; minted: string }> {
     const st = await this.ensureMarket(input.marketId);
     return this.enqueue(input.marketId, async () => {
-      if (st.status !== "Open") throw new Error("market is not open for trading");
-      if (input.qty <= 0n) throw new Error("qty must be positive");
       const owner = input.owner.toLowerCase();
+      let freshCredit = 0n;
       if (input.deposit) {
-        await this.ledger.creditDeposit({ address: owner, ...input.deposit });
+        const credited = await this.ledger.creditDeposit({
+          address: owner,
+          ...input.deposit,
+        });
+        if (credited) freshCredit = input.deposit.amount;
       }
-      await this.ledger.splitSet({
-        marketId: input.marketId,
-        owner,
-        qty: input.qty,
-        numOutcomes: st.numOutcomes,
-      });
-      await this.assertAndPublish(input.marketId, st, []);
-      return { ok: true, minted: input.qty.toString() };
+
+      try {
+        if (st.status !== "Open") throw new Error("market is not open for trading");
+        if (input.qty <= 0n) throw new Error("qty must be positive");
+        await this.ledger.splitSet({
+          marketId: input.marketId,
+          owner,
+          qty: input.qty,
+          numOutcomes: st.numOutcomes,
+        });
+        await this.assertAndPublish(input.marketId, st, []);
+        return { ok: true, minted: input.qty.toString() };
+      } catch (err) {
+        if (freshCredit > 0n) {
+          await this.refundFreshCredit(owner, freshCredit, input.deposit!.txHash);
+        }
+        throw err;
+      }
     });
   }
 
