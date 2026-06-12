@@ -11,7 +11,7 @@ import { AvatarUploadZone } from "@/components/profile/AvatarUploadZone";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
 import { jsonFetch } from "@/lib/fetcher";
-import { useProfile } from "@/lib/hooks/useProfile";
+import { useMyProfile } from "@/lib/hooks/useMyProfile";
 import { validateBio, validateSocial, validateUsername } from "@/lib/profile";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ export function ProfileSetupForm() {
   const { getAccessToken } = usePrivy();
   const { push } = useToast();
   const qc = useQueryClient();
-  const { data: savedProfile, isLoading } = useProfile(address);
+  const { data: savedProfile, isLoading } = useMyProfile(address);
 
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
@@ -129,7 +129,7 @@ export function ProfileSetupForm() {
       });
 
       await qc.invalidateQueries({ queryKey: ["profile"] });
-      await qc.invalidateQueries({ queryKey: ["userPage"] });
+      await qc.invalidateQueries({ queryKey: ["profile", "me"] });
 
       push({ title: "Profile saved", variant: "success" });
       router.replace("/home");

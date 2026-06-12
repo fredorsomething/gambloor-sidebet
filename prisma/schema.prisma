@@ -665,6 +665,7 @@ model PlatformSettings {
   id                  Int      @id @default(1)
   allowMarketCreation Boolean  @default(false)
   sidebetFeeBps       Int      @default(0) // platform fee on new sidebets (bps of pool)
+  maintenanceMode     Boolean  @default(false)
   updatedAt           DateTime @updatedAt
   updatedBy           String?
 }

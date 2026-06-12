@@ -7,6 +7,7 @@ import { jsonFetch } from "@/lib/fetcher";
 export type PlatformSettingsPublic = {
   allowMarketCreation: boolean;
   sidebetFeeBps: number;
+  maintenanceMode: boolean;
   updatedAt: string;
 };
 

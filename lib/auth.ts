@@ -8,7 +8,13 @@ import {
 } from "@/lib/privy";
 
 export type WalletAuthResult =
-  | { ok: true; address: string; userId: string; email: string | null }
+  | {
+      ok: true;
+      address: string;
+      userId: string;
+      email: string | null;
+      linkedAddresses: string[];
+    }
   | { ok: false; error: string; status: number };
 
 /**
@@ -48,5 +54,11 @@ export async function verifyWalletAuth(args: {
     };
   }
 
-  return { ok: true, address, userId: token.userId, email: emailOf(user) };
+  return {
+    ok: true,
+    address,
+    userId: token.userId,
+    email: emailOf(user),
+    linkedAddresses: owned,
+  };
 }

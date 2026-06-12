@@ -9,6 +9,7 @@ export async function GET() {
   return jsonOk({
     allowMarketCreation: settings.allowMarketCreation,
     sidebetFeeBps: settings.sidebetFeeBps,
+    maintenanceMode: settings.maintenanceMode,
     updatedAt: settings.updatedAt,
   });
 }

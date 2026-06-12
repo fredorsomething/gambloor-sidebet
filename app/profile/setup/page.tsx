@@ -8,14 +8,14 @@ import { useAccount } from "wagmi";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { ProfileSetupForm } from "@/components/profile/ProfileSetupForm";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
-import { useProfile } from "@/lib/hooks/useProfile";
+import { useMyProfile } from "@/lib/hooks/useMyProfile";
 import { needsProfileSetup } from "@/lib/profile";
 
 export default function ProfileSetupPage() {
   const router = useRouter();
   const { ready, authenticated } = usePrivy();
   const { address } = useAccount();
-  const { data: profile, isFetched } = useProfile(address);
+  const { data: profile, isFetched } = useMyProfile(address);
 
   useEffect(() => {
     if (!ready || !authenticated || !address || !isFetched) return;

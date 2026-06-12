@@ -1,0 +1,1 @@
+ALTER TABLE "PlatformSettings" ADD COLUMN IF NOT EXISTS "maintenanceMode" BOOLEAN NOT NULL DEFAULT false;

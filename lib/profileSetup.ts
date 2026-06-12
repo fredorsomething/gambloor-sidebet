@@ -6,6 +6,7 @@ export const PROFILE_SETUP_EXEMPT_PREFIXES = [
   PROFILE_SETUP_PATH,
   "/",
   "/onboarding",
+  "/maintenance",
   "/terms",
   "/privacy",
 ] as const;

@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { useAccount } from "wagmi";
 
 import { LoadingScreen } from "@/components/LoadingScreen";
-import { useProfile } from "@/lib/hooks/useProfile";
+import { useMyProfile } from "@/lib/hooks/useMyProfile";
 import { needsProfileSetup } from "@/lib/profile";
 import {
   isProfileSetupExemptPath,
@@ -19,7 +19,7 @@ export function ProfileSetupGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { ready, authenticated } = usePrivy();
   const { address } = useAccount();
-  const { data: profile, isFetched } = useProfile(address);
+  const { data: profile, isFetched } = useMyProfile(address);
 
   const onSetupPage = pathname === PROFILE_SETUP_PATH;
   const incomplete = isFetched && needsProfileSetup(profile);

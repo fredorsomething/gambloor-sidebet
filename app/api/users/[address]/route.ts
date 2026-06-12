@@ -10,6 +10,10 @@ import { isAllowedAvatarUrl } from "@/lib/profile";
 import { getProfileViewCount } from "@/lib/profileViews";
 import { jsonErr, jsonOk } from "@/lib/serialize";
 import { computeUserStats, type StatBet } from "@/lib/stats";
+import {
+  ProfileConflictError,
+  upsertUserProfile,
+} from "@/lib/userProfile";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +21,17 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { address: string } },
 ) {
+  try {
+    return await getUserProfile(params.address);
+  } catch (err) {
+    console.error("GET /api/users/[address] failed", params.address, err);
+    return jsonErr("failed to load profile", 500);
+  }
+}
+
+async function getUserProfile(handleRaw: string) {
   // The handle can be a wallet address or an @username (with or without "@").
-  const handle = decodeURIComponent(params.address).trim().replace(/^@/, "");
+  const handle = decodeURIComponent(handleRaw).trim().replace(/^@/, "");
 
   let address: string;
   let user;
@@ -161,62 +174,34 @@ export async function PUT(
   const auth = await verifyWalletAuth({ req, address });
   if (!auth.ok) return jsonErr(auth.error, auth.status);
 
-  // Enforce unique username, case-insensitively.
-  if (d.username) {
-    const existing = await prisma.user.findFirst({
-      where: { username: { equals: d.username, mode: "insensitive" } },
-    });
-    if (existing && existing.address.toLowerCase() !== address.toLowerCase()) {
-      return jsonErr("username already taken", 409);
-    }
-  }
-
-  // Record the previous username so its old `/u/<name>` links keep resolving to
-  // this wallet. All stats stay keyed to the (immutable) address regardless.
-  const prior = await prisma.user.findUnique({ where: { address } });
-  const oldUsername = prior?.username?.trim();
-  const newUsername = d.username?.trim() || null;
-  if (oldUsername && oldUsername.toLowerCase() !== newUsername?.toLowerCase()) {
-    await prisma.usernameHistory
-      .upsert({
-        where: {
-          username_address: { username: oldUsername.toLowerCase(), address },
-        },
-        update: { createdAt: new Date() },
-        create: { username: oldUsername.toLowerCase(), address },
-      })
-      .catch(() => {});
-  }
-
-  const user = await prisma.user.upsert({
-    where: { address },
-    update: {
-      privyId: auth.userId,
-      email: auth.email,
-      username: d.username ?? null,
-      avatarUrl: d.avatarUrl ?? null,
-      bio: d.bio ?? null,
-      twitter: d.twitter ?? null,
-      discord: d.discord ?? null,
-    },
-    create: {
+  try {
+    const user = await upsertUserProfile({
       address,
       privyId: auth.userId,
       email: auth.email,
-      username: d.username ?? null,
-      avatarUrl: d.avatarUrl ?? null,
-      bio: d.bio ?? null,
-      twitter: d.twitter ?? null,
-      discord: d.discord ?? null,
-    },
-  });
+      linkedAddresses: auth.linkedAddresses,
+      data: {
+        username: d.username ?? null,
+        avatarUrl: d.avatarUrl ?? null,
+        bio: d.bio ?? null,
+        twitter: d.twitter ?? null,
+        discord: d.discord ?? null,
+      },
+    });
 
-  return jsonOk({
-    address: user.address,
-    username: user.username,
-    avatarUrl: user.avatarUrl,
-    bio: user.bio,
-    twitter: user.twitter,
-    discord: user.discord,
-  });
+    return jsonOk({
+      address: user.address,
+      username: user.username,
+      avatarUrl: user.avatarUrl,
+      bio: user.bio,
+      twitter: user.twitter,
+      discord: user.discord,
+    });
+  } catch (err) {
+    if (err instanceof ProfileConflictError) {
+      return jsonErr(err.message, 409);
+    }
+    console.error("PUT /api/users/[address] failed", address, err);
+    return jsonErr("failed to save profile", 500);
+  }
 }

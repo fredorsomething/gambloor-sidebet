@@ -15,11 +15,17 @@ const PatchSchema = z
   .object({
     allowMarketCreation: z.boolean().optional(),
     sidebetFeeBps: z.number().int().min(0).max(1000).optional(),
+    maintenanceMode: z.boolean().optional(),
   })
   .refine(
     (d) =>
-      d.allowMarketCreation !== undefined || d.sidebetFeeBps !== undefined,
-    { message: "provide allowMarketCreation and/or sidebetFeeBps" },
+      d.allowMarketCreation !== undefined ||
+      d.sidebetFeeBps !== undefined ||
+      d.maintenanceMode !== undefined,
+    {
+      message:
+        "provide allowMarketCreation, sidebetFeeBps, and/or maintenanceMode",
+    },
   );
 
 /** PATCH /api/admin/settings?address= — update platform flags (admin only). */

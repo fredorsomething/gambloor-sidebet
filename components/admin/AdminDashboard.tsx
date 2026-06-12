@@ -191,11 +191,19 @@ export function AdminDashboard({ address }: { address: string }) {
   const platformQ = useQuery<{
     allowMarketCreation: boolean;
     sidebetFeeBps: number;
+    maintenanceMode: boolean;
     updatedAt: string;
     updatedBy?: string | null;
   }>({
-    queryKey: ["platform-settings"],
-    queryFn: () => jsonFetch("/api/platform/settings"),
+    queryKey: ["platform-settings", "admin"],
+    queryFn: () =>
+      adminFetch<{
+        allowMarketCreation: boolean;
+        sidebetFeeBps: number;
+        maintenanceMode: boolean;
+        updatedAt: string;
+        updatedBy?: string | null;
+      }>(`/api/admin/settings?address=${address}`),
     enabled: tab === "settings",
     staleTime: 30_000,
   });
@@ -204,6 +212,7 @@ export function AdminDashboard({ address }: { address: string }) {
     mutationFn: (body: {
       allowMarketCreation?: boolean;
       sidebetFeeBps?: number;
+      maintenanceMode?: boolean;
     }) =>
       adminPatch<{ feeSync?: { onChainSynced: boolean; onChainError?: string } }>(
         `/api/admin/settings?address=${address}`,
@@ -222,6 +231,7 @@ export function AdminDashboard({ address }: { address: string }) {
         push({ title: "Settings saved", variant: "success" });
       }
       void qc.invalidateQueries({ queryKey: ["platform-settings"] });
+      void qc.invalidateQueries({ queryKey: ["platform-settings", "admin"] });
     },
     onError: (e) => push({ title: (e as Error).message, variant: "danger" }),
   });
@@ -541,11 +551,15 @@ export function AdminDashboard({ address }: { address: string }) {
       {tab === "settings" && (
         <SettingsPanel
           allowMarketCreation={platformQ.data?.allowMarketCreation ?? false}
+          maintenanceMode={platformQ.data?.maintenanceMode ?? false}
           sidebetFeeBps={platformQ.data?.sidebetFeeBps ?? 0}
           updatedAt={platformQ.data?.updatedAt}
           loading={platformQ.isLoading}
           saving={updatePlatform.isPending}
-          onToggle={(v) => updatePlatform.mutate({ allowMarketCreation: v })}
+          onToggleMarkets={(v) => updatePlatform.mutate({ allowMarketCreation: v })}
+          onToggleMaintenance={(v) =>
+            updatePlatform.mutate({ maintenanceMode: v })
+          }
           onSaveFee={(bps) => updatePlatform.mutate({ sidebetFeeBps: bps })}
         />
       )}
@@ -566,19 +580,23 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
 
 function SettingsPanel({
   allowMarketCreation,
+  maintenanceMode,
   sidebetFeeBps,
   updatedAt,
   loading,
   saving,
-  onToggle,
+  onToggleMarkets,
+  onToggleMaintenance,
   onSaveFee,
 }: {
   allowMarketCreation: boolean;
+  maintenanceMode: boolean;
   sidebetFeeBps: number;
   updatedAt?: string;
   loading: boolean;
   saving: boolean;
-  onToggle: (allow: boolean) => void;
+  onToggleMarkets: (allow: boolean) => void;
+  onToggleMaintenance: (enabled: boolean) => void;
   onSaveFee: (feeBps: number) => void;
 }) {
   const [feePct, setFeePct] = useState(() => (sidebetFeeBps / 100).toFixed(2));
@@ -672,6 +690,36 @@ function SettingsPanel({
 
           <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
             <div className="min-w-0 flex-1">
+              <p className="font-medium">Maintenance mode</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                When on, the whole site shows a password gate. Access password
+                is configured for staff (default: dog). Toggle off here after
+                entering the site.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={maintenanceMode}
+              disabled={saving}
+              onClick={() => onToggleMaintenance(!maintenanceMode)}
+              className={cn(
+                "relative h-7 w-12 shrink-0 rounded-full transition-colors",
+                maintenanceMode ? "bg-warning" : "bg-muted-foreground/30",
+                saving && "opacity-60",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform",
+                  maintenanceMode ? "left-[22px]" : "left-0.5",
+                )}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
+            <div className="min-w-0 flex-1">
               <p className="font-medium">Allow users to create markets</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 When off, users cannot submit new prediction markets. Existing
@@ -689,7 +737,7 @@ function SettingsPanel({
               role="switch"
               aria-checked={allowMarketCreation}
               disabled={saving}
-              onClick={() => onToggle(!allowMarketCreation)}
+              onClick={() => onToggleMarkets(!allowMarketCreation)}
               className={cn(
                 "relative h-7 w-12 shrink-0 rounded-full transition-colors",
                 allowMarketCreation ? "bg-primary" : "bg-muted-foreground/30",
@@ -709,6 +757,10 @@ function SettingsPanel({
 
       <p className="text-xs text-muted-foreground">
         Markets:{" "}
+        <span className={maintenanceMode ? "text-warning" : "text-muted-foreground"}>
+          {maintenanceMode ? "maintenance on" : "maintenance off"}
+        </span>
+        {" · "}
         <span className={allowMarketCreation ? "text-success" : "text-warning"}>
           {allowMarketCreation ? "creation enabled" : "creation disabled"}
         </span>
