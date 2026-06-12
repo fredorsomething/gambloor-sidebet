@@ -1,4 +1,7 @@
 import { PrivyClient, type User } from "@privy-io/node";
+import { getAddress } from "viem";
+
+import { prisma } from "@/lib/db";
 
 const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 const appSecret = process.env.PRIVY_APP_SECRET;
@@ -67,6 +70,53 @@ export function emailOf(user: User): string | null {
     }
   }
   return null;
+}
+
+/** Embedded EVM wallet for a Privy user, if they have one. */
+export function embeddedEthereumAddressOf(user: User): string | null {
+  for (const account of user.linked_accounts) {
+    if (account.type !== "wallet") continue;
+    if (!("chain_type" in account) || account.chain_type !== "ethereum") continue;
+    if (!("address" in account) || typeof account.address !== "string") continue;
+    const wallet = account as {
+      connector_type?: string;
+      wallet_client_type?: string;
+    };
+    if (
+      wallet.connector_type === "embedded" ||
+      wallet.wallet_client_type === "privy" ||
+      wallet.wallet_client_type === "privy-v2"
+    ) {
+      return getAddress(account.address);
+    }
+  }
+  return null;
+}
+
+/**
+ * Canonical profile wallet for a Privy user: embedded first, else the linked
+ * wallet that already has a username in our DB, else the first linked wallet.
+ */
+export async function resolveProfileWalletAddress(args: {
+  privyId: string;
+  linkedAddresses: string[];
+  embeddedAddress?: string | null;
+}): Promise<string | null> {
+  const linked = args.linkedAddresses.map((a) => getAddress(a));
+  if (args.embeddedAddress) return getAddress(args.embeddedAddress);
+
+  const byPrivy = await prisma.user.findUnique({ where: { privyId: args.privyId } });
+  if (byPrivy) return getAddress(byPrivy.address);
+
+  if (linked.length === 0) return null;
+
+  const rows = await prisma.user.findMany({
+    where: { address: { in: linked } },
+  });
+  const withUsername = rows.find((r) => r.username?.trim());
+  if (withUsername) return getAddress(withUsername.address);
+
+  return linked[0] ?? null;
 }
 
 /** Fetch the full Privy user record (linked accounts) by user id. */

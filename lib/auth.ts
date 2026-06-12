@@ -2,10 +2,22 @@ import { getAddress } from "viem";
 
 import {
   emailOf,
+  embeddedEthereumAddressOf,
   ethereumAddressesOf,
   getPrivyUser,
+  resolveProfileWalletAddress,
   verifyPrivyToken,
 } from "@/lib/privy";
+
+export type PrivySessionResult =
+  | {
+      ok: true;
+      userId: string;
+      email: string | null;
+      linkedAddresses: string[];
+      profileAddress: string;
+    }
+  | { ok: false; error: string; status: number };
 
 export type WalletAuthResult =
   | {
@@ -17,12 +29,48 @@ export type WalletAuthResult =
     }
   | { ok: false; error: string; status: number };
 
+/** Authenticates a Privy session and resolves the canonical profile wallet. */
+export async function verifyPrivySession(
+  req: Request,
+): Promise<PrivySessionResult> {
+  const token = await verifyPrivyToken(req);
+  if (!token.ok) return token;
+
+  let user;
+  try {
+    user = await getPrivyUser(token.userId);
+  } catch {
+    return { ok: false, error: "could not load Privy user", status: 401 };
+  }
+
+  const linkedAddresses = ethereumAddressesOf(user);
+  const embeddedAddress = embeddedEthereumAddressOf(user);
+  const profileAddress = await resolveProfileWalletAddress({
+    privyId: token.userId,
+    linkedAddresses,
+    embeddedAddress,
+  });
+
+  if (!profileAddress) {
+    return { ok: false, error: "no linked wallet", status: 403 };
+  }
+
+  return {
+    ok: true,
+    userId: token.userId,
+    email: emailOf(user),
+    linkedAddresses,
+    profileAddress,
+  };
+}
+
 /**
  * Authenticates a write request against Privy.
  *
- * Verifies the `Authorization: Bearer` access token, then confirms the claimed
- * wallet `address` is one of the EVM wallets (embedded or external) linked to
- * the authenticated Privy user. This replaces the old EIP-191 signature flow.
+ * Verifies the bearer token, then resolves the canonical profile wallet
+ * (embedded when available). The claimed `address` is accepted when linked,
+ * but profile writes are always applied to the canonical wallet so stray
+ * browser-extension addresses cannot break saves.
  */
 export async function verifyWalletAuth(args: {
   req: Request;
@@ -35,30 +83,26 @@ export async function verifyWalletAuth(args: {
     return { ok: false, error: "bad address", status: 400 };
   }
 
-  const token = await verifyPrivyToken(args.req);
-  if (!token.ok) return token;
+  const session = await verifyPrivySession(args.req);
+  if (!session.ok) return session;
 
-  let user;
-  try {
-    user = await getPrivyUser(token.userId);
-  } catch {
-    return { ok: false, error: "could not load Privy user", status: 401 };
-  }
-
-  const owned = ethereumAddressesOf(user);
-  if (!owned.includes(address.toLowerCase())) {
+  const linked = new Set(session.linkedAddresses);
+  if (!linked.has(address.toLowerCase()) && linked.size > 0) {
+    // Client sent an unlinked/stray address — still allow using canonical profile wallet.
     return {
-      ok: false,
-      error: "this wallet is not linked to your account",
-      status: 403,
+      ok: true,
+      address: session.profileAddress,
+      userId: session.userId,
+      email: session.email,
+      linkedAddresses: session.linkedAddresses,
     };
   }
 
   return {
     ok: true,
-    address,
-    userId: token.userId,
-    email: emailOf(user),
-    linkedAddresses: owned,
+    address: session.profileAddress,
+    userId: session.userId,
+    email: session.email,
+    linkedAddresses: session.linkedAddresses,
   };
 }

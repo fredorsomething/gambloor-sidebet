@@ -3,7 +3,6 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { useAccount } from "wagmi";
 
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { useMyProfile } from "@/lib/hooks/useMyProfile";
@@ -18,18 +17,26 @@ export function ProfileSetupGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { ready, authenticated } = usePrivy();
-  const { address } = useAccount();
-  const { data: profile, isFetched } = useMyProfile(address);
+  const {
+    data: profile,
+    isFetched,
+    isLoading,
+    isFetching,
+    isError,
+  } = useMyProfile();
+
+  const profilePending =
+    authenticated && (isLoading || isFetching || !isFetched || isError);
 
   const onSetupPage = pathname === PROFILE_SETUP_PATH;
-  const incomplete = isFetched && needsProfileSetup(profile);
+  const incomplete = isFetched && !isError && needsProfileSetup(profile);
   const mustRedirect =
     incomplete && !onSetupPage && !isProfileSetupExemptPath(pathname);
   const mustLeaveSetup =
-    isFetched && !needsProfileSetup(profile) && onSetupPage;
+    isFetched && !isError && !needsProfileSetup(profile) && onSetupPage;
 
   useEffect(() => {
-    if (!ready || !authenticated || !address || !isFetched) return;
+    if (!ready || !authenticated || profilePending) return;
 
     if (mustRedirect) {
       router.replace(PROFILE_SETUP_PATH);
@@ -42,14 +49,13 @@ export function ProfileSetupGate({ children }: { children: React.ReactNode }) {
   }, [
     ready,
     authenticated,
-    address,
-    isFetched,
+    profilePending,
     mustRedirect,
     mustLeaveSetup,
     router,
   ]);
 
-  if (mustRedirect || mustLeaveSetup) {
+  if (profilePending || mustRedirect || mustLeaveSetup) {
     return <LoadingScreen fullscreen />;
   }
 

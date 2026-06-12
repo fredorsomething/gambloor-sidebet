@@ -5,7 +5,6 @@ import { usePrivy } from "@privy-io/react-auth";
 import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { useAccount } from "wagmi";
 
 import { AvatarUploadZone } from "@/components/profile/AvatarUploadZone";
 import { Button } from "@/components/ui/button";
@@ -17,11 +16,11 @@ import { cn } from "@/lib/utils";
 
 export function ProfileSetupForm() {
   const router = useRouter();
-  const { address } = useAccount();
   const { getAccessToken } = usePrivy();
   const { push } = useToast();
   const qc = useQueryClient();
-  const { data: savedProfile, isLoading } = useMyProfile(address);
+  const { data: savedProfile, isLoading, isError } = useMyProfile();
+  const profileAddress = savedProfile?.address ?? null;
 
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
@@ -78,10 +77,10 @@ export function ProfileSetupForm() {
     !twitterError &&
     !discordError &&
     !saving &&
-    !!address;
+    !!profileAddress;
 
   async function onSave() {
-    if (!address || !canSave) return;
+    if (!profileAddress || !canSave) return;
     setError(null);
     setSaving(true);
 
@@ -95,7 +94,7 @@ export function ProfileSetupForm() {
       if (avatarFile) {
         const fd = new FormData();
         fd.append("file", avatarFile);
-        fd.append("address", address);
+        fd.append("address", profileAddress);
 
         const uploadRes = await fetch("/api/upload/avatar", {
           method: "POST",
@@ -116,7 +115,7 @@ export function ProfileSetupForm() {
         avatarUrl = url;
       }
 
-      await jsonFetch(`/api/users/${address}`, {
+      await jsonFetch(`/api/users/${profileAddress}`, {
         method: "PUT",
         headers: authHeader,
         body: JSON.stringify({
@@ -140,7 +139,7 @@ export function ProfileSetupForm() {
     }
   }
 
-  if (isLoading || !address) {
+  if (isLoading || isError || !profileAddress) {
     return (
       <div className="mx-auto w-full max-w-sm space-y-6">
         <div className="mx-auto h-24 w-24 animate-pulse rounded-full bg-muted" />
@@ -158,7 +157,7 @@ export function ProfileSetupForm() {
 
       <div className="mt-8 space-y-6">
         <AvatarUploadZone
-          address={address}
+          address={profileAddress}
           savedUrl={savedProfile?.avatarUrl ?? null}
           previewUrl={previewUrl}
           onPick={onPick}

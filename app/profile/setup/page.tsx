@@ -3,7 +3,6 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { useAccount } from "wagmi";
 
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { ProfileSetupForm } from "@/components/profile/ProfileSetupForm";
@@ -14,21 +13,20 @@ import { needsProfileSetup } from "@/lib/profile";
 export default function ProfileSetupPage() {
   const router = useRouter();
   const { ready, authenticated } = usePrivy();
-  const { address } = useAccount();
-  const { data: profile, isFetched } = useMyProfile(address);
+  const { data: profile, isFetched, isError, isLoading } = useMyProfile();
 
   useEffect(() => {
-    if (!ready || !authenticated || !address || !isFetched) return;
+    if (!ready || !authenticated || isLoading || !isFetched || isError) return;
     if (!needsProfileSetup(profile)) {
       router.replace("/home");
     }
-  }, [ready, authenticated, address, isFetched, profile, router]);
+  }, [ready, authenticated, isLoading, isFetched, isError, profile, router]);
 
   if (!ready) {
     return <LoadingScreen fullscreen />;
   }
 
-  if (!authenticated || !address) {
+  if (!authenticated) {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background px-5">
         <div className="w-full max-w-sm space-y-4 text-center">
@@ -44,7 +42,7 @@ export default function ProfileSetupPage() {
     );
   }
 
-  if (!isFetched || !needsProfileSetup(profile)) {
+  if (isLoading || !isFetched || isError || !needsProfileSetup(profile)) {
     return <LoadingScreen fullscreen />;
   }
 

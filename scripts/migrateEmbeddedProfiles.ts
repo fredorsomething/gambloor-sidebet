@@ -124,9 +124,17 @@ async function main() {
     );
 
     let hasStaleProfile = false;
-    for (const addr of staleLinked) {
+    for (const addr of linked) {
       const row = await prisma.user.findUnique({ where: { address: addr } });
-      if (row?.username || row?.privyId) {
+      if (!row) continue;
+      const onEmbedded = addr.toLowerCase() === embedded.toLowerCase();
+      if (
+        !onEmbedded &&
+        (row.username?.trim() ||
+          row.privyId ||
+          row.avatarUrl ||
+          row.bio?.trim())
+      ) {
         hasStaleProfile = true;
         break;
       }

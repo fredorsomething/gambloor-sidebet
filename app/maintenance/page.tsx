@@ -7,39 +7,31 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { MaintenancePacingBirds } from "@/components/maintenance/MaintenancePacingBirds";
 import { Button } from "@/components/ui/button";
 
-const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
-const COUNTDOWN_KEY = "sb_maint_eta";
+const PROGRESS_KEY = "sb_maint_progress";
 
-function formatCountdown(ms: number) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function useMaintenanceCountdown() {
-  const [remaining, setRemaining] = useState<number | null>(null);
+function useMaintenanceProgress() {
+  const [progress, setProgress] = useState<number | null>(null);
 
   useEffect(() => {
-    let targetMs = Number(sessionStorage.getItem(COUNTDOWN_KEY));
-    if (!Number.isFinite(targetMs) || targetMs <= Date.now()) {
-      targetMs = Date.now() + TWELVE_HOURS_MS;
-      sessionStorage.setItem(COUNTDOWN_KEY, String(targetMs));
+    const stored = sessionStorage.getItem(PROGRESS_KEY);
+    if (stored) {
+      const n = Number(stored);
+      if (Number.isFinite(n)) {
+        setProgress(n);
+        return;
+      }
     }
-
-    const tick = () => setRemaining(Math.max(0, targetMs - Date.now()));
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
+    const value = 0.58 + Math.random() * 0.1;
+    sessionStorage.setItem(PROGRESS_KEY, String(value));
+    setProgress(value);
   }, []);
 
-  return remaining;
+  return progress;
 }
 
 export default function MaintenancePage() {
   const router = useRouter();
-  const countdown = useMaintenanceCountdown();
+  const progress = useMaintenanceProgress();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -69,6 +61,8 @@ export default function MaintenancePage() {
     }
   }
 
+  const pct = progress === null ? 62 : Math.round(progress * 100);
+
   return (
     <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-background px-6">
       <div className="flex w-full max-w-sm flex-col items-center text-center">
@@ -82,9 +76,14 @@ export default function MaintenancePage() {
           <MaintenancePacingBirds />
         </div>
 
-        <p className="mt-6 font-mono text-2xl tabular-nums text-muted-foreground sm:text-3xl">
-          {countdown === null ? "—:——:——" : formatCountdown(countdown)}
-        </p>
+        <div className="mt-8 w-full">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted/60">
+            <div
+              className="h-full rounded-full bg-warning transition-[width] duration-700 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
 
         <form onSubmit={onSubmit} className="mt-8 w-full space-y-3">
           <input
