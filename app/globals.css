@@ -962,6 +962,10 @@
     --intro-cycle: 9s;
   }
 
+  .maintenance-bird-scene {
+    --intro-cycle: 11s;
+  }
+
   .onboarding-intro-bird-l-move {
     animation: onboarding-intro-bird-left-move var(--intro-cycle) linear infinite;
   }
