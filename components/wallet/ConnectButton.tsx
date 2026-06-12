@@ -10,12 +10,13 @@ import { Avatar } from "@/components/profile/Identity";
 import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { isAdminAddress } from "@/lib/admin";
+import { externalLinkedEthereumAddress } from "@/lib/privyWallets";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { useClickOutside } from "@/lib/useClickOutside";
 import { shortAddr } from "@/lib/utils";
 
 export function ConnectButton() {
-  const { ready, authenticated, login, logout } = usePrivy();
+  const { ready, authenticated, login, logout, linkWallet, user } = usePrivy();
   const { address } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
@@ -45,6 +46,16 @@ export function ConnectButton() {
 
   const onPolygon = chainId === polygon.id;
   const label = profile?.username || shortAddr(address);
+  const legacyWallet = externalLinkedEthereumAddress(user);
+
+  const onLegacyWeb3SignIn = () => {
+    linkWallet({
+      walletChainType: "ethereum-only",
+      description:
+        "Connect MetaMask or another external wallet to link your legacy Sidebet account.",
+    });
+    setMenuOpen(false);
+  };
 
   const menuContent = (
     <>
@@ -99,6 +110,17 @@ export function ConnectButton() {
         >
           Copy address
         </button>
+        <button
+          onClick={onLegacyWeb3SignIn}
+          className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-muted"
+        >
+          Legacy web3 wallet sign in
+        </button>
+        {legacyWallet && (
+          <p className="px-3 pb-1 text-[11px] text-muted-foreground">
+            Linked legacy wallet: {shortAddr(legacyWallet)}
+          </p>
+        )}
         {!onPolygon && (
           <>
             <div className="my-1 border-t border-border" />

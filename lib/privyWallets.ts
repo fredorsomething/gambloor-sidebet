@@ -51,6 +51,27 @@ export function embeddedLinkedEthereumAddress(
   return null;
 }
 
+/** Linked external (MetaMask, etc.) wallet address, if the user has one. */
+export function externalLinkedEthereumAddress(
+  user: User | null | undefined,
+): Address | null {
+  if (!user) return null;
+  for (const account of user.linkedAccounts) {
+    if (
+      account.type === "wallet" &&
+      account.chainType === "ethereum" &&
+      typeof account.address === "string" &&
+      !isPrivyEmbeddedWallet({
+        walletClientType: account.walletClientType,
+        connectorType: account.connectorType ?? "embedded",
+      })
+    ) {
+      return getAddress(account.address);
+    }
+  }
+  return null;
+}
+
 /**
  * Wallet whose balances/history the UI should show — embedded Sidebet wallet
  * when present, otherwise the active wagmi address.
