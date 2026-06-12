@@ -88,9 +88,8 @@ const SLIDES: Slide[] = [
     label: "Your wallet",
     title: "Everything is on-chain.",
     lines: [
-      "Sidebets lock USDC.e in escrow on Polygon — settlements and payouts happen on-chain, not in a database.",
-      "Sign up with email or SMS and you get a non-custodial embedded wallet only you can access. Sidebet sponsors platform fees and gas.",
-      "Prefer your own web3 wallet? Connect MetaMask or similar — you stay in control and pay your own gas on Polygon.",
+      "Stakes lock in USDC.e escrow on Polygon — settlements and payouts happen on-chain.",
+      "Email sign-up gets an embedded wallet with sponsored gas. Or connect your own web3 wallet.",
     ],
   },
   {
@@ -219,7 +218,14 @@ export function LandingScreen({
               key={slide.id}
               className="onboarding-step onboarding-card relative flex h-[28rem] flex-col overflow-hidden rounded-2xl border border-border bg-card p-6 shadow-sm sm:h-[30rem] sm:p-8"
             >
-              <div className="onboarding-visual-slot relative h-48 w-full shrink-0 sm:h-52">
+              <div
+                className={cn(
+                  "onboarding-visual-slot relative w-full shrink-0",
+                  slide.id === "onchain"
+                    ? "h-36 sm:h-40"
+                    : "h-48 sm:h-52",
+                )}
+              >
                 {slide.id === "intro" && <BirdIntroCollect />}
                 {slide.id === "create" && <BirdThinking />}
                 {slide.id === "settle" && <BirdsAgree />}
@@ -228,7 +234,7 @@ export function LandingScreen({
                 {slide.id === "onchain" && <BirdsOnchain />}
               </div>
 
-              <div className="mt-4 flex min-h-0 flex-1 flex-col">
+              <div className="mt-5 flex min-h-0 flex-1 flex-col pb-1">
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   {slide.label}
                 </p>
@@ -246,9 +252,9 @@ export function LandingScreen({
                 {slide.lines && slide.lines.length > 0 && (
                   <div
                     className={cn(
-                      slide.id === "settler" || slide.id === "onchain"
-                      ? "mt-3 space-y-2"
-                      : "mt-4 space-y-2.5",
+                      slide.id === "settler"
+                        ? "mt-3 space-y-2"
+                        : "mt-4 space-y-2.5",
                     )}
                   >
                     {slide.lines.map((line) => (
@@ -256,7 +262,7 @@ export function LandingScreen({
                         key={line}
                         className={cn(
                           "text-muted-foreground",
-                          slide.id === "settler" || slide.id === "onchain"
+                          slide.id === "settler"
                             ? "text-xs leading-snug sm:text-[13px]"
                             : "text-sm leading-relaxed sm:text-base",
                         )}

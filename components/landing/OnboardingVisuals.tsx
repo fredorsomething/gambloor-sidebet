@@ -1,5 +1,6 @@
 "use client";
 
+import { Lock } from "lucide-react";
 import Image from "next/image";
 import {
   useEffect,
@@ -486,72 +487,38 @@ function wait(ms: number) {
 
 export function BirdsOnchain() {
   return (
-    <div className="relative mx-auto h-full w-full max-w-xs">
-      <div className="absolute left-1/2 top-[18%] flex -translate-x-1/2 flex-col items-center gap-2">
-        <div className="onboarding-usdc-pop flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm">
-          <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
-            <TokenIcon symbol="USDC.e" size={16} />
-            escrow
+    <div className="flex h-full w-full items-center justify-center px-2">
+      <div className="onboarding-usdc-pop flex items-center gap-5 sm:gap-7">
+        <div className="flex flex-col items-center gap-2.5">
+          <div className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl border border-success/35 bg-success/10 shadow-sm">
+            <Lock
+              className="h-7 w-7 text-success"
+              strokeWidth={1.75}
+              aria-hidden
+            />
+            <span className="absolute -bottom-1.5 -right-1.5 rounded-full border border-border bg-card p-0.5 shadow-sm">
+              <TokenIcon symbol="USDC.e" size={22} />
+            </span>
+          </div>
+          <span className="text-[11px] font-medium text-muted-foreground">
+            USDC.e escrow
           </span>
-          <span className="text-muted-foreground/40" aria-hidden>
-            ·
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            <TokenIcon symbol="POL" size={16} />
+        </div>
+
+        <div
+          className="h-px w-8 shrink-0 bg-border sm:w-10"
+          aria-hidden
+        />
+
+        <div className="flex flex-col items-center gap-2.5">
+          <div className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl border border-primary/35 bg-primary/10 shadow-sm">
+            <TokenIcon symbol="POL" size={34} />
+          </div>
+          <span className="text-[11px] font-medium text-muted-foreground">
             Polygon
           </span>
         </div>
-        <p className="max-w-[11rem] text-center text-[10px] font-medium leading-snug text-muted-foreground sm:text-[11px]">
-          Stakes lock on-chain until settlement pays out.
-        </p>
       </div>
-
-      <div className="absolute bottom-0 left-1 flex flex-col items-center">
-        <Image
-          src="/sidebet_bird.png"
-          alt=""
-          width={52}
-          height={52}
-          className="onboarding-bird-nod h-11 w-11 sm:h-12 sm:w-12"
-        />
-      </div>
-
-      <div className="absolute bottom-0 right-1 flex flex-col items-center">
-        <div className="scale-x-[-1]">
-          <Image
-            src="/sidebet_bird.png"
-            alt=""
-            width={52}
-            height={52}
-            className="onboarding-bird-nod h-11 w-11 sm:h-12 sm:w-12"
-            style={{ animationDelay: "0.15s" }}
-          />
-        </div>
-      </div>
-
-      <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
-        <line
-          x1="22%"
-          y1="72%"
-          x2="50%"
-          y2="34%"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeDasharray="4 3"
-          className="text-success/30 onboarding-payout-line"
-        />
-        <line
-          x1="78%"
-          y1="72%"
-          x2="50%"
-          y2="34%"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeDasharray="4 3"
-          className="text-success/30 onboarding-payout-line"
-          style={{ animationDelay: "0.12s" }}
-        />
-      </svg>
     </div>
   );
 }

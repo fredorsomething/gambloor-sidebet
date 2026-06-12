@@ -136,7 +136,7 @@ export default function ReferralsPage() {
         <p className="text-sm text-muted-foreground">
           Create up to {data?.maxCampaigns ?? 3} campaigns with unique links like{" "}
           <span className="font-mono text-foreground">sidebet.lol/?r=yourname</span>.
-          Earn {data?.sharePercent ?? 35}% of all platform fees from users you refer.
+          Earn {data?.sharePercent ?? 35}% of all earnings from users you refer.
         </p>
       </div>
 
