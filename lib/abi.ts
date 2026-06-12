@@ -410,3 +410,148 @@ export const SIDEBET_ESCROW_V2_ABI = [
     anonymous: false,
   },
 ] as const;
+
+// ----------------------- SidebetEscrowV3 -----------------------
+
+// V3 escrow — a strict superset of V2 (same bet struct/functions/events) plus
+// reserved bets, mutual settlement, on-chain creation fees, pausing and the
+// market registry. Keep in sync with contracts/SidebetEscrowV3.sol.
+export const SIDEBET_ESCROW_V3_ABI = [
+  ...SIDEBET_ESCROW_V2_ABI,
+  {
+    type: "function",
+    name: "paused",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "betCreationFee",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "marketCreationFee",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "createBetFor",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "settler", type: "address" },
+      { name: "token", type: "address" },
+      { name: "proposerStake", type: "uint256" },
+      { name: "acceptorStake", type: "uint256" },
+      { name: "proposerOutcome", type: "uint8" },
+      { name: "acceptorOutcome", type: "uint8" },
+      { name: "numOutcomes", type: "uint8" },
+      { name: "acceptDeadline", type: "uint64" },
+      { name: "estimatedEndDate", type: "uint64" },
+      { name: "termsHash", type: "bytes32" },
+      { name: "intendedAcceptor", type: "address" },
+    ],
+    outputs: [{ name: "id", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "confirmOutcome",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "id", type: "uint256" },
+      { name: "outcome", type: "uint8" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "registerMarket",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "conditionId", type: "bytes32" },
+      { name: "settler", type: "address" },
+      { name: "numOutcomes", type: "uint8" },
+      { name: "termsHash", type: "bytes32" },
+      { name: "feeToken", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "recordMarketOutcome",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "conditionId", type: "bytes32" },
+      { name: "winningOutcome", type: "uint8" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "getMarket",
+    stateMutability: "view",
+    inputs: [{ name: "conditionId", type: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "creator", type: "address" },
+          { name: "settler", type: "address" },
+          { name: "numOutcomes", type: "uint8" },
+          { name: "resolved", type: "bool" },
+          { name: "winningOutcome", type: "uint8" },
+          { name: "createdAt", type: "uint64" },
+          { name: "termsHash", type: "bytes32" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "event",
+    name: "MarketRegistered",
+    inputs: [
+      { indexed: true, name: "conditionId", type: "bytes32" },
+      { indexed: true, name: "creator", type: "address" },
+      { indexed: true, name: "settler", type: "address" },
+      { indexed: false, name: "numOutcomes", type: "uint8" },
+      { indexed: false, name: "feeToken", type: "address" },
+      { indexed: false, name: "feePaid", type: "uint256" },
+      { indexed: false, name: "termsHash", type: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "MarketOutcomeRecorded",
+    inputs: [
+      { indexed: true, name: "conditionId", type: "bytes32" },
+      { indexed: false, name: "winningOutcome", type: "uint8" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "BetReserved",
+    inputs: [
+      { indexed: true, name: "id", type: "uint256" },
+      { indexed: true, name: "intendedAcceptor", type: "address" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "OutcomeConfirmed",
+    inputs: [
+      { indexed: true, name: "id", type: "uint256" },
+      { indexed: true, name: "party", type: "address" },
+      { indexed: false, name: "outcome", type: "uint8" },
+    ],
+    anonymous: false,
+  },
+] as const;

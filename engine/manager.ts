@@ -110,6 +110,12 @@ export class ExchangeEngine {
     return st.book.allOrders().filter((o) => o.maker === lower && o.remaining > 0n);
   }
 
+  /** Every resting order with its maker — powers the public "who's bidding" view. */
+  async bookOrders(marketId: number): Promise<RestingOrder[]> {
+    const st = await this.ensureMarket(marketId);
+    return st.book.allOrders().filter((o) => o.remaining > 0n);
+  }
+
   private statsFor(st: MarketState, lastFillOutcome?: number, lastPrice?: bigint): StatUpdate[] {
     const out: StatUpdate[] = [];
     for (let i = 0; i < st.numOutcomes; i++) {

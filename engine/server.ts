@@ -37,6 +37,21 @@ export function startServer(engine: ExchangeEngine) {
       }));
     },
 
+    // Every resting order with its maker, for the public order-flow view
+    // (who is bidding/asking at what price).
+    bookOrders: async (p) => {
+      const orders = await engine.bookOrders(Number(p.marketId));
+      return orders.map((o) => ({
+        id: o.id,
+        maker: o.maker,
+        side: o.side,
+        outcomeIndex: o.outcomeIndex,
+        price: o.price.toString(),
+        remaining: o.remaining.toString(),
+        createdAt: o.createdAt,
+      }));
+    },
+
     placeOrder: async (p) =>
       engine.placeOrder({
         marketId: Number(p.marketId),

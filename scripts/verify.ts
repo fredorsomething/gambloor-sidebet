@@ -204,6 +204,16 @@ async function verifyWithSnapshot(args: {
   }
 }
 
+async function verifyV3(address: `0x${string}`) {
+  console.log(
+    `SidebetEscrowV3 constructor args:`,
+    [resolveV2PlatformFeeRecipient()],
+  );
+  await verifyContract("SidebetEscrowV3", address, [
+    resolveV2PlatformFeeRecipient(),
+  ]);
+}
+
 async function verifyV2(address: `0x${string}`) {
   await verifyWithSnapshot({
     label: "SidebetEscrowV2",
@@ -244,16 +254,24 @@ async function main() {
     );
   }
 
+  const v3Address = process.env.NEXT_PUBLIC_ESCROW_V3_ADDRESS_POLYGON?.trim();
   const v2Address = process.env.NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON?.trim();
   const v1Address = process.env.NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON?.trim();
 
-  if (!v2Address && !v1Address) {
+  if (!v3Address && !v2Address && !v1Address) {
     throw new Error(
-      "Set NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON and/or NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON",
+      "Set NEXT_PUBLIC_ESCROW_V3_ADDRESS_POLYGON, NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON and/or NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON",
     );
   }
 
   console.log(`Verifying contracts on ${network}...`);
+
+  if (v3Address && process.env.VERIFY_SKIP_V3 !== "1") {
+    if (!isAddress(v3Address)) {
+      throw new Error(`Invalid NEXT_PUBLIC_ESCROW_V3_ADDRESS_POLYGON: ${v3Address}`);
+    }
+    await verifyV3(getAddress(v3Address));
+  }
 
   if (v2Address && process.env.VERIFY_SKIP_V2 !== "1") {
     if (!isAddress(v2Address)) {

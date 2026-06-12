@@ -13,6 +13,7 @@ import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { Comments } from "@/components/Comments";
 import { FlexCardDownload } from "@/components/FlexCardDownload";
+import { MarketHolders } from "@/components/markets/MarketHolders";
 import { MarketPortfolio } from "@/components/markets/MarketPortfolio";
 import { ProposeResolutionButton } from "@/components/ProposeResolutionButton";
 import { Resolvers } from "@/components/Resolvers";
@@ -465,6 +466,12 @@ export function MarketDetail({ id }: { id: number }) {
           {live.trades.length > 0 && (
             <TradeTape trades={live.trades} outcomes={outcomes} />
           )}
+
+          <MarketHolders
+            marketId={market.id}
+            outcomes={outcomes}
+            resolved={resolved}
+          />
 
           {account && (
             <MarketPortfolio marketId={market.id} account={account} onChanged={() => query.refetch()} />

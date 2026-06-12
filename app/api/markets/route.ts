@@ -8,6 +8,7 @@ import {
   getTokenByAddress,
 } from "@/lib/chains";
 import { prisma } from "@/lib/db";
+import { verifyMarketRegistration } from "@/lib/marketRegistration";
 import { getPlatformSettings } from "@/lib/platformSettings";
 import { isAllowedImageUrl } from "@/lib/profile";
 import { jsonErr, jsonOk } from "@/lib/serialize";
@@ -56,6 +57,9 @@ const CreateMarketSchema = z.object({
   positionIds: z.array(z.string().regex(DECIMAL)).min(2).max(16),
 
   estimatedEndDate: z.number().int().min(0).optional(),
+
+  /** Tx that registered the market on SidebetEscrowV3 (paid the $1 fee). */
+  registrationTxHash: z.string().regex(HEX64).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -115,6 +119,17 @@ export async function POST(req: NextRequest) {
     return jsonErr("markets must use USDC.e collateral only", 400);
   }
 
+  // The creator must have registered the market on the V3 escrow (which pulls
+  // the flat $1 USDC.e creation fee) before it can be indexed.
+  const registration = await verifyMarketRegistration({
+    conditionId: d.conditionId,
+    creator: d.creator,
+    settler: d.settler,
+    numOutcomes: d.outcomes.length,
+    termsHash: d.termsHash,
+  });
+  if (!registration.ok) return jsonErr(registration.reason, 400);
+
   try {
     const market = await prisma.market.upsert({
       where: {
@@ -131,7 +146,7 @@ export async function POST(req: NextRequest) {
         ctfAddress: OFFCHAIN_SENTINEL,
         conditionId: d.conditionId.toLowerCase(),
         questionId: d.questionId.toLowerCase(),
-        txHash: null,
+        txHash: d.registrationTxHash ?? null,
 
         creator: getAddress(d.creator),
         settler: getAddress(d.settler),

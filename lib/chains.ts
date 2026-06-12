@@ -68,12 +68,20 @@ export function getEscrowAddress(_chainId?: number): Address | undefined {
   return ESCROW_ADDRESS;
 }
 
-/** SidebetEscrowV2 — the current escrow used for new bets. */
+/** SidebetEscrowV2 — legacy escrow; existing V2 bets keep settling against it. */
 export const ESCROW_V2_ADDRESS = (process.env
   .NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON || undefined) as Address | undefined;
 
 export function getEscrowV2Address(_chainId?: number): Address | undefined {
   return ESCROW_V2_ADDRESS;
+}
+
+/** SidebetEscrowV3 — current escrow for all new sidebets and market registration. */
+export const ESCROW_V3_ADDRESS = (process.env
+  .NEXT_PUBLIC_ESCROW_V3_ADDRESS_POLYGON || undefined) as Address | undefined;
+
+export function getEscrowV3Address(_chainId?: number): Address | undefined {
+  return ESCROW_V3_ADDRESS;
 }
 
 /** Platform default settler (@admin) on the create-bet form. */

@@ -11,22 +11,38 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { useAccount, useChainId } from "wagmi";
+import { useAccount, useChainId, usePublicClient } from "wagmi";
 
 import { BetImageField } from "@/components/bets/BetImageField";
 import { SettlerSelect } from "@/components/SettlerSelect";
+import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
-import { getMarketCollateralToken, POLYGON_CHAIN_ID } from "@/lib/chains";
+import { ERC20_ABI, SIDEBET_ESCROW_V3_ABI } from "@/lib/abi";
+import { cryptoErrorSummary, formatCryptoError } from "@/lib/cryptoErrors";
+import {
+  getEscrowV3Address,
+  getMarketCollateralToken,
+  POLYGON_CHAIN_ID,
+} from "@/lib/chains";
 import {
   computeConditionId,
   computePositionId,
   computeQuestionId,
 } from "@/lib/clob";
 import { jsonFetch } from "@/lib/fetcher";
+import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { usePlatformSettings } from "@/lib/hooks/usePlatformSettings";
+import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
+import { useTxSender } from "@/lib/hooks/useTxSender";
+import {
+  MARKET_CREATION_FEE_RAW,
+  MARKET_CREATION_FEE_USD,
+} from "@/lib/marketRegistration";
+import { formatToken } from "@/lib/utils";
 
-type Step = "idle" | "submitting" | "done";
+type Step = "idle" | "approving" | "registering" | "indexing" | "done";
+type BinaryStyle = "yes-no" | "up-down";
 
 function buildMarketTermsHash(args: {
   title: string;
@@ -56,10 +72,14 @@ export function CreateMarketForm() {
   const { address: account } = useAccount();
   const { getAccessToken } = usePrivy();
   const chainId = useChainId() || POLYGON_CHAIN_ID;
+  const publicClient = usePublicClient();
+  const ensurePolygon = useEnsurePolygon();
+  const { writeContract } = useTxSender();
   const platformQ = usePlatformSettings();
   const allowMarketCreation = platformQ.data?.allowMarketCreation ?? false;
   const platformFeeBps = platformQ.data?.sidebetFeeBps ?? 0;
 
+  const escrowV3 = getEscrowV3Address();
   const marketToken = getMarketCollateralToken();
   const tokenAddress = marketToken.address;
   const tokenMeta = marketToken;
@@ -69,19 +89,32 @@ export function CreateMarketForm() {
   const [terms, setTerms] = useState("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
-  const [customOutcomes, setCustomOutcomes] = useState<string[]>(["Yes", "No"]);
+  const [binaryStyle, setBinaryStyle] = useState<BinaryStyle>("yes-no");
   const [settler, setSettler] = useState("");
   const [settlerFeeBps, setSettlerFeeBps] = useState(200);
   const [endDate, setEndDate] = useState("");
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
-  const isBusy = step === "submitting";
+  const isBusy = step !== "idle" && step !== "done";
 
   const outcomes = useMemo(
-    () => customOutcomes.map((o) => o.trim()),
-    [customOutcomes],
+    () => (binaryStyle === "up-down" ? ["Up", "Down"] : ["Yes", "No"]),
+    [binaryStyle],
   );
+
+  const termsPlaceholder =
+    binaryStyle === "up-down"
+      ? `If BTC closes above $100k on Dec 31, "Up" wins. Otherwise "Down" wins.`
+      : `If the Knicks play in the 2026 ECF, "Yes" wins. Otherwise "No" wins.`;
+
+  const live = useTokenInfo({
+    token: tokenAddress as Address,
+    owner: account,
+    spender: escrowV3,
+  });
+  const needsApproval = (live.allowance ?? 0n) < MARKET_CREATION_FEE_RAW;
+  const walletSignatures = 1 + (needsApproval ? 1 : 0);
 
   const onPickCover = useCallback(
     (file: File, url: string) => {
@@ -102,27 +135,22 @@ export function CreateMarketForm() {
     };
   }, [coverPreview]);
 
-  function addOutcome() {
-    setCustomOutcomes((p) => (p.length >= 16 ? p : [...p, ""]));
-  }
-  function removeOutcome(idx: number) {
-    setCustomOutcomes((p) => (p.length <= 2 ? p : p.filter((_, i) => i !== idx)));
-  }
-
   function validate(): string | null {
     if (!account) return "Connect a wallet first";
+    if (!escrowV3) return "Escrow not configured for this chain";
     if (!tokenAddress || !isAddress(tokenAddress)) return "Collateral misconfigured";
     if (title.trim().length < 3) return "Title needs at least 3 characters";
     if (description.trim().length < 1) return "Add a short description";
     if (terms.trim().length < 1)
       return "Please be as specific as possible with your resolution terms";
-    if (outcomes.length < 2) return "Add at least two outcomes";
-    if (outcomes.some((o) => o.length < 1)) return "Every outcome needs a label";
-    if (new Set(outcomes.map((o) => o.toLowerCase())).size !== outcomes.length)
-      return "Outcomes must be unique";
     if (!settler || !isAddress(settler)) return "Pick an approved settler";
     if (getAddress(settler) === getAddress(account))
       return "You can't be your own settler";
+    if (live.balance !== undefined && live.balance < MARKET_CREATION_FEE_RAW)
+      return `Insufficient ${tokenMeta.symbol} balance — the $${MARKET_CREATION_FEE_USD.toFixed(2)} creation fee is required (${formatToken(
+        live.balance,
+        tokenMeta.decimals,
+      )} available)`;
     return null;
   }
 
@@ -138,22 +166,26 @@ export function CreateMarketForm() {
       setError(v);
       return;
     }
-    if (!account || !tokenAddress) return;
+    if (!account || !tokenAddress || !escrowV3 || !publicClient) return;
 
     const nonce = crypto.randomUUID();
+    const trimmedOutcomes = outcomes.map((o) => o.trim());
     const termsHash = buildMarketTermsHash({
       title,
       description,
       terms,
       creator: account,
       nonce,
-      outcomes,
+      outcomes: trimmedOutcomes,
     });
     const questionId = computeQuestionId(termsHash, nonce);
-    const numOutcomes = outcomes.length;
     const settlerAddr = getAddress(settler);
-    const conditionId = computeConditionId(settlerAddr, questionId, numOutcomes);
-    const positionIds = outcomes.map((_, i) =>
+    const conditionId = computeConditionId(
+      settlerAddr,
+      questionId,
+      trimmedOutcomes.length,
+    );
+    const positionIds = trimmedOutcomes.map((_, i) =>
       computePositionId(tokenAddress as Address, conditionId, i).toString(),
     );
     const estimatedEndDate = endDate
@@ -161,7 +193,51 @@ export function CreateMarketForm() {
       : 0;
 
     try {
-      setStep("submitting");
+      await ensurePolygon();
+
+      // 1. Approve the $1 USDC.e creation fee if needed.
+      if (needsApproval) {
+        setStep("approving");
+        push({
+          title: "Approving creation fee",
+          description: `Approve $${MARKET_CREATION_FEE_USD.toFixed(2)} USDC.e for the market registry.`,
+        });
+        const approveHash = await writeContract({
+          address: tokenAddress as Address,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [escrowV3, MARKET_CREATION_FEE_RAW],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      }
+
+      // 2. Register the market on-chain (pulls the $1 fee).
+      setStep("registering");
+      push({
+        title: "Registering market",
+        description: `$${MARKET_CREATION_FEE_USD.toFixed(2)} USDC.e creation fee — anchors your market on-chain.`,
+      });
+      const registerHash = await writeContract({
+        address: escrowV3,
+        abi: SIDEBET_ESCROW_V3_ABI,
+        functionName: "registerMarket",
+        args: [
+          conditionId as Hex,
+          settlerAddr,
+          trimmedOutcomes.length,
+          termsHash,
+          tokenAddress as Address,
+        ],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: registerHash,
+      });
+      if (receipt.status !== "success") {
+        throw new Error("Market registration transaction failed");
+      }
+
+      // 3. Upload the cover + index the market (Pending until admin approval).
+      setStep("indexing");
 
       let imageUrl: string | null = null;
       if (coverFile) {
@@ -207,17 +283,18 @@ export function CreateMarketForm() {
           creator: account,
           settler: settlerAddr,
           token: tokenAddress,
-          tokenSymbol: tokenMeta?.symbol,
-          decimals: tokenMeta?.decimals ?? 6,
+          tokenSymbol: tokenMeta.symbol,
+          decimals: tokenMeta.decimals ?? 6,
           title,
           description,
           imageUrl,
           terms,
           termsHash,
           nonce,
-          outcomes,
+          outcomes: trimmedOutcomes,
           positionIds,
           estimatedEndDate: estimatedEndDate || 0,
+          registrationTxHash: registerHash,
         }),
       });
       setStep("done");
@@ -228,9 +305,13 @@ export function CreateMarketForm() {
       });
       router.push(`/markets/${indexed.id}`);
     } catch (err: unknown) {
-      const msg = (err as Error)?.message || "Couldn't create market";
+      const msg = cryptoErrorSummary(err, "Couldn't create market");
       setError(msg);
-      push({ title: "Couldn't create market", description: msg, variant: "danger" });
+      const { title: errTitle, description: errDescription } = formatCryptoError(
+        err,
+        { fallbackTitle: "Couldn't create market" },
+      );
+      push({ title: errTitle, description: errDescription, variant: "danger" });
       setStep("idle");
     }
   }
@@ -246,7 +327,9 @@ export function CreateMarketForm() {
 
   return (
     <form onSubmit={onSubmit} className="card p-6 space-y-5">
-      <Field label="Title">
+      <LowGasBanner />
+
+      <Field label="Title" hint="Short headline shown in market listings.">
         <input
           className="input"
           value={title}
@@ -275,51 +358,55 @@ export function CreateMarketForm() {
         />
       </Field>
 
-      <Field label="Terms" hint="Resolution criteria the settler will use.">
+      <Field
+        label="Rules"
+        hint="Resolution criteria — be as specific as possible about what makes each outcome win."
+      >
         <textarea
           className="textarea min-h-[120px]"
           value={terms}
-          onChange={(e) => setTerms(e.target.value)}
+          onChange={(e) => {
+            setTerms(e.target.value);
+            if (error) setError(null);
+          }}
+          placeholder={termsPlaceholder}
           maxLength={10_000}
         />
       </Field>
 
-      <div className="space-y-2">
-        <span className="label">Outcomes</span>
-        {customOutcomes.map((o, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <input
-              className="input flex-1"
-              value={o}
-              onChange={(e) =>
-                setCustomOutcomes((prev) =>
-                  prev.map((x, j) => (j === i ? e.target.value : x)),
-                )
-              }
-              placeholder={`Outcome ${i + 1}`}
-              maxLength={80}
-            />
-            {customOutcomes.length > 2 && (
-              <button
-                type="button"
-                onClick={() => removeOutcome(i)}
-                className="text-muted-foreground hover:text-[hsl(var(--danger))]"
-                aria-label="Remove outcome"
-              >
-                ✕
-              </button>
-            )}
+      {/* Outcomes — binary markets only, like sidebets. */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="label">Outcomes</span>
+          <div className="flex gap-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setBinaryStyle("yes-no")}
+              className={`rounded-md px-2 py-1 ${binaryStyle === "yes-no" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
+            >
+              Yes / No
+            </button>
+            <button
+              type="button"
+              onClick={() => setBinaryStyle("up-down")}
+              className={`rounded-md px-2 py-1 ${binaryStyle === "up-down" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
+            >
+              Up / Down
+            </button>
           </div>
-        ))}
-        {customOutcomes.length < 16 && (
-          <button
-            type="button"
-            onClick={addOutcome}
-            className="text-sm text-[hsl(var(--primary))] hover:underline"
-          >
-            + Add outcome
-          </button>
-        )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border-2 border-success/40 bg-success/10 p-3 text-center font-bold text-success">
+            {outcomes[0]}
+          </div>
+          <div className="rounded-lg border-2 border-danger/40 bg-danger/10 p-3 text-center font-bold text-danger">
+            {outcomes[1]}
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Anyone can trade either side on the live orderbook once the market is
+          approved.
+        </p>
       </div>
 
       <Field label="Collateral" hint="All markets settle in USDC.e.">
@@ -349,12 +436,18 @@ export function CreateMarketForm() {
         />
       </Field>
 
-      <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
-        <div>Settler fee: <b>{(settlerFeeBps / 100).toFixed(2)}%</b></div>
-        <div>
-          No transaction or gas needed — markets trade against your custodial
-          balance. An admin reviews each market before it goes live.
-        </div>
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">
+          ${MARKET_CREATION_FEE_USD.toFixed(2)} creation fee
+        </span>
+        {" · "}
+        <span className="font-medium text-foreground">
+          {(settlerFeeBps / 100).toFixed(2)}% settler fee
+        </span>
+        {" · "}
+        {walletSignatures} wallet signature{walletSignatures > 1 ? "s" : ""}
+        {" · "}
+        an admin reviews each market before it goes live
       </div>
 
       {error && (
@@ -365,7 +458,9 @@ export function CreateMarketForm() {
 
       <div className="flex items-center justify-end">
         <Button type="submit" size="lg" disabled={isBusy || !allowMarketCreation}>
-          {step === "submitting" && "Submitting…"}
+          {step === "approving" && "Approving fee…"}
+          {step === "registering" && "Registering…"}
+          {step === "indexing" && "Indexing…"}
           {step === "done" && "Done"}
           {step === "idle" && "Create market"}
         </Button>

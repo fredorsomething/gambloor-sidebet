@@ -23,6 +23,7 @@
     "hh:compile": "hardhat compile",
     "hh:test": "hardhat test",
     "hh:deploy": "hardhat run scripts/deploy.ts --network polygon",
+    "hh:deploy-v3": "hardhat run scripts/deployV3.ts --network polygon",
     "hh:verify": "hardhat run scripts/verify.ts --network polygon",
     "settlers:sync": "hardhat run scripts/syncSettlers.ts --network polygon",
     "auto-settle": "tsx scripts/autoSettleBets.ts",

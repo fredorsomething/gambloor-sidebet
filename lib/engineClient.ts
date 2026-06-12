@@ -90,6 +90,21 @@ export function engineOpenOrders(marketId: number, owner: string): Promise<Engin
   return rpc<EngineOpenOrder[]>("openOrders", { marketId, owner });
 }
 
+export type EngineBookOrder = {
+  id: string;
+  maker: string;
+  side: "BUY" | "SELL";
+  outcomeIndex: number;
+  price: string;
+  remaining: string;
+  createdAt: number;
+};
+
+/** Every resting order with its maker (public order-flow view). */
+export function engineBookOrders(marketId: number): Promise<EngineBookOrder[]> {
+  return rpc<EngineBookOrder[]>("bookOrders", { marketId });
+}
+
 export function engineSettleMarket(marketId: number, winningOutcome: number): Promise<{ ok: true }> {
   return rpc("settleMarket", { marketId, winningOutcome });
 }

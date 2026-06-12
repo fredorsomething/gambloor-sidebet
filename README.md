@@ -66,7 +66,8 @@ Key vars:
 | --- | --- |
 | `NEXT_PUBLIC_DEFAULT_CHAIN_ID` | `137` (Polygon mainnet) |
 | `NEXT_PUBLIC_ESCROW_ADDRESS_POLYGON` | Legacy `SidebetEscrow` (v1) on Polygon |
-| `NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON` | Current `SidebetEscrowV2` on Polygon |
+| `NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON` | Legacy `SidebetEscrowV2` on Polygon (existing bets) |
+| `NEXT_PUBLIC_ESCROW_V3_ADDRESS_POLYGON` | Current `SidebetEscrowV3` on Polygon (new bets + market registry) |
 | `NEXT_PUBLIC_DEFAULT_SETTLER` | Platform default settler (also V2 deploy/verify ctor arg) |
 | `NEXT_PUBLIC_PRIVY_APP_ID` | Privy app id (from the Privy dashboard) |
 | `PRIVY_APP_SECRET` | Privy app secret (server-only; verifies access tokens) |
@@ -86,10 +87,10 @@ Fund the deployer wallet with **POL** on Polygon mainnet for gas.
 
 ```bash
 npm run hh:compile
-npm run hh:deploy
+npm run hh:deploy-v3
 ```
 
-Copy the printed address into `NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON` in `.env` and Vercel.
+Copy the printed address into `NEXT_PUBLIC_ESCROW_V3_ADDRESS_POLYGON` in `.env` and Vercel. The deploy script seeds every approved settler from the database and sets the 1 USDC.e market creation fee. (`npm run hh:deploy` still deploys the legacy V2 contract if you ever need it.)
 
 ### 4b. Verify on Polygonscan (post-deploy)
 
@@ -138,9 +139,16 @@ Open <http://localhost:3000>.
 
 ## Smart contract
 
-- `contracts/SidebetEscrowV2.sol` — current 1v1 escrow (asymmetric stakes, multi-outcome).
+- `contracts/SidebetEscrowV3.sol` — current escrow for all new sidebets and the
+  on-chain market registry. A strict superset of V2 plus: reserved bets
+  (`createBetFor` enforces a negotiated counterparty on-chain), mutual
+  settlement (`confirmOutcome` settles when both parties agree, no settler
+  needed), owner-set per-token creation fees (markets pay a flat 1 USDC.e via
+  `registerMarket`), and pausability (creation only — settlement and refunds
+  can never be paused).
+- `contracts/SidebetEscrowV2.sol` — legacy 1v1 escrow (asymmetric stakes, multi-outcome); existing bets keep settling against it.
 - `contracts/SidebetEscrow.sol` — legacy v1 escrow (symmetric stakes).
-- Status machine (v2): `Open → Matched → Settled | Refunded`, or `Open → Cancelled`.
+- Status machine: `Open → Matched → Settled | Refunded`, or `Open → Cancelled`.
 - Re-entrancy guarded; explicitly rejects fee-on-transfer tokens (the
   pull/push helpers check that `balanceOf(this)` increased by exactly
   `amount`).
