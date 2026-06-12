@@ -105,7 +105,7 @@ export function HomePageLayout({ totalVolumeUsd, userCount, feed }: Props) {
             <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0 flex-1 md:pr-8">
                 <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-                  Proper sidebets on-chain.
+                  Markets + sidebets on-chain.
                 </h1>
                 <div className="mt-2 space-y-1 text-sm text-primary-foreground/90 md:text-base">
                   <p className="md:whitespace-nowrap">
@@ -127,7 +127,7 @@ export function HomePageLayout({ totalVolumeUsd, userCount, feed }: Props) {
               >
                 <span className="relative z-10 inline-flex items-center gap-2.5">
                   <Plus className="h-5 w-5 md:h-6 md:w-6" strokeWidth={2.5} />
-                  Create bet
+                  Create
                   <TokenIcon symbol="USDC.e" size={22} />
                 </span>
               </Link>
@@ -195,7 +195,7 @@ function MarketsSection({
             </span>
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Find a sidebet here or (
+            Find a position here or (
             <Link
               href="/create"
               className="text-foreground underline underline-offset-2 hover:text-primary"
