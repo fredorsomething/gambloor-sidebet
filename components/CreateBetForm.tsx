@@ -18,6 +18,7 @@ import {
 import { usePrivy } from "@privy-io/react-auth";
 
 import { BetImageField } from "@/components/bets/BetImageField";
+import { OddsStakeCalculator } from "@/components/bets/OddsStakeCalculator";
 import { SettlerSelect } from "@/components/SettlerSelect";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
@@ -631,35 +632,19 @@ export function CreateBetForm() {
           />
         </div>
 
-        <Field
-          label="Your stake"
-          hint={
+        <OddsStakeCalculator
+          tokenSymbol={tokenMeta?.symbol ?? "USDC.e"}
+          yourStakeStr={yourStakeStr}
+          theirStakeStr={theirStakeStr}
+          onYourStakeChange={setYourStakeStr}
+          onTheirStakeChange={setTheirStakeStr}
+          yourStakeHint={
             live.balance !== undefined && tokenMeta
               ? `Balance: ${formatToken(live.balance, effectiveDecimals)} ${tokenMeta.symbol}`
               : undefined
           }
-        >
-          <input
-            className="input font-mono"
-            inputMode="decimal"
-            value={yourStakeStr}
-            onChange={(e) => setYourStakeStr(e.target.value)}
-            placeholder="100"
-          />
-        </Field>
-
-        <Field
-          label="Their stake"
-          hint="Asymmetric stakes are allowed — set what the other side must put up."
-        >
-          <input
-            className="input font-mono"
-            inputMode="decimal"
-            value={theirStakeStr}
-            onChange={(e) => setTheirStakeStr(e.target.value)}
-            placeholder="100"
-          />
-        </Field>
+          disabled={isBusy}
+        />
 
         <Field label="Who settles it?">
           <SettlerSelect

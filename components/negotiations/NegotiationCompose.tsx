@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { OddsStakeCalculator } from "@/components/bets/OddsStakeCalculator";
 import { Button } from "@/components/ui/button";
 import { stakeAmountStr } from "@/components/negotiations/NegotiationCard";
 import { parseAmount } from "@/lib/utils";
@@ -57,29 +58,14 @@ export function NegotiationCompose({
 
   return (
     <div className="space-y-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="space-y-1.5 block">
-          <span className="label">Proposer stakes</span>
-          <input
-            className="input font-mono"
-            inputMode="decimal"
-            value={proposerStakeStr}
-            onChange={(e) => setProposerStakeStr(e.target.value)}
-          />
-        </label>
-        <label className="space-y-1.5 block">
-          <span className="label">Acceptor stakes</span>
-          <input
-            className="input font-mono"
-            inputMode="decimal"
-            value={acceptorStakeStr}
-            onChange={(e) => setAcceptorStakeStr(e.target.value)}
-          />
-        </label>
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        Stakes are in {tokenSym}. Adjust either side to revise the odds.
-      </p>
+      <OddsStakeCalculator
+        tokenSymbol={tokenSym}
+        yourStakeStr={proposerStakeStr}
+        theirStakeStr={acceptorStakeStr}
+        onYourStakeChange={setProposerStakeStr}
+        onTheirStakeChange={setAcceptorStakeStr}
+        disabled={pending}
+      />
       <label className="space-y-1.5 block">
         <span className="label">Revised terms (optional)</span>
         <textarea
