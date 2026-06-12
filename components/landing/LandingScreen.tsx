@@ -11,6 +11,7 @@ import {
   BirdThinking,
   BirdsAgree,
   BirdsChat,
+  BirdsOnchain,
   BirdsSettler,
   RiftPortal,
 } from "@/components/landing/OnboardingVisuals";
@@ -80,6 +81,16 @@ const SLIDES: Slide[] = [
       "Retarded global chat like 2016 Clash of Clans.",
       "Profiles, rep, and comments on every bet.",
       "Public PNLs and leaderboards.",
+    ],
+  },
+  {
+    id: "onchain",
+    label: "Your wallet",
+    title: "Everything is on-chain.",
+    lines: [
+      "Sidebets lock USDC.e in escrow on Polygon — settlements and payouts happen on-chain, not in a database.",
+      "Sign up with email or SMS and you get a non-custodial embedded wallet only you can access. Sidebet sponsors platform fees and gas.",
+      "Prefer your own web3 wallet? Connect MetaMask or similar — you stay in control and pay your own gas on Polygon.",
     ],
   },
   {
@@ -214,6 +225,7 @@ export function LandingScreen({
                 {slide.id === "settle" && <BirdsAgree />}
                 {slide.id === "settler" && <BirdsSettler />}
                 {slide.id === "social" && <BirdsChat />}
+                {slide.id === "onchain" && <BirdsOnchain />}
               </div>
 
               <div className="mt-4 flex min-h-0 flex-1 flex-col">
@@ -234,9 +246,9 @@ export function LandingScreen({
                 {slide.lines && slide.lines.length > 0 && (
                   <div
                     className={cn(
-                      slide.id === "settler"
-                        ? "mt-3 space-y-2"
-                        : "mt-4 space-y-2.5",
+                      slide.id === "settler" || slide.id === "onchain"
+                      ? "mt-3 space-y-2"
+                      : "mt-4 space-y-2.5",
                     )}
                   >
                     {slide.lines.map((line) => (
@@ -244,7 +256,7 @@ export function LandingScreen({
                         key={line}
                         className={cn(
                           "text-muted-foreground",
-                          slide.id === "settler"
+                          slide.id === "settler" || slide.id === "onchain"
                             ? "text-xs leading-snug sm:text-[13px]"
                             : "text-sm leading-relaxed sm:text-base",
                         )}

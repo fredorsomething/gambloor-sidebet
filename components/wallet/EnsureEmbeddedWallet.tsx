@@ -10,15 +10,14 @@ import {
 import { useSetActiveWallet } from "@privy-io/wagmi";
 import { useEffect, useRef } from "react";
 
-import { userHasEmbeddedLinkedAccount, externalLinkedEthereumAddress } from "@/lib/privyWallets";
+import {
+  externalLinkedEthereumAddress,
+  userHasEmbeddedLinkedAccount,
+} from "@/lib/privyWallets";
 
 /**
- * Every authenticated user needs a Privy embedded wallet — gas sponsorship only
- * applies to embedded wallets, not MetaMask / Phantom / other external signers.
- *
- * - Migrates wallets to TEE execution (required for native gas sponsorship).
- * - Creates an embedded wallet for wallet-login users who don't have one yet.
- * - Keeps the embedded wallet active for wagmi reads and writes.
+ * Email/SMS users get a Privy embedded wallet — gas sponsorship only applies there.
+ * Web3 wallet sign-ins use their own wallet and pay their own POL.
  */
 export function EnsureEmbeddedWallet() {
   const { ready, authenticated, user } = usePrivy();
@@ -29,16 +28,18 @@ export function EnsureEmbeddedWallet() {
   const migrated = useRef(false);
   const creating = useRef(false);
 
+  const web3Auth = !!externalLinkedEthereumAddress(user);
+
   useEffect(() => {
-    if (!ready || !authenticated || migrated.current) return;
+    if (!ready || !authenticated || migrated.current || web3Auth) return;
     migrated.current = true;
     void migrate().catch(() => {
       /* already on TEE or migration unavailable */
     });
-  }, [ready, authenticated, migrate]);
+  }, [ready, authenticated, migrate, web3Auth]);
 
   useEffect(() => {
-    if (!ready || !authenticated || creating.current) return;
+    if (!ready || !authenticated || creating.current || web3Auth) return;
 
     const connected = getEmbeddedConnectedWallet(wallets);
     if (connected) return;
@@ -52,16 +53,14 @@ export function EnsureEmbeddedWallet() {
       .finally(() => {
         creating.current = false;
       });
-  }, [ready, authenticated, user, wallets, createWallet]);
+  }, [ready, authenticated, user, wallets, createWallet, web3Auth]);
 
   useEffect(() => {
-    if (!ready || !authenticated) return;
-    // Legacy web3 users keep their external auth wallet active for profile/txs.
-    if (user && externalLinkedEthereumAddress(user)) return;
+    if (!ready || !authenticated || web3Auth) return;
     const embedded = getEmbeddedConnectedWallet(wallets);
     if (!embedded) return;
     void setActiveWallet(embedded).catch(() => {});
-  }, [ready, authenticated, user, wallets, setActiveWallet]);
+  }, [ready, authenticated, user, wallets, setActiveWallet, web3Auth]);
 
   return null;
 }

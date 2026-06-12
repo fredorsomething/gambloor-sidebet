@@ -64,9 +64,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
         embeddedWallets: {
           ethereum: {
-            // Every user gets a Sidebet embedded wallet, even if they sign in with
-            // MetaMask / Phantom. Gas sponsorship only works on embedded wallets.
-            createOnLogin: "all-users",
+            // Email/SMS sign-ups get an embedded Sidebet wallet (gas sponsored).
+            // Web3 wallet sign-ins already have a wallet — Privy skips creation.
+            createOnLogin: "users-without-wallets",
           },
           // Skip Privy's per-action confirmation modal for embedded wallets.
           // The user already authenticated into the app, so signing CLOB limit

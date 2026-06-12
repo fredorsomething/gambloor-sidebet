@@ -484,6 +484,78 @@ function wait(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
 
+export function BirdsOnchain() {
+  return (
+    <div className="relative mx-auto h-full w-full max-w-xs">
+      <div className="absolute left-1/2 top-[18%] flex -translate-x-1/2 flex-col items-center gap-2">
+        <div className="onboarding-usdc-pop flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm">
+          <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
+            <TokenIcon symbol="USDC.e" size={16} />
+            escrow
+          </span>
+          <span className="text-muted-foreground/40" aria-hidden>
+            ·
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            <TokenIcon symbol="POL" size={16} />
+            Polygon
+          </span>
+        </div>
+        <p className="max-w-[11rem] text-center text-[10px] font-medium leading-snug text-muted-foreground sm:text-[11px]">
+          Stakes lock on-chain until settlement pays out.
+        </p>
+      </div>
+
+      <div className="absolute bottom-0 left-1 flex flex-col items-center">
+        <Image
+          src="/sidebet_bird.png"
+          alt=""
+          width={52}
+          height={52}
+          className="onboarding-bird-nod h-11 w-11 sm:h-12 sm:w-12"
+        />
+      </div>
+
+      <div className="absolute bottom-0 right-1 flex flex-col items-center">
+        <div className="scale-x-[-1]">
+          <Image
+            src="/sidebet_bird.png"
+            alt=""
+            width={52}
+            height={52}
+            className="onboarding-bird-nod h-11 w-11 sm:h-12 sm:w-12"
+            style={{ animationDelay: "0.15s" }}
+          />
+        </div>
+      </div>
+
+      <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
+        <line
+          x1="22%"
+          y1="72%"
+          x2="50%"
+          y2="34%"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeDasharray="4 3"
+          className="text-success/30 onboarding-payout-line"
+        />
+        <line
+          x1="78%"
+          y1="72%"
+          x2="50%"
+          y2="34%"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeDasharray="4 3"
+          className="text-success/30 onboarding-payout-line"
+          style={{ animationDelay: "0.12s" }}
+        />
+      </svg>
+    </div>
+  );
+}
+
 export function RiftPortal({
   onEnter,
   pending,

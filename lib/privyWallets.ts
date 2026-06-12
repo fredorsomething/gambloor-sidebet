@@ -90,6 +90,11 @@ export function resolveDisplayWalletAddress(args: {
   return null;
 }
 
+/** True when the user authenticated with an external web3 wallet (MetaMask, etc.). */
+export function userIsWeb3AuthUser(user: User | null | undefined): boolean {
+  return externalLinkedEthereumAddress(user) != null;
+}
+
 /** True when the Privy user has a linked embedded (Sidebet) wallet account. */
 export function userHasEmbeddedLinkedAccount(
   user: User | null | undefined,
