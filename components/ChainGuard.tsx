@@ -1,14 +1,27 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
+import { useRef } from "react";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { polygon } from "@/lib/viemChains";
 
 import { Button } from "@/components/ui/button";
 import { ConnectButton } from "@/components/ConnectButton";
-import { getEscrowAddress, getEscrowV2Address } from "@/lib/chains";
+import {
+  getEscrowAddress,
+  getEscrowV2Address,
+  getEscrowV3Address,
+} from "@/lib/chains";
 
-/** Requires a signed-in Privy account on Polygon mainnet + deployed contracts. */
+/**
+ * Requires a signed-in Privy account on Polygon mainnet + deployed contracts.
+ *
+ * Once the requirements have been satisfied and the children rendered, they are
+ * NEVER unmounted again — only hidden behind the guard card. Privy/wagmi
+ * briefly flicker `ready`/`address` when the user switches tabs, and
+ * unmounting the create forms on every flicker destroyed all their in-progress
+ * input.
+ */
 export function ChainGuard({
   children,
   require: requirement = "escrow",
@@ -20,9 +33,20 @@ export function ChainGuard({
   const { address } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
+  // True once the user has fully passed the guard at least once this mount.
+  const everSatisfied = useRef(false);
 
-  if (!ready || !authenticated || !address) {
-    return (
+  let blocker: React.ReactNode = null;
+
+  // Treat `!ready` (Privy re-initialising, e.g. after a tab switch) and a
+  // transiently missing wagmi address as flickers once we were already in —
+  // only a definitive signed-out state brings the sign-in card back.
+  const needsSignIn = everSatisfied.current
+    ? ready && !authenticated
+    : !ready || !authenticated || !address;
+
+  if (needsSignIn) {
+    blocker = (
       <div className="card p-8 text-center space-y-4">
         <h2 className="text-lg font-semibold">Sign in to continue</h2>
         <p className="text-sm text-muted-foreground">
@@ -34,10 +58,8 @@ export function ChainGuard({
         </div>
       </div>
     );
-  }
-
-  if (chainId !== polygon.id) {
-    return (
+  } else if (chainId !== polygon.id) {
+    blocker = (
       <div className="card p-8 text-center space-y-4">
         <h2 className="text-lg font-semibold">Switch to Polygon</h2>
         <p className="text-sm text-muted-foreground">
@@ -54,26 +76,38 @@ export function ChainGuard({
         </div>
       </div>
     );
+  } else if (requirement === "escrow") {
+    const escrow =
+      getEscrowV3Address() ?? getEscrowV2Address() ?? getEscrowAddress();
+    if (!escrow) {
+      blocker = (
+        <div className="card p-8 space-y-2">
+          <h2 className="text-lg font-semibold">Escrow not configured</h2>
+          <p className="text-sm text-muted-foreground">
+            Set <code>NEXT_PUBLIC_ESCROW_V3_ADDRESS_POLYGON</code> to your
+            deployed SidebetEscrowV3 contract on Polygon mainnet, then redeploy
+            the app.
+          </p>
+        </div>
+      );
+    }
   }
 
-  // Markets are fully off-chain (custodial engine + ledger); a signed-in account
-  // on Polygon is all that's needed.
-  if (requirement === "market") {
-    return <>{children}</>;
+  if (!blocker) {
+    everSatisfied.current = true;
   }
 
-  const escrow = getEscrowV2Address() ?? getEscrowAddress();
-  if (!escrow) {
-    return (
-      <div className="card p-8 space-y-2">
-        <h2 className="text-lg font-semibold">Escrow not configured</h2>
-        <p className="text-sm text-muted-foreground">
-          Set <code>NEXT_PUBLIC_ESCROW_V2_ADDRESS_POLYGON</code> to your deployed
-          SidebetEscrowV2 contract on Polygon mainnet, then redeploy the app.
-        </p>
-      </div>
-    );
+  // Before the first successful pass there is nothing worth preserving, so the
+  // guard card can render alone. Afterwards keep the children mounted (hidden)
+  // so transient auth/chain flickers can't wipe in-progress form state.
+  if (blocker && !everSatisfied.current) {
+    return <>{blocker}</>;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {blocker}
+      <div className={blocker ? "hidden" : undefined}>{children}</div>
+    </>
+  );
 }

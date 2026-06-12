@@ -32,6 +32,7 @@ import {
 } from "@/lib/clob";
 import { jsonFetch } from "@/lib/fetcher";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useFormDraft } from "@/lib/hooks/useFormDraft";
 import { usePlatformSettings } from "@/lib/hooks/usePlatformSettings";
 import { useTokenInfo } from "@/lib/hooks/useTokenInfo";
 import { useTxSender } from "@/lib/hooks/useTxSender";
@@ -97,6 +98,36 @@ export function CreateMarketForm() {
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
   const isBusy = step !== "idle" && step !== "done";
+
+  // Persist the draft so reloads / discarded tabs never lose in-progress work.
+  const draftSnapshot = useMemo(
+    () => ({
+      title,
+      description,
+      terms,
+      binaryStyle,
+      settler,
+      settlerFeeBps,
+      endDate,
+    }),
+    [title, description, terms, binaryStyle, settler, settlerFeeBps, endDate],
+  );
+  const draft = useFormDraft(
+    "sb_draft_create_market",
+    draftSnapshot,
+    useCallback((saved: typeof draftSnapshot) => {
+      if (typeof saved !== "object" || saved === null) return;
+      if (typeof saved.title === "string") setTitle(saved.title);
+      if (typeof saved.description === "string") setDescription(saved.description);
+      if (typeof saved.terms === "string") setTerms(saved.terms);
+      if (saved.binaryStyle === "yes-no" || saved.binaryStyle === "up-down")
+        setBinaryStyle(saved.binaryStyle);
+      if (typeof saved.settler === "string") setSettler(saved.settler);
+      if (typeof saved.settlerFeeBps === "number")
+        setSettlerFeeBps(saved.settlerFeeBps);
+      if (typeof saved.endDate === "string") setEndDate(saved.endDate);
+    }, []),
+  );
 
   const outcomes = useMemo(
     () => (binaryStyle === "up-down" ? ["Up", "Down"] : ["Yes", "No"]),
@@ -298,6 +329,7 @@ export function CreateMarketForm() {
         }),
       });
       setStep("done");
+      draft.clear();
       push({
         title: "Market submitted",
         description: "An admin will review it before it goes live.",

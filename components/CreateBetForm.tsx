@@ -27,6 +27,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
 import { cryptoErrorSummary, formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
+import { useFormDraft } from "@/lib/hooks/useFormDraft";
 import { usePlatformSettings } from "@/lib/hooks/usePlatformSettings";
 import { useTxSender } from "@/lib/hooks/useTxSender";
 import { useEscrow } from "@/lib/hooks/useEscrow";
@@ -97,6 +98,74 @@ export function CreateBetForm() {
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  // Persist the draft so reloads / discarded tabs never lose in-progress work.
+  const draftSnapshot = useMemo(
+    () => ({
+      title,
+      description,
+      terms,
+      binaryStyle,
+      stance,
+      yourStakeStr,
+      theirStakeStr,
+      settler,
+      customSettler,
+      settlerFeeBps,
+      endDate,
+      offerExpires,
+      expiryPreset,
+      customExpiryValue,
+      customExpiryUnit,
+    }),
+    [
+      title,
+      description,
+      terms,
+      binaryStyle,
+      stance,
+      yourStakeStr,
+      theirStakeStr,
+      settler,
+      customSettler,
+      settlerFeeBps,
+      endDate,
+      offerExpires,
+      expiryPreset,
+      customExpiryValue,
+      customExpiryUnit,
+    ],
+  );
+  const draft = useFormDraft(
+    "sb_draft_create_bet",
+    draftSnapshot,
+    useCallback((saved: typeof draftSnapshot) => {
+      if (typeof saved !== "object" || saved === null) return;
+      if (typeof saved.title === "string") setTitle(saved.title);
+      if (typeof saved.description === "string") setDescription(saved.description);
+      if (typeof saved.terms === "string") setTerms(saved.terms);
+      if (saved.binaryStyle === "yes-no" || saved.binaryStyle === "up-down")
+        setBinaryStyle(saved.binaryStyle);
+      if (saved.stance === "yes" || saved.stance === "no") setStance(saved.stance);
+      if (typeof saved.yourStakeStr === "string") setYourStakeStr(saved.yourStakeStr);
+      if (typeof saved.theirStakeStr === "string")
+        setTheirStakeStr(saved.theirStakeStr);
+      if (typeof saved.settler === "string") setSettler(saved.settler);
+      if (typeof saved.customSettler === "string" || saved.customSettler === null)
+        setCustomSettler(saved.customSettler);
+      if (typeof saved.settlerFeeBps === "number")
+        setSettlerFeeBps(saved.settlerFeeBps);
+      if (typeof saved.endDate === "string") setEndDate(saved.endDate);
+      if (typeof saved.offerExpires === "boolean")
+        setOfferExpires(saved.offerExpires);
+      if (typeof saved.expiryPreset === "string")
+        setExpiryPreset(saved.expiryPreset as AcceptExpiryPresetId);
+      if (typeof saved.customExpiryValue === "string")
+        setCustomExpiryValue(saved.customExpiryValue);
+      if (typeof saved.customExpiryUnit === "string")
+        setCustomExpiryUnit(saved.customExpiryUnit as AcceptExpiryUnit);
+    }, []),
+  );
 
   useEffect(() => {
     if (platformQ.data != null && !settler) {
@@ -504,6 +573,7 @@ export function CreateBetForm() {
         });
 
         setStep("done");
+        draft.clear();
         push({
           title: "Bet live",
           description: "Others can now take the other side.",
