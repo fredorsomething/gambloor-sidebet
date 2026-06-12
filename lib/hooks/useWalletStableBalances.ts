@@ -23,7 +23,7 @@ import {
   POLYGON_CHAIN_ID,
   type getTokens,
 } from "@/lib/chains";
-import { linkedEthereumAddresses } from "@/lib/privyWallets";
+import { resolveDisplayWalletAddress } from "@/lib/privyWallets";
 
 type WalletToken = ReturnType<typeof getTokens>[number];
 
@@ -55,20 +55,16 @@ export type WalletChainGroup = {
 function resolveOwners(args: {
   profileAddress?: string;
   wagmiAddress?: string;
-  linked: Set<string>;
+  user: import("@privy-io/react-auth").User | null | undefined;
 }): Address[] {
-  if (args.profileAddress) {
-    if (!isAddress(args.profileAddress)) return [];
+  if (args.profileAddress && isAddress(args.profileAddress)) {
     return [getAddress(args.profileAddress)];
   }
-
-  const set = new Set<string>();
-  if (args.wagmiAddress && isAddress(args.wagmiAddress)) {
-    set.add(args.wagmiAddress.toLowerCase());
-  }
-  for (const a of args.linked) set.add(a);
-
-  return [...set].map((a) => getAddress(a));
+  const display = resolveDisplayWalletAddress({
+    user: args.user,
+    wagmiAddress: args.wagmiAddress,
+  });
+  return display ? [display] : [];
 }
 
 const polygonRpc =
@@ -265,20 +261,14 @@ export function useWalletStableBalances(profileAddress?: string) {
   const { authenticated, user } = usePrivy();
   const { address: wagmiAddress } = useAccount();
 
-  const linked = useMemo(
-    () =>
-      authenticated && user ? linkedEthereumAddresses(user) : new Set<string>(),
-    [authenticated, user],
-  );
-
   const owners = useMemo(
     () =>
       resolveOwners({
         profileAddress,
         wagmiAddress,
-        linked,
+        user: authenticated ? user : null,
       }),
-    [profileAddress, wagmiAddress, linked],
+    [profileAddress, wagmiAddress, authenticated, user],
   );
 
   const tokens = useMemo(() => getWalletStablecoins(), []);
@@ -370,7 +360,7 @@ export function useWalletStableBalances(profileAddress?: string) {
     Number(formatUnits(ethereumUsdcRaw, ETHEREUM_USDC.decimals)) +
     Number(formatUnits(ethereumEthRaw, 18)) * usdPerEth;
 
-  const multipleWallets = !profileAddress && owners.length > 1;
+  const multipleWallets = false;
 
   return {
     balances,

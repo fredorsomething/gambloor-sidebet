@@ -5,6 +5,7 @@ import { getAddress, isAddress, keccak256, toBytes } from "viem";
 import { syncBetsOnchain } from "@/lib/betSync";
 import { PUBLIC_BET_FEED_FILTER } from "@/lib/betVisibility";
 import { validateAcceptDeadlineUnix } from "@/lib/sidebetExpiry";
+import { verifySidebetCreationFee } from "@/lib/sidebetCreationFee";
 import { getMarketCollateralToken, getTokenByAddress } from "@/lib/chains";
 import { prisma } from "@/lib/db";
 import { isAllowedImageUrl } from "@/lib/profile";
@@ -20,6 +21,7 @@ const CreateBetSchema = z.object({
   escrowAddress: z.string().refine(isAddress, "bad escrow address"),
   onchainId: z.string().regex(DECIMAL, "onchainId must be a uint string"),
   txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
+  creationFeeTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
 
   proposer: z.string().refine(isAddress, "bad proposer"),
   settler: z.string().refine(isAddress, "bad settler"),
@@ -107,6 +109,12 @@ export async function POST(req: NextRequest) {
   const deadlineErr = validateAcceptDeadlineUnix(deadline);
   if (deadlineErr) return jsonErr(deadlineErr, 400);
 
+  const feeCheck = await verifySidebetCreationFee({
+    proposer: d.proposer,
+    txHash: d.creationFeeTxHash,
+  });
+  if (!feeCheck.ok) return jsonErr(feeCheck.reason, 400);
+
   try {
     const bet = await prisma.bet.upsert({
       where: {
@@ -118,12 +126,14 @@ export async function POST(req: NextRequest) {
       },
       update: {
         txHash: d.txHash,
+        creationFeeTxHash: d.creationFeeTxHash,
       },
       create: {
         chainId: d.chainId,
         escrowAddress: getAddress(d.escrowAddress),
         onchainId: d.onchainId,
         txHash: d.txHash,
+        creationFeeTxHash: d.creationFeeTxHash,
 
         proposer: getAddress(d.proposer),
         settler: getAddress(d.settler),

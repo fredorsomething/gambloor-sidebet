@@ -368,6 +368,9 @@ model Bet {
   // Hidden from homepage feed and public search; direct /bets/[id] links still work.
   hiddenFromFeed Boolean @default(false)
 
+  // One-time USDC.e anti-spam fee sent to @admin when the bet was created.
+  creationFeeTxHash String? @unique
+
   // Global-chat feed dedupe: set atomically before posting matched/settled announcements.
   matchedFeedAt DateTime?
   settledFeedAt DateTime?

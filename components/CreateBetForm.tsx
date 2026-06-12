@@ -42,9 +42,13 @@ import {
   type AcceptExpiryPresetId,
   type AcceptExpiryUnit,
 } from "@/lib/sidebetExpiry";
+import {
+  SIDEBET_CREATION_FEE_RAW,
+  SIDEBET_CREATION_FEE_USD,
+} from "@/lib/sidebetCreationFee";
 import { buildTermsHash, formatToken, parseAmount } from "@/lib/utils";
 
-type Step = "idle" | "approving" | "creating" | "indexing" | "done";
+type Step = "idle" | "payingFee" | "approving" | "creating" | "indexing" | "done";
 type BinaryStyle = "yes-no" | "up-down";
 
 export function CreateBetForm() {
@@ -141,12 +145,16 @@ export function CreateBetForm() {
   const needsApproval = yourStake > 0n && (live.allowance ?? 0n) < yourStake;
 
   const { writeContract } = useTxSender();
+  const [creationFeeHash, setCreationFeeHash] = useState<Hex>();
   const [approveHash, setApproveHash] = useState<Hex>();
   const [createHash, setCreateHash] = useState<Hex>();
+  const creationFeeWait = useWaitForTransactionReceipt({ hash: creationFeeHash });
   const approveWait = useWaitForTransactionReceipt({ hash: approveHash });
   const createWait = useWaitForTransactionReceipt({ hash: createHash });
 
   const isBusy = step !== "idle" && step !== "done";
+
+  const walletSignatures = 2 + (needsApproval ? 1 : 0);
 
   const onPickCover = useCallback(
     (file: File, url: string) => {
@@ -187,11 +195,11 @@ export function CreateBetForm() {
       return "Outcome selection is invalid";
     if (yourStake <= 0n) return "Your stake must be positive";
     if (theirStake <= 0n) return "Their stake must be positive";
-    if (live.balance !== undefined && live.balance < yourStake)
-      return `Insufficient ${tokenMeta?.symbol ?? "token"} balance (${formatToken(
+    if (live.balance !== undefined && live.balance < yourStake + SIDEBET_CREATION_FEE_RAW)
+      return `Insufficient ${tokenMeta?.symbol ?? "token"} balance — need ${yourStakeStr} stake plus $${SIDEBET_CREATION_FEE_USD.toFixed(2)} creation fee (${formatToken(
         live.balance,
         effectiveDecimals,
-      )} < ${yourStakeStr})`;
+      )} available)`;
     if (!settler || !isAddress(settler)) return "Pick or add a settler";
     if (customSettler && getAddress(customSettler) === getAddress(account))
       return "You can't be your own settler";
@@ -224,6 +232,46 @@ export function CreateBetForm() {
     proposerOutcome: number;
     acceptorOutcome: number;
   }>(null);
+
+  async function runPayCreationFee() {
+    setStep("payingFee");
+    push({
+      title: "Creation fee",
+      description: `$${SIDEBET_CREATION_FEE_USD.toFixed(2)} USDC.e sent to Sidebet — required before creating a bet.`,
+    });
+    await ensurePolygon();
+    const hash = await writeContract({
+      address: tokenAddress as Address,
+      abi: ERC20_ABI,
+      functionName: "transfer",
+      args: [ADMIN_ADDRESS, SIDEBET_CREATION_FEE_RAW],
+    });
+    setCreationFeeHash(hash);
+  }
+
+  async function runApproval() {
+    setStep("approving");
+    push({
+      title: "Approving token",
+      description: "Confirm the approval in your wallet.",
+    });
+    await ensurePolygon();
+    const hash = await writeContract({
+      address: tokenAddress as Address,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [escrow as Address, yourStake],
+    });
+    setApproveHash(hash);
+  }
+
+  async function continueAfterCreationFee(pc: NonNullable<typeof pendingCreate>) {
+    if (needsApproval) {
+      await runApproval();
+    } else {
+      await runCreate(pc);
+    }
+  }
 
   async function runCreate(pc: NonNullable<typeof pendingCreate>) {
     setStep("creating");
@@ -301,23 +349,7 @@ export function CreateBetForm() {
     setPendingCreate(pc);
 
     try {
-      if (needsApproval) {
-        setStep("approving");
-        push({
-          title: "Approving token",
-          description: "Confirm the approval in your wallet.",
-        });
-        await ensurePolygon();
-        const hash = await writeContract({
-          address: tokenAddress as Address,
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [escrow as Address, yourStake],
-        });
-        setApproveHash(hash);
-      } else {
-        await runCreate(pc);
-      }
+      await runPayCreationFee();
     } catch (err: unknown) {
       setStep("idle");
       setPendingCreate(null);
@@ -329,6 +361,28 @@ export function CreateBetForm() {
       push({ title, description, variant: "danger" });
     }
   }
+
+  // After creation fee confirms, approve or create.
+  useEffect(() => {
+    if (step !== "payingFee") return;
+    if (!creationFeeWait.isSuccess) return;
+    if (!pendingCreate) return;
+    void (async () => {
+      try {
+        await continueAfterCreationFee(pendingCreate);
+      } catch (err: unknown) {
+        setStep("idle");
+        setPendingCreate(null);
+        const msg = cryptoErrorSummary(err, "Couldn't create bet");
+        setError(msg);
+        const { title, description } = formatCryptoError(err, {
+          fallbackTitle: "Couldn't create bet",
+        });
+        push({ title, description, variant: "danger" });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, creationFeeWait.isSuccess]);
 
   // After approval confirms, kick off create.
   useEffect(() => {
@@ -424,6 +478,7 @@ export function CreateBetForm() {
             escrowAddress: escrow,
             onchainId: onchainId.toString(),
             txHash: createHash,
+            creationFeeTxHash: creationFeeHash,
             proposer: account,
             settler: getAddress(settler),
             customSettler: customSettler ? getAddress(customSettler) : null,
@@ -696,9 +751,13 @@ export function CreateBetForm() {
       </div>
 
       <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">
+          ${SIDEBET_CREATION_FEE_USD.toFixed(2)} creation fee
+        </span>
+        {" · "}
         <span className="font-medium text-foreground">{(settlerFeeBps / 100).toFixed(2)}% platform fee</span>
         {" · "}
-        {needsApproval ? "2 wallet signatures" : "1 wallet signature"}
+        {walletSignatures} wallet signatures
         {" · "}
         stake goes into escrow on create
       </div>
@@ -711,11 +770,12 @@ export function CreateBetForm() {
 
       <div className="flex items-center justify-end gap-2">
         <Button type="submit" size="lg" disabled={isBusy}>
+          {step === "payingFee" && "Paying fee…"}
           {step === "approving" && "Approving…"}
           {step === "creating" && "Creating…"}
           {step === "indexing" && "Indexing…"}
           {step === "done" && "Done"}
-          {step === "idle" && (needsApproval ? "Approve & create" : "Create bet")}
+          {step === "idle" && "Create bet"}
         </Button>
       </div>
     </form>

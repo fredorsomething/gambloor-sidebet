@@ -1,4 +1,5 @@
 import type { ConnectedWallet, User } from "@privy-io/react-auth";
+import { getAddress, isAddress, type Address } from "viem";
 
 /** Ethereum addresses linked to the authenticated Privy user. */
 export function linkedEthereumAddresses(user: User | null | undefined): Set<string> {
@@ -27,6 +28,43 @@ export function isPrivyEmbeddedWallet(
     wallet.walletClientType === "privy-v2" ||
     wallet.connectorType === "embedded"
   );
+}
+
+/** Linked embedded (Sidebet) wallet address, if the user has one. */
+export function embeddedLinkedEthereumAddress(
+  user: User | null | undefined,
+): Address | null {
+  if (!user) return null;
+  for (const account of user.linkedAccounts) {
+    if (
+      account.type === "wallet" &&
+      account.chainType === "ethereum" &&
+      typeof account.address === "string" &&
+      isPrivyEmbeddedWallet({
+        walletClientType: account.walletClientType,
+        connectorType: account.connectorType ?? "embedded",
+      })
+    ) {
+      return getAddress(account.address);
+    }
+  }
+  return null;
+}
+
+/**
+ * Wallet whose balances/history the UI should show — embedded Sidebet wallet
+ * when present, otherwise the active wagmi address.
+ */
+export function resolveDisplayWalletAddress(args: {
+  user: User | null | undefined;
+  wagmiAddress?: string | null;
+}): Address | null {
+  const embedded = embeddedLinkedEthereumAddress(args.user);
+  if (embedded) return embedded;
+  if (args.wagmiAddress && isAddress(args.wagmiAddress)) {
+    return getAddress(args.wagmiAddress);
+  }
+  return null;
 }
 
 /** True when the Privy user has a linked embedded (Sidebet) wallet account. */

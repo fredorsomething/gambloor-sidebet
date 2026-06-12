@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { useAccount, useChainId } from "wagmi";
+import { useChainId } from "wagmi";
 import { polygon } from "@/lib/viemChains";
 
 import { useWalletFunds } from "@/components/wallet/FundWalletModal";
@@ -27,7 +27,6 @@ import { shortAddr } from "@/lib/utils";
 
 export function WalletBalance() {
   const { ready, authenticated } = usePrivy();
-  const { address } = useAccount();
   const chainId = useChainId();
   const { openFund, openWithdraw } = useWalletFunds();
   const { canUseSponsoredGas } = useTxSender();
@@ -44,24 +43,26 @@ export function WalletBalance() {
     polRaw,
     polygonUsd,
     ethereumUsd,
-    multipleWallets,
+    owners,
     isError: balancesError,
   } = useWalletStableBalances();
+
+  const displayAddress = owners[0];
 
   const { data: positions } = useQuery<{
     totalValue: number;
     sidebetValue?: number;
   }>({
-    queryKey: ["walletPositions", address?.toLowerCase()],
-    enabled: !!address,
-    queryFn: () => jsonFetch(`/api/users/${address}/positions`),
+    queryKey: ["walletPositions", displayAddress?.toLowerCase()],
+    enabled: !!displayAddress,
+    queryFn: () => jsonFetch(`/api/users/${displayAddress}/positions`),
     refetchInterval: 10_000,
   });
   // `totalValue` includes both CLOB market positions and live sidebet stakes.
   const positionsValue = positions?.totalValue ?? 0;
   const sidebetValue = positions?.sidebetValue ?? 0;
 
-  if (!ready || !authenticated || !address) return null;
+  if (!ready || !authenticated || !displayAddress) return null;
 
   const onPolygon = chainId === polygon.id;
 
@@ -72,7 +73,7 @@ export function WalletBalance() {
   const lowGas = !canUseSponsoredGas && polAmount === 0;
 
   const onCopy = () => {
-    navigator.clipboard?.writeText(address);
+    navigator.clipboard?.writeText(displayAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -91,7 +92,7 @@ export function WalletBalance() {
           ) : (
             <Copy className="h-3 w-3" />
           )}
-          {shortAddr(address)}
+          {shortAddr(displayAddress)}
         </button>
       </div>
 
@@ -157,12 +158,6 @@ export function WalletBalance() {
               </Link>
             )}
           </div>
-        )}
-
-        {multipleWallets && (
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Totals include all wallets linked to your account.
-          </p>
         )}
 
         {balancesError && (
