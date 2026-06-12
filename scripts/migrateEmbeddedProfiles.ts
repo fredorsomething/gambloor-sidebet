@@ -133,10 +133,10 @@ async function main() {
     }
 
     const shouldMigrate =
-      !dbRow ||
-      !dbAddress ||
-      dbAddress.toLowerCase() !== embedded.toLowerCase() ||
-      hasStaleProfile;
+      hasStaleProfile ||
+      (!!dbRow &&
+        !!dbAddress &&
+        dbAddress.toLowerCase() !== embedded.toLowerCase());
 
     if (!shouldMigrate) {
       stats.skipped++;
