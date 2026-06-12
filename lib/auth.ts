@@ -3,6 +3,7 @@ import { getAddress } from "viem";
 import {
   emailOf,
   embeddedEthereumAddressOf,
+  externalEthereumAddressOf,
   ethereumAddressesOf,
   getPrivyUser,
   resolveProfileWalletAddress,
@@ -45,10 +46,12 @@ export async function verifyPrivySession(
 
   const linkedAddresses = ethereumAddressesOf(user);
   const embeddedAddress = embeddedEthereumAddressOf(user);
+  const externalAddress = externalEthereumAddressOf(user);
   const profileAddress = await resolveProfileWalletAddress({
     privyId: token.userId,
     linkedAddresses,
     embeddedAddress,
+    externalAddress,
   });
 
   if (!profileAddress) {
@@ -68,9 +71,9 @@ export async function verifyPrivySession(
  * Authenticates a write request against Privy.
  *
  * Verifies the bearer token, then resolves the canonical profile wallet
- * (embedded when available). The claimed `address` is accepted when linked,
- * but profile writes are always applied to the canonical wallet so stray
- * browser-extension addresses cannot break saves.
+ * (external auth wallet when linked, else embedded). The claimed `address` is
+ * accepted when linked, but profile writes are always applied to the canonical
+ * wallet so stray browser-extension addresses cannot break saves.
  */
 export async function verifyWalletAuth(args: {
   req: Request;

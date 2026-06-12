@@ -10,7 +10,7 @@ import {
 import { useSetActiveWallet } from "@privy-io/wagmi";
 import { useEffect, useRef } from "react";
 
-import { userHasEmbeddedLinkedAccount } from "@/lib/privyWallets";
+import { userHasEmbeddedLinkedAccount, externalLinkedEthereumAddress } from "@/lib/privyWallets";
 
 /**
  * Every authenticated user needs a Privy embedded wallet — gas sponsorship only
@@ -56,10 +56,12 @@ export function EnsureEmbeddedWallet() {
 
   useEffect(() => {
     if (!ready || !authenticated) return;
+    // Legacy web3 users keep their external auth wallet active for profile/txs.
+    if (user && externalLinkedEthereumAddress(user)) return;
     const embedded = getEmbeddedConnectedWallet(wallets);
     if (!embedded) return;
     void setActiveWallet(embedded).catch(() => {});
-  }, [ready, authenticated, wallets, setActiveWallet]);
+  }, [ready, authenticated, user, wallets, setActiveWallet]);
 
   return null;
 }

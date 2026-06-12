@@ -11,6 +11,7 @@ import { UserNameWithBadge } from "@/components/profile/VerifiedBadge";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { isAdminAddress } from "@/lib/admin";
 import { externalLinkedEthereumAddress } from "@/lib/privyWallets";
+import { useMyProfile } from "@/lib/hooks/useMyProfile";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { useClickOutside } from "@/lib/useClickOutside";
 import { shortAddr } from "@/lib/utils";
@@ -20,6 +21,7 @@ export function ConnectButton() {
   const { address } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
+  const { data: myProfile } = useMyProfile();
   const { data: profile } = useProfile(address);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -44,8 +46,9 @@ export function ConnectButton() {
     );
   }
 
+  const displayAddress = myProfile?.address ?? address;
   const onPolygon = chainId === polygon.id;
-  const label = profile?.username || shortAddr(address);
+  const label = myProfile?.username || profile?.username || shortAddr(displayAddress);
   const legacyWallet = externalLinkedEthereumAddress(user);
 
   const onLegacyWeb3SignIn = () => {
@@ -61,15 +64,15 @@ export function ConnectButton() {
     <>
       <div className="border-b border-border p-3">
         <div className="flex items-center gap-2">
-          <Avatar address={address} url={profile?.avatarUrl} size={36} />
+          <Avatar address={displayAddress} url={myProfile?.avatarUrl ?? profile?.avatarUrl} size={36} />
           <div className="min-w-0">
             <UserNameWithBadge
-              verified={profile?.verified}
+              verified={myProfile?.verified ?? profile?.verified}
               name={label}
               className="text-sm font-semibold"
             />
             <div className="font-mono text-xs text-muted-foreground">
-              {shortAddr(address)}
+              {shortAddr(displayAddress)}
             </div>
           </div>
         </div>
@@ -79,7 +82,7 @@ export function ConnectButton() {
       </div>
       <nav className="p-1 text-sm">
         <Link
-          href={`/u/${profile?.username ?? address}`}
+          href={`/u/${myProfile?.username ?? profile?.username ?? displayAddress}`}
           onClick={() => setMenuOpen(false)}
           className="block rounded-lg px-3 py-2.5 hover:bg-muted"
         >
@@ -92,7 +95,7 @@ export function ConnectButton() {
         >
           Edit profile
         </Link>
-        {isAdminAddress(address) && (
+        {isAdminAddress(displayAddress) && (
           <Link
             href="/admin"
             onClick={() => setMenuOpen(false)}
@@ -103,7 +106,7 @@ export function ConnectButton() {
         )}
         <button
           onClick={() => {
-            navigator.clipboard?.writeText(address);
+            navigator.clipboard?.writeText(displayAddress);
             setMenuOpen(false);
           }}
           className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-muted"
@@ -162,9 +165,9 @@ export function ConnectButton() {
         className="flex shrink-0 items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-2 text-sm font-medium shadow-sm transition-colors hover:bg-muted/50 md:pr-3"
         aria-label="Account menu"
       >
-        <Avatar address={address} url={profile?.avatarUrl} size={28} />
+        <Avatar address={displayAddress} url={myProfile?.avatarUrl ?? profile?.avatarUrl} size={28} />
         <UserNameWithBadge
-          verified={profile?.verified}
+          verified={myProfile?.verified ?? profile?.verified}
           name={label}
           className="hidden max-w-[140px] sm:inline-flex"
         />

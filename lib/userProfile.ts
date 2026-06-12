@@ -30,7 +30,8 @@ function pickProfileFields(rows: User[]): ProfileFields & { verified?: boolean; 
 
 /**
  * Privy users can end up with profiles on an old external wallet while the app
- * now uses their embedded wallet. Move the profile row to the active address.
+ * now uses their embedded wallet, or vice versa. Move the profile row to the
+ * active canonical address (external when linked, else embedded).
  */
 export async function reconcileUserAddress(args: {
   privyId: string;

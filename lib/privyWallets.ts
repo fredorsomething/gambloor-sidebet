@@ -73,13 +73,15 @@ export function externalLinkedEthereumAddress(
 }
 
 /**
- * Wallet whose balances/history the UI should show — embedded Sidebet wallet
- * when present, otherwise the active wagmi address.
+ * Wallet whose balances/history the UI should show — external auth wallet when
+ * linked (legacy web3), else embedded Sidebet wallet, else wagmi address.
  */
 export function resolveDisplayWalletAddress(args: {
   user: User | null | undefined;
   wagmiAddress?: string | null;
 }): Address | null {
+  const external = externalLinkedEthereumAddress(args.user);
+  if (external) return external;
   const embedded = embeddedLinkedEthereumAddress(args.user);
   if (embedded) return embedded;
   if (args.wagmiAddress && isAddress(args.wagmiAddress)) {
@@ -123,10 +125,18 @@ export function pickActiveWalletForWagmi({
   if (user && linked.size > 0) {
     const owned = ethereum.filter((w) => linked.has(w.address.toLowerCase()));
     if (owned.length > 0) {
-      return owned.find(isPrivyEmbeddedWallet) ?? owned[0];
+      return (
+        owned.find((w) => !isPrivyEmbeddedWallet(w)) ??
+        owned.find(isPrivyEmbeddedWallet) ??
+        owned[0]
+      );
     }
   }
 
-  // Linked list not loaded yet — still prefer embedded over stray injected wallets.
-  return ethereum.find(isPrivyEmbeddedWallet) ?? ethereum[0];
+  // Linked list not loaded yet — prefer external over embedded when both exist.
+  return (
+    ethereum.find((w) => !isPrivyEmbeddedWallet(w)) ??
+    ethereum.find(isPrivyEmbeddedWallet) ??
+    ethereum[0]
+  );
 }

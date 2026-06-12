@@ -75,8 +75,6 @@ export function useTxSender() {
     [wallets],
   );
 
-  const canUseSponsoredGas = !!embeddedWallet?.address;
-
   const isEmbedded = useMemo(() => {
     if (!address || !embeddedWallet?.address) return false;
     if (embeddedWallet.address.toLowerCase() === address.toLowerCase()) {
@@ -88,6 +86,8 @@ export function useTxSender() {
     );
     return isPrivyEmbeddedWallet(wallet);
   }, [wallets, address, connector?.id, embeddedWallet]);
+
+  const canUseSponsoredGas = isEmbedded;
 
   const isExternalWalletActive = useMemo(() => {
     if (!address || !embeddedWallet?.address) return false;
@@ -101,7 +101,7 @@ export function useTxSender() {
       const sponsor = opts?.sponsor ?? true;
       const signingAddress = embeddedWallet?.address as Address | undefined;
 
-      if (signingAddress) {
+      if (isEmbedded && signingAddress) {
         const { hash } = await privySend(
           {
             to: tx.to,
@@ -130,7 +130,7 @@ export function useTxSender() {
         gas: tx.gas,
       });
     },
-    [embeddedWallet, address, privySend, wagmiSend],
+    [embeddedWallet, address, isEmbedded, privySend, wagmiSend],
   );
 
   const writeContract = useCallback(

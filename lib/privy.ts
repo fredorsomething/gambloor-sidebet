@@ -93,16 +93,50 @@ export function embeddedEthereumAddressOf(user: User): string | null {
   return null;
 }
 
+function isEmbeddedEthereumAccount(
+  account: User["linked_accounts"][number],
+): boolean {
+  if (account.type !== "wallet") return false;
+  if (!("chain_type" in account) || account.chain_type !== "ethereum") return false;
+  const wallet = account as {
+    connector_type?: string;
+    wallet_client_type?: string;
+  };
+  return (
+    wallet.connector_type === "embedded" ||
+    wallet.wallet_client_type === "privy" ||
+    wallet.wallet_client_type === "privy-v2"
+  );
+}
+
+/** External EVM wallet (MetaMask, etc.) linked to a Privy user, if any. */
+export function externalEthereumAddressOf(user: User): string | null {
+  for (const account of user.linked_accounts) {
+    if (account.type !== "wallet") continue;
+    if (!("chain_type" in account) || account.chain_type !== "ethereum") continue;
+    if (!("address" in account) || typeof account.address !== "string") continue;
+    if (isEmbeddedEthereumAccount(account)) continue;
+    return getAddress(account.address);
+  }
+  return null;
+}
+
 /**
- * Canonical profile wallet for a Privy user: embedded first, else the linked
- * wallet that already has a username in our DB, else the first linked wallet.
+ * Canonical profile wallet for a Privy user: external auth wallet when linked
+ * (legacy web3 sign-in), else embedded for email/SMS users, else DB / first linked.
  */
 export async function resolveProfileWalletAddress(args: {
   privyId: string;
   linkedAddresses: string[];
   embeddedAddress?: string | null;
+  externalAddress?: string | null;
 }): Promise<string | null> {
   const linked = args.linkedAddresses.map((a) => getAddress(a));
+
+  if (args.externalAddress) {
+    return getAddress(args.externalAddress);
+  }
+
   if (args.embeddedAddress) return getAddress(args.embeddedAddress);
 
   const byPrivy = await prisma.user.findUnique({ where: { privyId: args.privyId } });

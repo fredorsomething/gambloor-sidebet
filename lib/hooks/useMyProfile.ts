@@ -4,14 +4,16 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useQuery } from "@tanstack/react-query";
 
 import { jsonFetch } from "@/lib/fetcher";
+import { externalLinkedEthereumAddress } from "@/lib/privyWallets";
 import type { PublicProfile } from "@/lib/hooks/useProfile";
 
 /** Profile for the signed-in user (Privy-aware, server resolves wallet). */
 export function useMyProfile() {
-  const { authenticated, getAccessToken } = usePrivy();
+  const { authenticated, getAccessToken, user } = usePrivy();
+  const externalWallet = externalLinkedEthereumAddress(user);
 
   return useQuery<PublicProfile | null>({
-    queryKey: ["profile", "me"],
+    queryKey: ["profile", "me", externalWallet ?? user?.id ?? "anon"],
     enabled: authenticated,
     staleTime: 30_000,
     retry: 2,

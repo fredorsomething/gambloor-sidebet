@@ -13,8 +13,8 @@ import {
 
 /**
  * Keeps wagmi's active address aligned with the Privy user's linked wallets.
- * Fixes sessions where a browser extension (MetaMask, etc.) hijacks the active
- * connector even though the user signed in with a Privy embedded wallet.
+ * Legacy web3 users stay on their external auth wallet; email/SMS users stay on
+ * the embedded Sidebet wallet for gas sponsorship.
  */
 export function EnsureLinkedActiveWallet() {
   const { authenticated, user } = usePrivy();
@@ -31,14 +31,14 @@ export function EnsureLinkedActiveWallet() {
 
     const ethereum = wallets.filter((w) => w.type === "ethereum");
     const owned = ethereum.filter((w) => linked.has(w.address.toLowerCase()));
+    const external = owned.find((w) => !isPrivyEmbeddedWallet(w));
     const embedded = owned.find(isPrivyEmbeddedWallet);
+    const preferred = external ?? embedded;
 
-    // Gas sponsorship applies to Privy embedded wallets — keep them active when
-    // the user also has a linked browser extension wallet.
-    if (embedded) {
-      if (embedded.address.toLowerCase() !== address?.toLowerCase()) {
+    if (preferred) {
+      if (preferred.address.toLowerCase() !== address?.toLowerCase()) {
         syncing.current = true;
-        void setActiveWallet(embedded).finally(() => {
+        void setActiveWallet(preferred).finally(() => {
           syncing.current = false;
         });
       }
