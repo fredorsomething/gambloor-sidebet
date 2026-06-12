@@ -60,23 +60,40 @@ function embeddedEthereumAddress(user: PrivyUser): string | null {
   return null;
 }
 
-async function migrateUsernameHistory(from: string, to: string) {
-  const fromAddr = getAddress(from);
-  const toAddr = getAddress(to);
-  const rows = await prisma.usernameHistory.findMany({
-    where: { address: fromAddr },
-  });
-  for (const row of rows) {
-    await prisma.usernameHistory
-      .upsert({
-        where: {
-          username_address: { username: row.username, address: toAddr },
-        },
-        update: {},
-        create: { username: row.username, address: toAddr },
-      })
-      .catch(() => {});
-  }
+async function hasActivityOnAddress(address: string): Promise<boolean> {
+  const lower = address.toLowerCase();
+  const [
+    bets,
+    fills,
+    accounts,
+    comments,
+    profileComments,
+    deposits,
+    notifications,
+  ] = await Promise.all([
+    prisma.bet.count({
+      where: {
+        OR: [
+          { proposer: { equals: address, mode: "insensitive" } },
+          { acceptor: { equals: address, mode: "insensitive" } },
+        ],
+      },
+    }),
+    prisma.fill.count({
+      where: { OR: [{ taker: lower }, { maker: lower }] },
+    }),
+    prisma.account.count({ where: { owner: lower } }),
+    prisma.threadComment.count({ where: { author: lower } }),
+    prisma.profileComment.count({
+      where: { OR: [{ target: lower }, { author: lower }] },
+    }),
+    prisma.deposit.count({ where: { address: lower } }),
+    prisma.notification.count({ where: { recipient: lower } }),
+  ]);
+  return (
+    bets + fills + accounts + comments + profileComments + deposits + notifications >
+    0
+  );
 }
 
 type Stats = {
@@ -115,36 +132,41 @@ async function main() {
 
     const linked = linkedEthereumAddresses(privyUser);
     const email = emailOf(privyUser);
-    const dbRow = await prisma.user.findUnique({
-      where: { privyId: privyUser.id },
-    });
-    const dbAddress = dbRow ? getAddress(dbRow.address) : null;
     const staleLinked = linked.filter(
       (a) => a.toLowerCase() !== embedded.toLowerCase(),
     );
 
-    let hasStaleProfile = false;
-    for (const addr of linked) {
+    const dbRow = await prisma.user.findUnique({
+      where: { privyId: privyUser.id },
+    });
+    const dbAddress = dbRow ? getAddress(dbRow.address) : null;
+
+    let shouldMigrate = false;
+    if (
+      dbRow &&
+      dbAddress &&
+      dbAddress.toLowerCase() !== embedded.toLowerCase()
+    ) {
+      shouldMigrate = true;
+    }
+
+    for (const addr of staleLinked) {
       const row = await prisma.user.findUnique({ where: { address: addr } });
-      if (!row) continue;
-      const onEmbedded = addr.toLowerCase() === embedded.toLowerCase();
       if (
-        !onEmbedded &&
+        row &&
         (row.username?.trim() ||
           row.privyId ||
           row.avatarUrl ||
           row.bio?.trim())
       ) {
-        hasStaleProfile = true;
+        shouldMigrate = true;
+        break;
+      }
+      if (await hasActivityOnAddress(addr)) {
+        shouldMigrate = true;
         break;
       }
     }
-
-    const shouldMigrate =
-      hasStaleProfile ||
-      (!!dbRow &&
-        !!dbAddress &&
-        dbAddress.toLowerCase() !== embedded.toLowerCase());
 
     if (!shouldMigrate) {
       stats.skipped++;
@@ -160,16 +182,13 @@ async function main() {
     }
 
     try {
-      const before = dbAddress;
       await reconcileUserAddress({
         privyId: privyUser.id,
         activeAddress: embedded,
         email,
         linkedAddresses: linked,
       });
-      if (before && before.toLowerCase() !== embedded.toLowerCase()) {
-        await migrateUsernameHistory(before, embedded);
-      }
+
       stats.migrated++;
       console.log(`Migrated ${label}`);
     } catch (err) {

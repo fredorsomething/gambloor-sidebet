@@ -3,6 +3,7 @@ import type { User } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { publicUserSelect } from "@/lib/publicProfile";
+import { migrateWalletAddress } from "@/lib/walletMigration";
 
 type ProfileFields = {
   username?: string | null;
@@ -54,9 +55,9 @@ export async function reconcileUserAddress(args: {
   const byPrivy = await prisma.user.findUnique({ where: { privyId: args.privyId } });
 
   const staleAddresses = new Set<string>();
-  for (const row of linkedRows) {
-    if (row.address.toLowerCase() !== active.toLowerCase()) {
-      staleAddresses.add(row.address);
+  for (const addr of linked) {
+    if (addr.toLowerCase() !== active.toLowerCase()) {
+      staleAddresses.add(getAddress(addr));
     }
   }
   if (
@@ -90,9 +91,13 @@ export async function reconcileUserAddress(args: {
 
   if (!needsWrite) return activeRow ?? byPrivy;
 
+  for (const stale of staleAddresses) {
+    await migrateWalletAddress(stale, active);
+  }
+
   await prisma.$transaction(async (tx) => {
     for (const stale of staleAddresses) {
-      await tx.user.update({
+      await tx.user.updateMany({
         where: { address: stale },
         data: { privyId: null, username: null },
       });
