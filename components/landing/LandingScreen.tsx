@@ -4,7 +4,6 @@ import { usePrivy } from "@privy-io/react-auth";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { useAccount } from "wagmi";
 
 import {
   BirdIntroCollect,
@@ -15,12 +14,10 @@ import {
   BirdsSettler,
   RiftPortal,
 } from "@/components/landing/OnboardingVisuals";
-import { useProfile } from "@/lib/hooks/useProfile";
-import { needsProfileSetup } from "@/lib/profile";
-import { PROFILE_SETUP_PATH } from "@/lib/profileSetup";
 import {
   hasCompletedOnboarding,
   markOnboardingComplete,
+  POST_ONBOARDING_LOGIN_KEY,
 } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +38,7 @@ const SLIDES: Slide[] = [
       "Crazy we know.",
       "1v1 bets with a friend or fatal enemy on Polygon.",
       "Zero fees. On-chain escrow.",
-      "No monkey-business."
+      "No monkey-business.",
     ],
   },
   {
@@ -107,25 +104,24 @@ export function LandingScreen({
   mode?: "gate" | "replay";
 }) {
   const router = useRouter();
-  const { ready: privyReady, authenticated, login } = usePrivy();
-  const { address } = useAccount();
-  const { data: profile, isFetched: profileFetched } = useProfile(address);
+  const { ready: privyReady, authenticated } = usePrivy();
   const [booted, setBooted] = useState(false);
   const [step, setStep] = useState(0);
-  const [awaitingAuth, setAwaitingAuth] = useState(false);
-  const [loginOpening, setLoginOpening] = useState(false);
 
   const slide = SLIDES[step]!;
   const isLast = step === SLIDES.length - 1;
 
   const finish = useCallback(() => {
     markOnboardingComplete();
-    if (address && profileFetched && needsProfileSetup(profile)) {
-      router.push(PROFILE_SETUP_PATH);
-      return;
+    try {
+      if (!authenticated) {
+        sessionStorage.setItem(POST_ONBOARDING_LOGIN_KEY, "1");
+      }
+    } catch {
+      /* ignore */
     }
-    router.push("/home");
-  }, [address, profile, profileFetched, router]);
+    router.replace("/home");
+  }, [authenticated, router]);
 
   const next = useCallback(() => {
     if (!isLast) setStep((s) => s + 1);
@@ -136,18 +132,8 @@ export function LandingScreen({
   }, []);
 
   const handleFinal = useCallback(() => {
-    if (authenticated) {
-      if (!address || !profileFetched) {
-        setAwaitingAuth(true);
-        return;
-      }
-      finish();
-      return;
-    }
-    setAwaitingAuth(true);
-    setLoginOpening(true);
-    void login();
-  }, [authenticated, address, profileFetched, finish, login]);
+    finish();
+  }, [finish]);
 
   useEffect(() => {
     if (mode === "replay") {
@@ -160,22 +146,6 @@ export function LandingScreen({
     }
     setBooted(true);
   }, [router, mode]);
-
-  useEffect(() => {
-    if (!awaitingAuth || !authenticated || !address || !profileFetched) return;
-    setLoginOpening(false);
-    finish();
-  }, [awaitingAuth, authenticated, address, profileFetched, finish]);
-
-  useEffect(() => {
-    if (authenticated) {
-      setLoginOpening(false);
-      return;
-    }
-    if (!loginOpening) return;
-    const t = window.setTimeout(() => setLoginOpening(false), 2000);
-    return () => window.clearTimeout(t);
-  }, [loginOpening, authenticated]);
 
   useEffect(() => {
     if (!booted) return;
@@ -208,10 +178,7 @@ export function LandingScreen({
         )}
 
         {isLast ? (
-          <RiftPortal
-            onEnter={handleFinal}
-            pending={loginOpening && !authenticated}
-          />
+          <RiftPortal onEnter={handleFinal} />
         ) : (
           <div className="relative mt-4">
             <article

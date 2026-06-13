@@ -12,7 +12,7 @@ import {
   PROFILE_SETUP_PATH,
 } from "@/lib/profileSetup";
 
-/** Sends new accounts without a username to profile setup before the rest of the app. */
+/** Sends signed-in accounts without a username to profile setup before the rest of the app. */
 export function ProfileSetupGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -26,14 +26,19 @@ export function ProfileSetupGate({ children }: { children: React.ReactNode }) {
   } = useMyProfile();
 
   const profilePending =
-    authenticated && (isLoading || isFetching || !isFetched || isError);
+    authenticated && !isError && (isLoading || isFetching || !isFetched);
 
   const onSetupPage = pathname === PROFILE_SETUP_PATH;
-  const incomplete = isFetched && !isError && needsProfileSetup(profile);
+  const incomplete =
+    authenticated && isFetched && !isError && needsProfileSetup(profile);
   const mustRedirect =
     incomplete && !onSetupPage && !isProfileSetupExemptPath(pathname);
   const mustLeaveSetup =
-    isFetched && !isError && !needsProfileSetup(profile) && onSetupPage;
+    authenticated &&
+    isFetched &&
+    !isError &&
+    !needsProfileSetup(profile) &&
+    onSetupPage;
 
   useEffect(() => {
     if (!ready || !authenticated || profilePending) return;

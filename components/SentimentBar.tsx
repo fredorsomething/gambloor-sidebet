@@ -30,13 +30,13 @@ function chipClass(
 ): string {
   const tone = multiOutcomeIndexTone(outcomes, index);
   if (selected) {
-    if (tone === "success") return "border-success bg-success/20 text-success";
-    if (tone === "danger") return "border-danger bg-danger/20 text-danger";
-    return "border-primary bg-primary/15 text-primary";
+    if (tone === "success") return "border-success/60 bg-success/15 text-success";
+    if (tone === "danger") return "border-danger/60 bg-danger/15 text-danger";
+    return "border-primary/60 bg-primary/10 text-primary";
   }
-  if (tone === "success") return "border-success/30 bg-success/10 text-success";
-  if (tone === "danger") return "border-danger/30 bg-danger/10 text-danger";
-  return "border-border bg-muted/30 text-muted-foreground hover:border-primary/40";
+  if (tone === "success") return "border-success/25 bg-success/5 text-success/90";
+  if (tone === "danger") return "border-danger/25 bg-danger/5 text-danger/90";
+  return "border-border/70 bg-background/40 text-muted-foreground hover:border-primary/30";
 }
 
 type Props = {
@@ -120,20 +120,23 @@ export function SentimentBar({
   });
 
   return (
-    <section className={cn("card p-5 space-y-3", className)}>
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Community sentiment</h2>
-        <span className="text-xs text-muted-foreground">
-          {totalVotes === 0
-            ? "No votes yet"
-            : `${totalVotes} vote${totalVotes === 1 ? "" : "s"}`}
-          {" · "}
-          one per wallet
+    <section
+      className={cn(
+        "inline-flex w-full max-w-[17rem] flex-col gap-2 rounded-lg border border-border/50 bg-muted/15 px-3 py-2.5 sm:max-w-[19rem]",
+        className,
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Sentiment
+        </h2>
+        <span className="text-[10px] tabular-nums text-muted-foreground/80">
+          {totalVotes === 0 ? "—" : totalVotes}
         </span>
       </div>
 
       <div
-        className="flex h-3 w-full overflow-hidden rounded-full bg-muted/40"
+        className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted/50"
         aria-hidden={totalVotes === 0}
       >
         {totalVotes > 0 ? (
@@ -148,15 +151,14 @@ export function SentimentBar({
             ) : null,
           )
         ) : (
-          <div className="h-full w-full bg-muted/30" />
+          <div className="h-full w-full bg-muted/40" />
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1">
         {segments.map((s) => {
           const selected = yourVote === s.index;
-          const pctLabel =
-            totalVotes > 0 ? `${Math.round(s.pct)}%` : "—";
+          const pctLabel = totalVotes > 0 ? `${Math.round(s.pct)}%` : "—";
           return (
             <button
               key={s.index}
@@ -164,36 +166,19 @@ export function SentimentBar({
               disabled={isLoading || vote.isPending}
               onClick={() => pick(s.index)}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                "rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
                 chipClass(outcomes, s.index, selected),
                 selected && "ring-1 ring-offset-1 ring-offset-background",
               )}
               aria-pressed={selected}
+              title={`Vote ${s.label}`}
             >
               {s.label}
-              <span className="ml-1.5 tabular-nums opacity-80">
-                {pctLabel}
-                {s.count > 0 && (
-                  <span className="hidden sm:inline">
-                    {" "}
-                    · {s.count}
-                  </span>
-                )}
-              </span>
-              {selected && (
-                <span className="ml-1 text-[10px] uppercase tracking-wide opacity-70">
-                  you
-                </span>
-              )}
+              <span className="ml-1 tabular-nums opacity-75">{pctLabel}</span>
             </button>
           );
         })}
       </div>
-
-      <p className="text-[11px] text-muted-foreground">
-        Tap an outcome to share where you think this is heading. Sentiment is
-        social only — it doesn&apos;t affect stakes or trades.
-      </p>
     </section>
   );
 }

@@ -7,6 +7,7 @@ import { GlobalChat } from "@/components/GlobalChat";
 import { MobileNav } from "@/components/MobileNav";
 import { NavLinks } from "@/components/NavLinks";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { PostOnboardingLoginPrompt } from "@/components/PostOnboardingLoginPrompt";
 import { SearchBar } from "@/components/SearchBar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
@@ -20,6 +21,7 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <PostOnboardingLoginPrompt />
       <div id="app-shell" className="flex min-h-screen flex-col">
         <header className="site-header fixed inset-x-0 top-0 z-40 overflow-visible border-b border-border bg-card/95 backdrop-blur">
           <div className="container flex min-w-0 items-center gap-1.5 py-3 sm:gap-3 sm:py-4">

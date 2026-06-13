@@ -5,6 +5,7 @@ export const PROFILE_SETUP_PATH = "/profile/setup";
 export const PROFILE_SETUP_EXEMPT_PREFIXES = [
   PROFILE_SETUP_PATH,
   "/",
+  "/home",
   "/onboarding",
   "/maintenance",
   "/terms",

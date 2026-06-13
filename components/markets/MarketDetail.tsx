@@ -494,11 +494,13 @@ export function MarketDetail({ id }: { id: number }) {
       </div>
 
       {outcomes.length >= 2 && (
-        <SentimentBar
-          subjectType="market"
-          subjectId={market.id}
-          outcomes={outcomes.map((o) => o.label)}
-        />
+        <div className="flex">
+          <SentimentBar
+            subjectType="market"
+            subjectId={market.id}
+            outcomes={outcomes.map((o) => o.label)}
+          />
+        </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">

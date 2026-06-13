@@ -186,11 +186,13 @@ export default async function BetDetailPage({
       </div>
 
       {outcomes.length >= 2 && (
-        <SentimentBar
-          subjectType="bet"
-          subjectId={bet.id}
-          outcomes={outcomes as string[]}
-        />
+        <div className="flex">
+          <SentimentBar
+            subjectType="bet"
+            subjectId={bet.id}
+            outcomes={outcomes as string[]}
+          />
+        </div>
       )}
 
       <BetMatchup id={bet.id} initial={data} />
