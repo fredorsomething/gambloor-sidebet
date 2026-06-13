@@ -6,6 +6,15 @@ import { acceptorTakeEconomics, sidebetPayoutWei } from "@/lib/betEconomics";
 import { resolveBetStatus } from "@/lib/betStatus";
 import { prisma } from "@/lib/db";
 import { computeUserStats, type StatBet } from "@/lib/stats";
+import {
+  binaryYesProbability,
+  buildMarketQuotes,
+  marketDisplayStatus,
+} from "@/lib/marketQuotes";
+import { marketWithOutcomesSelect } from "@/lib/marketPrisma";
+
+import type { MarketQuote } from "@/lib/types";
+import type { MarketStatusKind } from "@/lib/marketQuotes";
 
 export type LinkPreviewKind = "site" | "profile" | "bet" | "market";
 
@@ -40,6 +49,16 @@ export type LinkPreviewData = {
     toWinLabel?: string;
     /** Settled: "@user won 8 USDC.e" line for meta text. */
     resultLabel?: string;
+  };
+  /** Market embed card: odds + lifecycle. */
+  marketPreview?: {
+    displayStatus: string;
+    statusKind: MarketStatusKind;
+    outcomes: { index: number; label: string }[];
+    quotes: MarketQuote[];
+    winningOutcome: number | null;
+    verifiedOutcome: number | null;
+    yesProb: number | null;
   };
 };
 
@@ -446,33 +465,84 @@ export async function resolveLinkPreview(
 
   const market = await prisma.market.findUnique({
     where: { id: parsed.id },
-    select: {
-      id: true,
-      title: true,
-      imageUrl: true,
-      status: true,
-      tokenSymbol: true,
-      creator: true,
-      updatedAt: true,
-    },
+    select: marketWithOutcomesSelect,
   });
   if (!market) return null;
 
-  const creator = await prisma.user.findUnique({
-    where: { address: getAddress(market.creator) },
-    select: { username: true },
+  const [creator, stats, approvedProposal] = await Promise.all([
+    prisma.user.findUnique({
+      where: { address: getAddress(market.creator) },
+      select: { username: true },
+    }),
+    prisma.outcomeStat.findMany({
+      where: { marketId: market.id },
+      select: { outcomeIndex: true, bestBid: true, bestAsk: true },
+    }),
+    market.status === "Open"
+      ? prisma.resolutionProposal.findFirst({
+          where: {
+            subjectType: "market",
+            subjectId: market.id,
+            status: "Approved",
+          },
+          orderBy: { createdAt: "desc" },
+          select: { proposedOutcome: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const verifiedOutcome =
+    market.status === "Open"
+      ? (approvedProposal?.proposedOutcome ?? null)
+      : null;
+  const { label: displayStatus, kind: statusKind } = marketDisplayStatus({
+    status: market.status,
+    verifiedOutcome,
   });
+  const outcomes = market.outcomes.map((o) => ({
+    index: o.index,
+    label: o.label,
+  }));
+  const quotes = buildMarketQuotes(
+    outcomes.map((o) => o.index),
+    stats,
+  );
+  const yesProb = outcomes.length === 2 ? binaryYesProbability(quotes) : null;
+
+  const marketPreview = {
+    displayStatus,
+    statusKind,
+    outcomes,
+    quotes,
+    winningOutcome: market.winningOutcome,
+    verifiedOutcome,
+    yesProb,
+  };
+
+  let subtitle = creator?.username
+    ? `@${creator.username} · ${displayStatus}`
+    : displayStatus;
+  if (market.status === "Resolved" && market.winningOutcome != null) {
+    const winLabel = outcomes[market.winningOutcome]?.label;
+    if (winLabel) subtitle = `${winLabel} wins · ${displayStatus}`;
+  } else if (verifiedOutcome != null) {
+    const vLabel = outcomes[verifiedOutcome]?.label;
+    if (vLabel) subtitle = `Verified: ${vLabel} · ${displayStatus}`;
+  } else if (yesProb != null && market.status === "Open") {
+    subtitle = `${(yesProb * 100).toFixed(0)}% ${outcomes[0]?.label ?? "Yes"} · ${displayStatus}`;
+  }
 
   return {
     kind: "market",
     url: `/markets/${market.id}`,
     id: market.id,
     title: market.title,
-    subtitle: `${creator?.username ? `@${creator.username}` : "Creator"} · ${market.status}`,
+    subtitle,
     imageUrl: market.imageUrl,
     status: market.status,
-    ogImageVersion: `${market.status}-${market.updatedAt.getTime()}`,
+    ogImageVersion: `${market.status}-${market.updatedAt.getTime()}-${verifiedOutcome ?? market.winningOutcome ?? "none"}`,
     tokenSymbol: market.tokenSymbol,
+    marketPreview,
   };
 }
 

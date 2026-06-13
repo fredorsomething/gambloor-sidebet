@@ -17,6 +17,7 @@ import {
   marketWithOutcomesSelect,
 } from "@/lib/marketPrisma";
 import { getApprovedSettler } from "@/lib/settlers";
+import { buildMarketQuotes } from "@/lib/marketQuotes";
 
 export const dynamic = "force-dynamic";
 
@@ -281,34 +282,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const levels = new Map<
-    number,
-    Map<number, { bestBid: number | null; bestAsk: number | null }>
-  >();
-  for (const s of stats) {
-    let byOutcome = levels.get(s.marketId);
-    if (!byOutcome) {
-      byOutcome = new Map();
-      levels.set(s.marketId, byOutcome);
-    }
-    byOutcome.set(s.outcomeIndex, {
-      bestBid: s.bestBid != null ? Number(s.bestBid) / 1_000_000 : null,
-      bestAsk: s.bestAsk != null ? Number(s.bestAsk) / 1_000_000 : null,
-    });
-  }
-
   const items = rows.map((r) => {
-    const byOutcome = levels.get(r.id);
-    const quotes = r.outcomes.map((o) => {
-      const lvl = byOutcome?.get(o.index);
-      const bestBid = lvl?.bestBid ?? null;
-      const bestAsk = lvl?.bestAsk ?? null;
-      const mid =
-        bestBid != null && bestAsk != null
-          ? (bestBid + bestAsk) / 2
-          : (bestAsk ?? bestBid);
-      return { index: o.index, bestBid, bestAsk, mid };
-    });
+    const quotes = buildMarketQuotes(
+      r.outcomes.map((o) => o.index),
+      stats.filter((s) => s.marketId === r.id),
+    );
     // Only surface a verified outcome while still open (pre-settlement).
     const verifiedOutcome =
       r.status === "Open" ? verifiedByMarket.get(r.id) ?? null : null;

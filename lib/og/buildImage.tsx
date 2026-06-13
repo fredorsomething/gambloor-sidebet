@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 
 import type { LinkPreviewData } from "@/lib/linkPreview";
+import { formatMarketPrice } from "@/lib/marketQuotes";
 import type { MarketFlexCardData } from "@/lib/marketFlexCardData";
 import { outcomeLabelTone } from "@/lib/outcomeTone";
 import { absoluteUrl } from "@/lib/siteUrl";
@@ -33,7 +34,9 @@ type OgCardOptions = {
 function kindLabel(p: LinkPreviewData): string {
   if (p.kind === "profile") return "Profile";
   if (p.kind === "bet") return "Sidebet";
-  if (p.kind === "market") return `Market · ${p.status ?? "Open"}`;
+  if (p.kind === "market") {
+    return `Market · ${p.marketPreview?.displayStatus ?? p.status ?? "Open"}`;
+  }
   return "Sidebet";
 }
 
@@ -869,6 +872,7 @@ function renderBetMarketOgCard(
   options: OgCardOptions = {},
 ): ImageResponse {
   const label = kindLabel(preview);
+  const mp = preview.kind === "market" ? preview.marketPreview : undefined;
 
   return new ImageResponse(
     (
@@ -934,16 +938,131 @@ function renderBetMarketOgCard(
             >
               {truncate(preview.title, 80)}
             </span>
-            {preview.subtitle && (
+            {mp ? (
+              <MarketOgOdds mp={mp} />
+            ) : preview.subtitle ? (
               <span style={{ fontSize: 26, color: C.muted }}>
                 {truncate(preview.subtitle, 70)}
               </span>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
     ),
     { ...OG_SIZE },
+  );
+}
+
+function MarketOgOdds({
+  mp,
+}: {
+  mp: NonNullable<LinkPreviewData["marketPreview"]>;
+}) {
+  const { outcomes, quotes, statusKind, winningOutcome, verifiedOutcome } = mp;
+
+  if (statusKind === "resolved" && winningOutcome != null) {
+    const label = outcomes[winningOutcome]?.label ?? "—";
+    return (
+      <span style={{ fontSize: 32, fontWeight: 700, color: C.success }}>
+        {label} wins
+      </span>
+    );
+  }
+
+  if (statusKind === "awaiting" && verifiedOutcome != null) {
+    const label = outcomes[verifiedOutcome]?.label ?? "—";
+    return (
+      <span style={{ fontSize: 28, fontWeight: 600, color: C.primary }}>
+        Verified: {label}
+      </span>
+    );
+  }
+
+  if (statusKind !== "open") {
+    return (
+      <span style={{ fontSize: 26, color: C.muted }}>{mp.displayStatus}</span>
+    );
+  }
+
+  if (outcomes.length === 2) {
+    const q0 = quotes.find((q) => q.index === 0);
+    const q1 = quotes.find((q) => q.index === 1);
+    const p0 = formatMarketPrice(q0?.bestAsk ?? q0?.mid);
+    const p1 = formatMarketPrice(q1?.bestAsk ?? q1?.mid);
+    return (
+      <div style={{ display: "flex", gap: 16 }}>
+        <MarketOgOddsBox
+          label={outcomes[0]?.label ?? "Yes"}
+          price={p0}
+          color={C.success}
+        />
+        <MarketOgOddsBox
+          label={outcomes[1]?.label ?? "No"}
+          price={p1}
+          color={C.danger}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+      {outcomes.slice(0, 6).map((o) => {
+        const q = quotes.find((x) => x.index === o.index);
+        const price = formatMarketPrice(q?.bestAsk ?? q?.mid);
+        return (
+          <span
+            key={o.index}
+            style={{
+              fontSize: 22,
+              color: C.muted,
+              background: "#21262d",
+              border: `1px solid ${C.border}`,
+              borderRadius: 999,
+              padding: "8px 16px",
+            }}
+          >
+            {o.label}
+            {price ? ` · ${price}` : ""}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function MarketOgOddsBox({
+  label,
+  price,
+  color,
+}: {
+  label: string;
+  price: string | null;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        flex: 1,
+        minHeight: 88,
+        borderRadius: 16,
+        border: `2px solid ${color}66`,
+        background: `${color}18`,
+        padding: "12px 20px",
+      }}
+    >
+      <span style={{ fontSize: 26, fontWeight: 700, color }}>{label}</span>
+      {price && (
+        <span style={{ fontSize: 24, fontWeight: 700, color, fontFamily: "monospace" }}>
+          {price}
+        </span>
+      )}
+    </div>
   );
 }
 
