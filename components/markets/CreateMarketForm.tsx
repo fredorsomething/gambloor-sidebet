@@ -279,7 +279,7 @@ export function CreateMarketForm() {
         throw new Error("Market registration transaction failed");
       }
 
-      // 3. Upload the cover + index the market (Pending until admin approval).
+      // 3. Upload the cover + index the market (live immediately).
       setStep("indexing");
 
       let imageUrl: string | null = null;
@@ -343,8 +343,8 @@ export function CreateMarketForm() {
       setStep("done");
       draft.clear();
       push({
-        title: "Market submitted",
-        description: "An admin will review it before it goes live.",
+        title: "Market live",
+        description: "Your market is open for trading.",
         variant: "success",
       });
       router.push(`/markets/${indexed.id}`);
@@ -464,7 +464,7 @@ export function CreateMarketForm() {
         {" · "}
         {walletSignatures} wallet signature{walletSignatures > 1 ? "s" : ""}
         {" · "}
-        an admin reviews each market before it goes live
+        goes live immediately after creation
       </div>
 
       {error && (

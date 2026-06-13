@@ -418,7 +418,7 @@ model Market {
   termsHash   String
   nonce       String
 
-  // Lifecycle. New markets start "Pending" until an admin approves them.
+  // Lifecycle. New markets go live immediately (Open). Pending/Rejected kept for legacy rows.
   status           String    @default("Open") // Pending | Open | Resolved | Rejected
   winningOutcome   Int?
   estimatedEndDate DateTime?
@@ -671,4 +671,18 @@ model PlatformSettings {
   maintenanceMode     Boolean  @default(false)
   updatedAt           DateTime @updatedAt
   updatedBy           String?
+}
+
+/// One sentiment vote per wallet per bet/market (non-binding social gauge).
+model SentimentVote {
+  id           Int      @id @default(autoincrement())
+  subjectType  String // bet | market
+  subjectId    Int
+  voter        String
+  outcomeIndex Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([subjectType, subjectId, voter])
+  @@index([subjectType, subjectId])
 }

@@ -11,6 +11,7 @@ import { BetDetailLive } from "@/components/BetDetailLive";
 import { BetFlexCard } from "@/components/bets/BetFlexCard";
 import { BetMatchup } from "@/components/BetMatchup";
 import { Comments } from "@/components/Comments";
+import { SentimentBar } from "@/components/SentimentBar";
 import { LiveBetStatusBadge } from "@/components/LiveBetStatusBadge";
 import { BetResolutionLive } from "@/components/BetResolutionLive";
 import { Resolvers } from "@/components/Resolvers";
@@ -183,6 +184,14 @@ export default async function BetDetailPage({
           </>
         )}
       </div>
+
+      {outcomes.length >= 2 && (
+        <SentimentBar
+          subjectType="bet"
+          subjectId={bet.id}
+          outcomes={outcomes as string[]}
+        />
+      )}
 
       <BetMatchup id={bet.id} initial={data} />
 

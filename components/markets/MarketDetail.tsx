@@ -12,6 +12,7 @@ import { polygon } from "@/lib/viemChains";
 import { BetThumbnail } from "@/components/BetThumbnail";
 import { CollapsibleBlurb } from "@/components/CollapsibleBlurb";
 import { Comments } from "@/components/Comments";
+import { SentimentBar } from "@/components/SentimentBar";
 import { FlexCardDownload } from "@/components/FlexCardDownload";
 import { MarketHolders } from "@/components/markets/MarketHolders";
 import { MarketPortfolio } from "@/components/markets/MarketPortfolio";
@@ -491,6 +492,14 @@ export function MarketDetail({ id }: { id: number }) {
           </div>
         )}
       </div>
+
+      {outcomes.length >= 2 && (
+        <SentimentBar
+          subjectType="market"
+          subjectId={market.id}
+          outcomes={outcomes.map((o) => o.label)}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="order-2 space-y-6 lg:order-none lg:col-start-1 lg:row-start-1">

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getAddress, isAddress, keccak256, toBytes } from "viem";
 
 import { isAdminAddress } from "@/lib/admin";
+import { announceMarketCreatedInChat } from "@/lib/announceFeedChat";
 import {
   getMarketCollateralToken,
   getTokenByAddress,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/marketPrisma";
 import { getApprovedSettler } from "@/lib/settlers";
 import { buildMarketQuotes } from "@/lib/marketQuotes";
+import { engineReloadMarket } from "@/lib/engineClient";
 
 export const dynamic = "force-dynamic";
 
@@ -132,16 +134,22 @@ export async function POST(req: NextRequest) {
   if (!registration.ok) return jsonErr(registration.reason, 400);
 
   try {
-    const market = await prisma.market.upsert({
-      where: {
-        chainId_exchangeAddress_conditionId: {
-          chainId: d.chainId,
-          exchangeAddress: OFFCHAIN_SENTINEL,
-          conditionId: d.conditionId.toLowerCase(),
-        },
-      },
-      update: {},
-      create: {
+    const key = {
+      chainId: d.chainId,
+      exchangeAddress: OFFCHAIN_SENTINEL,
+      conditionId: d.conditionId.toLowerCase(),
+    };
+
+    const existing = await prisma.market.findUnique({
+      where: { chainId_exchangeAddress_conditionId: key },
+      select: marketWithOutcomesSelect,
+    });
+    if (existing) {
+      return jsonOk(marketForApi(existing));
+    }
+
+    const market = await prisma.market.create({
+      data: {
         chainId: d.chainId,
         exchangeAddress: OFFCHAIN_SENTINEL,
         ctfAddress: OFFCHAIN_SENTINEL,
@@ -163,8 +171,7 @@ export async function POST(req: NextRequest) {
         termsHash: d.termsHash.toLowerCase(),
         nonce: d.nonce,
 
-        // New markets are held for admin approval before they go live.
-        status: "Pending",
+        status: "Open",
         estimatedEndDate: d.estimatedEndDate
           ? new Date(d.estimatedEndDate * 1000)
           : null,
@@ -179,6 +186,19 @@ export async function POST(req: NextRequest) {
       },
       select: marketWithOutcomesSelect,
     });
+
+    await engineReloadMarket(market.id).catch((err) => {
+      console.error("engine reload after market create failed", err);
+    });
+    try {
+      await announceMarketCreatedInChat({
+        id: market.id,
+        title: market.title,
+        creator: market.creator,
+      });
+    } catch (err) {
+      console.error("market created chat announce failed", err);
+    }
 
     return jsonOk(marketForApi(market), { status: 201 });
   } catch (err) {

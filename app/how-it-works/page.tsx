@@ -140,7 +140,7 @@ export default function HowItWorksPage() {
           <Step
             n={1}
             title="Create & get approved"
-            body="Anyone can propose a market with a question, outcomes, and resolution terms. New markets start Pending until an admin reviews and approves them, which keeps the listings clean and resolvable."
+            body="Anyone can propose a market with a question, outcomes, and resolution terms. New markets go live immediately and are open for trading on the order book."
           />
           <Step
             n={2}
