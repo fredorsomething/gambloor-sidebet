@@ -22,6 +22,16 @@ export function binaryOutcomeIndexTone(
   return index === 0 ? "success" : "danger";
 }
 
+/** Tone for any outcome index — binary presets stay green/red; others use index. */
+export function multiOutcomeIndexTone(
+  outcomes: string[],
+  index: number,
+): OutcomeTone {
+  const binary = binaryOutcomeIndexTone(outcomes, index);
+  if (outcomes.length === 2 && binary !== "muted") return binary;
+  return index === 0 ? "success" : index === 1 ? "danger" : "muted";
+}
+
 export function outcomeToneClass(tone: OutcomeTone): string {
   switch (tone) {
     case "success":

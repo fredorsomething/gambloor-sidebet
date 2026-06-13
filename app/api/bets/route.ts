@@ -35,9 +35,9 @@ const CreateBetSchema = z.object({
   acceptorStake: z.string().regex(DECIMAL, "acceptorStake must be a uint string"),
 
   // Outcomes.
-  outcomes: z.array(z.string().min(1).max(80)).min(2).max(16),
-  proposerOutcome: z.number().int().min(0).max(15),
-  acceptorOutcome: z.number().int().min(0).max(15),
+  outcomes: z.array(z.string().min(1).max(80)).min(2).max(12),
+  proposerOutcome: z.number().int().min(0).max(11),
+  acceptorOutcome: z.number().int().min(0).max(11),
 
   title: z.string().min(3).max(200),
   description: z.string().min(1).max(2000),

@@ -19,12 +19,14 @@ import { usePrivy } from "@privy-io/react-auth";
 
 import { BetImageField } from "@/components/bets/BetImageField";
 import { OddsStakeCalculator } from "@/components/bets/OddsStakeCalculator";
+import { OutcomesEditor } from "@/components/bets/OutcomesEditor";
+import { SidebetSidesPicker } from "@/components/bets/SidebetSidesPicker";
 import { SettlerSelect } from "@/components/SettlerSelect";
 import { TokenSymbol } from "@/components/ui/TokenIcon";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/Toast";
-import { ERC20_ABI, SIDEBET_ESCROW_V2_ABI } from "@/lib/abi";
+import { ERC20_ABI, SIDEBET_ESCROW_V3_ABI } from "@/lib/abi";
 import { cryptoErrorSummary, formatCryptoError } from "@/lib/cryptoErrors";
 import { useEnsurePolygon } from "@/lib/hooks/useEnsurePolygon";
 import { useFormDraft } from "@/lib/hooks/useFormDraft";
@@ -48,10 +50,14 @@ import {
   SIDEBET_CREATION_FEE_RAW,
   SIDEBET_CREATION_FEE_USD,
 } from "@/lib/sidebetCreationFee";
+import {
+  OUTCOME_PRESETS,
+  validateOutcomes,
+  type OutcomePresetId,
+} from "@/lib/outcomes";
 import { buildTermsHash, formatToken, parseAmount } from "@/lib/utils";
 
 type Step = "idle" | "payingFee" | "approving" | "creating" | "indexing" | "done";
-type BinaryStyle = "yes-no" | "up-down";
 
 export function CreateBetForm() {
   const router = useRouter();
@@ -74,9 +80,12 @@ export function CreateBetForm() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
-  // Outcomes + stance
-  const [binaryStyle, setBinaryStyle] = useState<BinaryStyle>("yes-no");
-  const [stance, setStance] = useState<"yes" | "no">("yes");
+  // Outcomes + sides
+  const [outcomes, setOutcomes] = useState<string[]>(() => [
+    ...OUTCOME_PRESETS["yes-no"],
+  ]);
+  const [proposerOutcome, setProposerOutcome] = useState(0);
+  const [acceptorOutcome, setAcceptorOutcome] = useState(1);
 
   // Stakes
   const [yourStakeStr, setYourStakeStr] = useState("");
@@ -105,8 +114,9 @@ export function CreateBetForm() {
       title,
       description,
       terms,
-      binaryStyle,
-      stance,
+      outcomes,
+      proposerOutcome,
+      acceptorOutcome,
       yourStakeStr,
       theirStakeStr,
       settler,
@@ -122,8 +132,9 @@ export function CreateBetForm() {
       title,
       description,
       terms,
-      binaryStyle,
-      stance,
+      outcomes,
+      proposerOutcome,
+      acceptorOutcome,
       yourStakeStr,
       theirStakeStr,
       settler,
@@ -144,9 +155,25 @@ export function CreateBetForm() {
       if (typeof saved.title === "string") setTitle(saved.title);
       if (typeof saved.description === "string") setDescription(saved.description);
       if (typeof saved.terms === "string") setTerms(saved.terms);
-      if (saved.binaryStyle === "yes-no" || saved.binaryStyle === "up-down")
-        setBinaryStyle(saved.binaryStyle);
-      if (saved.stance === "yes" || saved.stance === "no") setStance(saved.stance);
+      if (Array.isArray(saved.outcomes) && saved.outcomes.every((o) => typeof o === "string"))
+        setOutcomes(saved.outcomes);
+      if (typeof saved.proposerOutcome === "number") setProposerOutcome(saved.proposerOutcome);
+      if (typeof saved.acceptorOutcome === "number") setAcceptorOutcome(saved.acceptorOutcome);
+      // Legacy drafts from the old Yes/No-only form.
+      const legacy = saved as typeof saved & {
+        binaryStyle?: OutcomePresetId;
+        stance?: "yes" | "no";
+      };
+      if (legacy.binaryStyle === "yes-no" || legacy.binaryStyle === "up-down") {
+        setOutcomes([...OUTCOME_PRESETS[legacy.binaryStyle]]);
+      }
+      if (legacy.stance === "yes") {
+        setProposerOutcome(0);
+        setAcceptorOutcome(1);
+      } else if (legacy.stance === "no") {
+        setProposerOutcome(1);
+        setAcceptorOutcome(0);
+      }
       if (typeof saved.yourStakeStr === "string") setYourStakeStr(saved.yourStakeStr);
       if (typeof saved.theirStakeStr === "string")
         setTheirStakeStr(saved.theirStakeStr);
@@ -181,20 +208,10 @@ export function CreateBetForm() {
   });
   const effectiveDecimals = live.decimals ?? decimals;
 
-  const binaryOutcomes = useMemo(
-    () => (binaryStyle === "up-down" ? (["Up", "Down"] as const) : (["Yes", "No"] as const)),
-    [binaryStyle],
-  );
-
   const termsPlaceholder =
-    binaryStyle === "up-down"
-      ? `If BTC closes above $100k on Dec 31, "Up" wins. Otherwise "Down" wins.`
-      : `If the Knicks play in the 2026 ECF, "Yes" wins. Otherwise "No" wins.`;
-
-  const outcomes = useMemo(() => [...binaryOutcomes], [binaryOutcomes]);
-
-  const myOutcome = stance === "yes" ? 0 : 1;
-  const theirOutcome = stance === "yes" ? 1 : 0;
+    outcomes.length === 2
+      ? `Describe exactly when "${outcomes[0]?.trim() || "Outcome 1"}" wins vs "${outcomes[1]?.trim() || "Outcome 2"}".`
+      : `List what makes each outcome win — ${outcomes.map((o) => `"${o.trim() || "…"}"`).join(", ")}.`;
 
   const yourStake = useMemo(() => {
     try {
@@ -255,13 +272,14 @@ export function CreateBetForm() {
     if (description.trim().length < 1) return "Add a short description";
     if (terms.trim().length < 1)
       return "Please be as specific as possible with your resolution terms";
-    if (outcomes.length < 2) return "Add at least two outcomes";
-    if (outcomes.some((o) => o.length < 1)) return "Every outcome needs a label";
-    if (new Set(outcomes.map((o) => o.toLowerCase())).size !== outcomes.length)
-      return "Outcomes must be unique";
-    if (myOutcome === theirOutcome)
+    const outcomeCheck = validateOutcomes(outcomes);
+    if (!outcomeCheck.ok) return outcomeCheck.error;
+    if (proposerOutcome === acceptorOutcome)
       return "You and your counterparty must back different outcomes";
-    if (myOutcome >= outcomes.length || theirOutcome >= outcomes.length)
+    if (
+      proposerOutcome >= outcomeCheck.outcomes.length ||
+      acceptorOutcome >= outcomeCheck.outcomes.length
+    )
       return "Outcome selection is invalid";
     if (yourStake <= 0n) return "Your stake must be positive";
     if (theirStake <= 0n) return "Their stake must be positive";
@@ -352,7 +370,7 @@ export function CreateBetForm() {
     await ensurePolygon();
     const hash = await writeContract({
       address: escrow as Address,
-      abi: SIDEBET_ESCROW_V2_ABI,
+      abi: SIDEBET_ESCROW_V3_ABI,
       functionName: "createBet",
       args: [
         getAddress(settler),
@@ -381,7 +399,12 @@ export function CreateBetForm() {
     if (!account || !escrow || !tokenAddress) return;
 
     const nonce = crypto.randomUUID();
-    const trimmedOutcomes = outcomes.map((o) => o.trim());
+    const outcomeCheck = validateOutcomes(outcomes);
+    if (!outcomeCheck.ok) {
+      setError(outcomeCheck.error);
+      return;
+    }
+    const trimmedOutcomes = outcomeCheck.outcomes;
     const termsHash = buildTermsHash({
       title,
       description,
@@ -413,8 +436,8 @@ export function CreateBetForm() {
       estimatedEndDate,
       acceptDeadline,
       outcomes: trimmedOutcomes,
-      proposerOutcome: myOutcome,
-      acceptorOutcome: theirOutcome,
+      proposerOutcome,
+      acceptorOutcome,
     };
     setPendingCreate(pc);
 
@@ -494,7 +517,7 @@ export function CreateBetForm() {
           if (log.address.toLowerCase() !== (escrow as string).toLowerCase()) continue;
           try {
             const decoded = decodeEventLog({
-              abi: SIDEBET_ESCROW_V2_ABI,
+              abi: SIDEBET_ESCROW_V3_ABI,
               data: log.data,
               topics: log.topics,
             });
@@ -639,59 +662,26 @@ export function CreateBetForm() {
           />
         </Field>
 
-        {/* Outcomes + stance */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="label">Outcomes & your side</span>
-            <div className="flex gap-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setBinaryStyle("yes-no")}
-                className={`rounded-md px-2 py-1 ${binaryStyle === "yes-no" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
-              >
-                Yes / No
-              </button>
-              <button
-                type="button"
-                onClick={() => setBinaryStyle("up-down")}
-                className={`rounded-md px-2 py-1 ${binaryStyle === "up-down" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
-              >
-                Up / Down
-              </button>
-            </div>
-          </div>
+        {/* Outcomes */}
+        <OutcomesEditor
+          outcomes={outcomes}
+          onChange={(next) => {
+            setOutcomes(next);
+            if (proposerOutcome >= next.length) setProposerOutcome(0);
+            if (acceptorOutcome >= next.length) setAcceptorOutcome(Math.min(1, next.length - 1));
+          }}
+          disabled={isBusy}
+          hint="Add up to 12 possible results. Name each one clearly — the settler uses these labels at resolution."
+        />
 
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setStance("yes")}
-              className={`rounded-lg border-2 p-4 text-center font-bold transition-all ${
-                stance === "yes"
-                  ? "border-success bg-success/15 text-success"
-                  : "border-border text-muted-foreground hover:border-success/40"
-              }`}
-            >
-              <div className="text-lg">
-                {binaryStyle === "up-down" ? "UP" : "YES"}
-              </div>
-              <div className="mt-1 text-[11px] font-normal">You back this</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStance("no")}
-              className={`rounded-lg border-2 p-4 text-center font-bold transition-all ${
-                stance === "no"
-                  ? "border-danger bg-danger/15 text-danger"
-                  : "border-border text-muted-foreground hover:border-danger/40"
-              }`}
-            >
-              <div className="text-lg">
-                {binaryStyle === "up-down" ? "DOWN" : "NO"}
-              </div>
-              <div className="mt-1 text-[11px] font-normal">You back this</div>
-            </button>
-          </div>
-        </div>
+        <SidebetSidesPicker
+          outcomes={outcomes}
+          proposerOutcome={proposerOutcome}
+          acceptorOutcome={acceptorOutcome}
+          onProposerChange={setProposerOutcome}
+          onAcceptorChange={setAcceptorOutcome}
+          disabled={isBusy}
+        />
 
         <div className="flex items-center gap-2 text-sm">
           <span className="label">Token:</span>

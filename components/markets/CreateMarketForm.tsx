@@ -14,6 +14,7 @@ import {
 import { useAccount, useChainId, usePublicClient } from "wagmi";
 
 import { BetImageField } from "@/components/bets/BetImageField";
+import { OutcomesEditor } from "@/components/bets/OutcomesEditor";
 import { SettlerSelect } from "@/components/SettlerSelect";
 import { LowGasBanner } from "@/components/wallet/FundWalletModal";
 import { Button } from "@/components/ui/button";
@@ -40,10 +41,14 @@ import {
   MARKET_CREATION_FEE_RAW,
   MARKET_CREATION_FEE_USD,
 } from "@/lib/marketRegistration";
+import {
+  OUTCOME_PRESETS,
+  validateOutcomes,
+  type OutcomePresetId,
+} from "@/lib/outcomes";
 import { formatToken } from "@/lib/utils";
 
 type Step = "idle" | "approving" | "registering" | "indexing" | "done";
-type BinaryStyle = "yes-no" | "up-down";
 
 function buildMarketTermsHash(args: {
   title: string;
@@ -90,7 +95,9 @@ export function CreateMarketForm() {
   const [terms, setTerms] = useState("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
-  const [binaryStyle, setBinaryStyle] = useState<BinaryStyle>("yes-no");
+  const [outcomes, setOutcomes] = useState<string[]>(() => [
+    ...OUTCOME_PRESETS["yes-no"],
+  ]);
   const [settler, setSettler] = useState("");
   const [settlerFeeBps, setSettlerFeeBps] = useState(200);
   const [endDate, setEndDate] = useState("");
@@ -105,12 +112,12 @@ export function CreateMarketForm() {
       title,
       description,
       terms,
-      binaryStyle,
+      outcomes,
       settler,
       settlerFeeBps,
       endDate,
     }),
-    [title, description, terms, binaryStyle, settler, settlerFeeBps, endDate],
+    [title, description, terms, outcomes, settler, settlerFeeBps, endDate],
   );
   const draft = useFormDraft(
     "sb_draft_create_market",
@@ -120,8 +127,11 @@ export function CreateMarketForm() {
       if (typeof saved.title === "string") setTitle(saved.title);
       if (typeof saved.description === "string") setDescription(saved.description);
       if (typeof saved.terms === "string") setTerms(saved.terms);
-      if (saved.binaryStyle === "yes-no" || saved.binaryStyle === "up-down")
-        setBinaryStyle(saved.binaryStyle);
+      if (Array.isArray(saved.outcomes) && saved.outcomes.every((o) => typeof o === "string"))
+        setOutcomes(saved.outcomes);
+      const legacy = saved as typeof saved & { binaryStyle?: OutcomePresetId };
+      if (legacy.binaryStyle === "yes-no" || legacy.binaryStyle === "up-down")
+        setOutcomes([...OUTCOME_PRESETS[legacy.binaryStyle]]);
       if (typeof saved.settler === "string") setSettler(saved.settler);
       if (typeof saved.settlerFeeBps === "number")
         setSettlerFeeBps(saved.settlerFeeBps);
@@ -129,15 +139,10 @@ export function CreateMarketForm() {
     }, []),
   );
 
-  const outcomes = useMemo(
-    () => (binaryStyle === "up-down" ? ["Up", "Down"] : ["Yes", "No"]),
-    [binaryStyle],
-  );
-
   const termsPlaceholder =
-    binaryStyle === "up-down"
-      ? `If BTC closes above $100k on Dec 31, "Up" wins. Otherwise "Down" wins.`
-      : `If the Knicks play in the 2026 ECF, "Yes" wins. Otherwise "No" wins.`;
+    outcomes.length === 2
+      ? `Describe exactly when "${outcomes[0]?.trim() || "Outcome 1"}" wins vs "${outcomes[1]?.trim() || "Outcome 2"}".`
+      : `List what makes each outcome win — ${outcomes.map((o) => `"${o.trim() || "…"}"`).join(", ")}.`;
 
   const live = useTokenInfo({
     token: tokenAddress as Address,
@@ -174,6 +179,8 @@ export function CreateMarketForm() {
     if (description.trim().length < 1) return "Add a short description";
     if (terms.trim().length < 1)
       return "Please be as specific as possible with your resolution terms";
+    const outcomeCheck = validateOutcomes(outcomes);
+    if (!outcomeCheck.ok) return outcomeCheck.error;
     if (!settler || !isAddress(settler)) return "Pick an approved settler";
     if (getAddress(settler) === getAddress(account))
       return "You can't be your own settler";
@@ -200,7 +207,12 @@ export function CreateMarketForm() {
     if (!account || !tokenAddress || !escrowV3 || !publicClient) return;
 
     const nonce = crypto.randomUUID();
-    const trimmedOutcomes = outcomes.map((o) => o.trim());
+    const outcomeCheck = validateOutcomes(outcomes);
+    if (!outcomeCheck.ok) {
+      setError(outcomeCheck.error);
+      return;
+    }
+    const trimmedOutcomes = outcomeCheck.outcomes;
     const termsHash = buildMarketTermsHash({
       title,
       description,
@@ -406,40 +418,13 @@ export function CreateMarketForm() {
         />
       </Field>
 
-      {/* Outcomes — binary markets only, like sidebets. */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="label">Outcomes</span>
-          <div className="flex gap-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setBinaryStyle("yes-no")}
-              className={`rounded-md px-2 py-1 ${binaryStyle === "yes-no" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
-            >
-              Yes / No
-            </button>
-            <button
-              type="button"
-              onClick={() => setBinaryStyle("up-down")}
-              className={`rounded-md px-2 py-1 ${binaryStyle === "up-down" ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "text-muted-foreground"}`}
-            >
-              Up / Down
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg border-2 border-success/40 bg-success/10 p-3 text-center font-bold text-success">
-            {outcomes[0]}
-          </div>
-          <div className="rounded-lg border-2 border-danger/40 bg-danger/10 p-3 text-center font-bold text-danger">
-            {outcomes[1]}
-          </div>
-        </div>
-        <p className="text-[11px] text-muted-foreground">
-          Anyone can trade either side on the live orderbook once the market is
-          approved.
-        </p>
-      </div>
+      {/* Outcomes */}
+      <OutcomesEditor
+        outcomes={outcomes}
+        onChange={setOutcomes}
+        disabled={isBusy}
+        hint="Traders can buy and sell shares in every outcome on the live orderbook once approved."
+      />
 
       <Field label="Collateral" hint="All markets settle in USDC.e.">
         <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm font-medium">

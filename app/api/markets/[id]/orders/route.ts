@@ -29,7 +29,7 @@ const HEX_TX = /^0x[0-9a-fA-F]{64}$/;
 const OrderSchema = z.object({
   maker: z.string(),
   side: z.enum(["BUY", "SELL"]),
-  outcomeIndex: z.number().int().min(0).max(15),
+  outcomeIndex: z.number().int().min(0).max(11),
   type: z.enum(["LIMIT", "MARKET"]).default("LIMIT"),
   // Probability in (0,1) for LIMIT orders.
   price: z.number().gt(0).lt(1).optional(),

@@ -11,6 +11,7 @@ import {
   engineSplitSet,
   engineMergeSet,
   engineRefundOrphanFunding,
+  engineRequestWithdrawal,
   EngineError,
 } from "@/lib/engineClient";
 import { verifyFundingTransfer } from "@/lib/fundingVerification";

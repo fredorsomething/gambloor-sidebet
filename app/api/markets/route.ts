@@ -53,8 +53,8 @@ const CreateMarketSchema = z.object({
   termsHash: z.string().regex(HEX64, "termsHash must be 0x + 64 hex"),
   nonce: z.string().min(1).max(80),
 
-  outcomes: z.array(z.string().min(1).max(80)).min(2).max(16),
-  positionIds: z.array(z.string().regex(DECIMAL)).min(2).max(16),
+  outcomes: z.array(z.string().min(1).max(80)).min(2).max(12),
+  positionIds: z.array(z.string().regex(DECIMAL)).min(2).max(12),
 
   estimatedEndDate: z.number().int().min(0).optional(),
 

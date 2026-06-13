@@ -453,6 +453,26 @@ export function MarketDetail({ id }: { id: number }) {
             Winning outcome: <b>{outcomes[market.winningOutcome]?.label}</b>
           </div>
         )}
+        {outcomes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {outcomes.map((o) => {
+              const won = resolved && market.winningOutcome === o.index;
+              return (
+                <span
+                  key={o.index}
+                  className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                    won
+                      ? "border-success/50 bg-success/15 text-success"
+                      : "border-border bg-muted/40 text-muted-foreground"
+                  }`}
+                >
+                  {o.label}
+                  {won && " · winner"}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {resolved && account && (
           <FlexCardDownload
             apiPath={`/api/markets/${market.id}/flex-card`}
@@ -1344,16 +1364,19 @@ function TradePanel(props: {
 
   return (
     <section className="card p-5 space-y-4">
-      <div className="grid grid-cols-2 gap-2">
-        {outcomes.slice(0, 2).map((o) => {
+      <div className="flex flex-wrap gap-1.5">
+        {outcomes.map((o) => {
           const active = o.index === selectedIdx;
           const p = outcomeBuyPrice(o.index);
           return (
             <button
               key={o.index}
+              type="button"
               onClick={() => onSelectOutcome(o.index)}
-              className={`rounded-xl border px-3 py-2 text-left transition-colors ${
-                active ? "border-primary bg-primary/10" : "border-border hover:border-foreground/30"
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                active
+                  ? "border-primary bg-primary/10"
+                  : "border-border hover:border-foreground/30"
               }`}
             >
               <div className="text-sm font-semibold">{o.label}</div>
@@ -1362,19 +1385,6 @@ function TradePanel(props: {
           );
         })}
       </div>
-      {outcomes.length > 2 && (
-        <select
-          className="select"
-          value={selectedIdx}
-          onChange={(e) => onSelectOutcome(Number(e.target.value))}
-        >
-          {outcomes.map((o) => (
-            <option key={o.index} value={o.index}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      )}
 
       <div className="flex items-center gap-2">
         <div className="flex flex-1 rounded-lg bg-muted/50 p-0.5">

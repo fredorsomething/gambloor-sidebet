@@ -17,7 +17,7 @@ import {
 } from "@/lib/betStatus";
 import { jsonFetch } from "@/lib/fetcher";
 import {
-  binaryOutcomeIndexTone,
+  multiOutcomeIndexTone,
   outcomeToneClass,
   type OutcomeTone,
 } from "@/lib/outcomeTone";
@@ -25,7 +25,7 @@ import { cn, formatTimestamp, formatToken, fromNowUnix } from "@/lib/utils";
 import type { GetBetResponse } from "@/lib/types";
 
 function outcomeTone(outcomes: string[], index: number): OutcomeTone {
-  return binaryOutcomeIndexTone(outcomes, index);
+  return multiOutcomeIndexTone(outcomes, index);
 }
 
 function OutcomeBadge({
